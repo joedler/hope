@@ -1,0 +1,12 @@
+node_modules/
+gas/build/
+
+# Legacy root Apps Script files may contain production identifiers.
+/.clasp.json
+/appsscript.json
+/*.js
+
+# Local temp/cache files
+.DS_Store
+Thumbs.db
+*.log

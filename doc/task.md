@@ -1,0 +1,27 @@
+# 任務進度追蹤 (task.md)
+
+- `[x]` 階段一：開發環境重構 (測試環境)
+  - `[x]` 建立專案目錄結構 (`gas/src`, `docs`, `scripts`)
+  - `[x]` 建立前端設定 `docs/config.js` 與 `docs/index.html` 基本範本
+  - `[x]` 建立根目錄的 `package.json`，配置 TS/clasp/ESLint 依賴與 npm 腳本
+  - `[x]` 建立 `gas/tsconfig.json` TypeScript 設定檔
+  - `[x]` 建立 `scripts/copy_gas_manifest.mjs` 複製 manifest 檔的輔助腳本
+  - `[x]` 配置 `gas/.clasp.json` 指向新 GAS 測試專案與 `rootDir`
+  - `[x]` 將現有根目錄下 7 個 `.js` 後端代碼移動並重構為 `.ts` 放入 `gas/src/`
+  - `[x]` 移出敏感 ID，改用 `ScriptProperties` 讀取
+  - `[x]` 執行本地編譯 `npm run gas:build` 測試 TS 編譯是否成功
+- `[x]` 階段二：GAS 後端 API 開發 (測試環境)
+  - `[x]` 在 `Main_Controller.ts` 實作 `doGet` 路由
+  - `[x]` 實作 `handleLiffMe` (取得使用者狀態與權限)
+  - `[x]` 實作 `handleLiffFormOptions` (讀取試算表名單與選單選項)
+  - `[x]` 實作 `handleLiffRegister` (登記課程與防重疊機制)
+  - `[x]` 實作 `handleLiffGetUnverified` 與 `handleLiffVerifySchedule` (預排核銷)
+  - `[x]` 實作 `handleLiffLeave` (請假寫入)
+- `[/]` 階段三：LIFF 網頁端前端開發 (測試環境)
+  - `[x]` 於 `docs/` 開發 `index.html` 介面 (Tailwind CDN + Alpine.js)
+  - `[x]` 整合 LINE LIFF SDK 獲取 `lineUserId` 與登入控制
+  - `[/]` 完成前端表單與 GAS 後端 API 串接調用
+- `[ ]` 階段四：測試、正式部署與 Rich Menu 串接
+  - `[ ]` 將 `docs` 託管至 GitHub Pages，取得實體 URL
+  - `[ ]` 建立測試 LINE Bot 頻道與 LIFF 綁定，進行實機測試
+  - `[ ]` 低峰期將正式環境升級，切換正式 Webhook 與圖文選單

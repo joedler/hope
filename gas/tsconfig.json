@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "None",
+    "noImplicitAny": false,
+    "strict": false,
+    "experimentalDecorators": true,
+    "typeRoots": [
+      "../node_modules/@types"
+    ],
+    "types": [
+      "google-apps-script"
+    ],
+    "outDir": "./build",
+    "rootDir": "./src",
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

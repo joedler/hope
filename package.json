@@ -1,0 +1,20 @@
+{
+  "name": "kong-bot",
+  "version": "1.0.0",
+  "description": "空空BOT 開發環境重構與 LIFF Web App 整合專案",
+  "main": "index.js",
+  "scripts": {
+    "gas:build": "tsc -p gas/tsconfig.json && node scripts/copy_gas_manifest.mjs",
+    "gas:lint": "eslint \"gas/src/**/*.ts\"",
+    "gas:check": "npm run gas:lint && npm run gas:build",
+    "gas:push": "npm run gas:build && cd gas && ..\\node_modules\\.bin\\clasp.cmd push --force"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@google/clasp": "^3.3.0",
+    "@types/google-apps-script": "^2.0.9",
+    "eslint": "^10.4.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.60.0"
+  }
+}

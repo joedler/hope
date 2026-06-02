@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>空空BOT - 講師行政系統</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+      }
+    </style>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- LINE LIFF SDK -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="./config.js"></script>
+  </head>
+  <body class="min-h-screen bg-slate-900 text-slate-100 pb-12">
+    <main
+      class="mx-auto min-h-screen max-w-md px-4 py-6"
+      x-data="kongApp()"
+      x-init="init()"
+    >
+      <!-- 頂部標題區 -->
+      <header class="mb-6 flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-teal-400">LINE Bot Extension</p>
+          <h1 class="mt-1 text-2xl font-bold text-white" x-text="config.activityName || '空空BOT 系統'"></h1>
+        </div>
+        <template x-if="profile && profile.pictureUrl">
+          <img :src="profile.pictureUrl" class="h-10 w-10 rounded-full border border-teal-500/30" alt="Avatar">
+        </template>
+      </header>
+
+      <!-- 讀取狀態 -->
+      <section
+        class="rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur-md p-6 shadow-xl"
+        x-show="state === 'loading'"
+      >
+        <div class="flex flex-col items-center justify-center py-8">
+          <div class="h-8 w-8 animate-spin rounded-full border-2 border-teal-500 border-t-transparent"></div>
+          <p class="mt-4 text-sm font-medium text-slate-400">正在初始化系統與驗證身分...</p>
+        </div>
+      </section>
+
+      <!-- 錯誤/提示訊息 -->
+      <section
+        class="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300"
+        x-show="message"
+        x-text="message"
+      ></section>
+
+      <!-- 1. 未綁定狀態：首次驗證 -->
+      <section
+        class="space-y-4 rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-2xl"
+        x-show="state === 'unbound'"
+      >
+        <div class="text-center">
+          <h2 class="text-lg font-bold text-white">講師身分認證</h2>
+          <p class="mt-1 text-xs text-slate-400 leading-5">
+            首次使用請輸入您的姓名，以將此 LINE 帳號綁定至空空BOT講師名單中。
+          </p>
+        </div>
+
+        <div class="space-y-4">
+          <label class="block">
+            <span class="text-xs font-semibold text-slate-400">姓名</span>
+            <input
+              class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+              x-model.trim="form.name"
+              placeholder="請輸入您在講師名單上的姓名"
+            >
+          </label>
+
+          <button
+            type="button"
+            class="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-900/30 hover:bg-teal-500 disabled:bg-slate-800 disabled:text-slate-500 transition"
+            :disabled="submitting || !form.name"
+            @click="verifyAndBind()"
+          >
+            <span x-show="!submitting">驗證並綁定 LINE</span>
+            <span x-show="submitting">驗證中...</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. 已綁定狀態：操作主面板 -->
+      <section x-show="state === 'bound' && teacherProfile" class="space-y-5">
+        
+        <!-- 講師資訊卡 -->
+        <div class="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl">
+          <div class="absolute right-0 top-0 h-24 w-24 rounded-full bg-teal-500/5 blur-xl"></div>
+          <div class="flex items-center space-x-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-400">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <div>
+              <p class="text-xs text-slate-400">歡迎回來</p>
+              <h2 class="text-lg font-bold text-white" x-text="teacherProfile.name + ' 老師'"></h2>
+            </div>
+          </div>
+          
+          <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-900 pt-4 text-center">
+            <div>
+              <p class="text-[10px] text-slate-500 uppercase tracking-wider">本月授課堂數</p>
+              <p class="mt-1 text-lg font-bold text-teal-400" x-text="teacherProfile.thisMonthHours || '0'"></p>
+            </div>
+            <div>
+              <p class="text-[10px] text-slate-500 uppercase tracking-wider">請假餘額(事/病)</p>
+              <p class="mt-1 text-lg font-bold text-indigo-400" x-text="(teacherProfile.casualLeaveRemaining || '0') + ' / ' + (teacherProfile.sickLeaveRemaining || '0')"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 功能分頁標籤 -->
+        <nav class="flex space-x-2 rounded-xl bg-slate-950 p-1 border border-slate-800">
+          <button
+            type="button"
+            class="flex-1 rounded-lg py-2 text-xs font-medium transition"
+            :class="activeTab === 'register' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'"
+            @click="activeTab = 'register'"
+          >
+            授課登記
+          </button>
+          <button
+            type="button"
+            class="flex-1 rounded-lg py-2 text-xs font-medium transition"
+            :class="activeTab === 'verify' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'"
+            @click="activeTab = 'verify'"
+          >
+            預排核銷
+          </button>
+          <button
+            type="button"
+            class="flex-1 rounded-lg py-2 text-xs font-medium transition"
+            :class="activeTab === 'leave' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'"
+            @click="activeTab = 'leave'"
+          >
+            請假申請
+          </button>
+          <template x-if="teacherProfile.isAdmin">
+            <button
+              type="button"
+              class="flex-1 rounded-lg py-2 text-xs font-medium text-amber-400 transition"
+              :class="activeTab === 'admin' ? 'bg-amber-500/10 border border-amber-500/30 font-semibold' : 'hover:text-amber-300'"
+              @click="activeTab = 'admin'"
+            >
+              行政專區
+            </button>
+          </template>
+        </nav>
+
+        <!-- 2A. 授課登記面板 -->
+        <section x-show="activeTab === 'register'" class="space-y-4">
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg">
+            <h3 class="text-sm font-bold text-white mb-4">登記授課或預排課程</h3>
+            
+            <div class="space-y-4">
+              <!-- 登記模式 -->
+              <div class="grid grid-cols-2 gap-2 rounded-lg bg-slate-900 p-1">
+                <button
+                  type="button"
+                  class="rounded-md py-1.5 text-xs font-medium transition"
+                  :class="regForm.mode === 'normal' ? 'bg-slate-800 text-white shadow' : 'text-slate-400'"
+                  @click="regForm.mode = 'normal'"
+                >
+                  正式授課 (登記)
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md py-1.5 text-xs font-medium transition"
+                  :class="regForm.mode === 'pre' ? 'bg-slate-800 text-white shadow' : 'text-slate-400'"
+                  @click="regForm.mode = 'pre'"
+                >
+                  未核銷課程 (預排)
+                </button>
+              </div>
+
+              <!-- 學生選擇 -->
+              <label class="block">
+                <span class="text-xs font-semibold text-slate-400">學生</span>
+                <select
+                  class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                  x-model="regForm.student"
+                >
+                  <option value="">-- 請選擇學生 --</option>
+                  <template x-for="std in options.students" :key="std">
+                    <option :value="std" x-text="std"></option>
+                  </template>
+                </select>
+              </label>
+
+              <!-- 課程選擇 -->
+              <label class="block">
+                <span class="text-xs font-semibold text-slate-400">課程 / 科目</span>
+                <select
+                  class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                  x-model="regForm.subject"
+                >
+                  <option value="">-- 請選擇課程 --</option>
+                  <template x-for="subj in options.subjects" :key="subj">
+                    <option :value="subj" x-text="subj"></option>
+                  </template>
+                </select>
+              </label>
+
+              <!-- 日期選擇 -->
+              <label class="block">
+                <span class="text-xs font-semibold text-slate-400">上課日期</span>
+                <input
+                  type="date"
+                  class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                  x-model="regForm.date"
+                >
+              </label>
+
+              <!-- 時間選擇 -->
+              <div class="grid grid-cols-2 gap-3">
+                <label class="block">
+                  <span class="text-xs font-semibold text-slate-400">開始時間</span>
+                  <input
+                    type="time"
+                    class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                    x-model="regForm.startTime"
+                  >
+                </label>
+                <label class="block">
+                  <span class="text-xs font-semibold text-slate-400">結束時間</span>
+                  <input
+                    type="time"
+                    class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                    x-model="regForm.endTime"
+                  >
+                </label>
+              </div>
+
+              <!-- 提交按鈕 -->
+              <button
+                type="button"
+                class="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-900/30 hover:bg-teal-500 disabled:bg-slate-800 disabled:text-slate-500 transition"
+                :disabled="submitting || !regForm.student || !regForm.subject || !regForm.date || !regForm.startTime || !regForm.endTime"
+                @click="registerCourse()"
+              >
+                <span x-show="!submitting" x-text="regForm.mode === 'normal' ? '送出授課登記' : '送出預排登記'"></span>
+                <span x-show="submitting">正在儲存並檢查重疊中...</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2B. 預排核銷面板 -->
+        <section x-show="activeTab === 'verify'" class="space-y-4">
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg">
+            <h3 class="text-sm font-bold text-white mb-2">待核銷預排課程</h3>
+            <p class="text-xs text-slate-400 mb-4">請點擊卡片確認此堂預排課程是否有實際上課。</p>
+
+            <div class="space-y-3">
+              <template x-show="unverifiedSchedules.length === 0">
+                <div class="text-center py-8 text-slate-500 text-sm">
+                  目前無待核銷的預排紀錄。
+                </div>
+              </template>
+              <template x-for="item in unverifiedSchedules" :key="item.rowId">
+                <div class="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-3 transition hover:border-slate-700">
+                  <div class="flex justify-between items-start">
+                    <div>
+                      <span class="inline-flex items-center rounded-md bg-indigo-500/10 px-2 py-1 text-[10px] font-medium text-indigo-400 ring-1 ring-inset ring-indigo-500/30" x-text="item.subject"></span>
+                      <h4 class="mt-1 text-sm font-bold text-white" x-text="item.student + ' 學生'"></h4>
+                    </div>
+                    <span class="text-xs font-semibold text-teal-400" x-text="item.date"></span>
+                  </div>
+                  <div class="text-xs text-slate-400 flex items-center space-x-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span x-text="item.startTime + ' - ' + item.endTime + ' (' + item.hours + '小時)'"></span>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-950">
+                    <button
+                      type="button"
+                      class="rounded-lg bg-teal-500/10 border border-teal-500/30 text-teal-400 py-1.5 text-xs font-semibold hover:bg-teal-500/20 transition"
+                      @click="verifySchedule(item.rowId, 'yes')"
+                    >
+                      有上課
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 py-1.5 text-xs font-semibold hover:bg-red-500/20 transition"
+                      @click="verifySchedule(item.rowId, 'no')"
+                    >
+                      未上課
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2C. 請假申請面板 -->
+        <section x-show="activeTab === 'leave'" class="space-y-4">
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg">
+            <h3 class="text-sm font-bold text-white mb-4">請假申請表</h3>
+            
+            <div class="space-y-4">
+              <!-- 假別 -->
+              <label class="block">
+                <span class="text-xs font-semibold text-slate-400">假別</span>
+                <select
+                  class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                  x-model="leaveForm.type"
+                >
+                  <option value="事假">事假 (剩餘：<span x-text="teacherProfile.casualLeaveRemaining || 0"></span>小時)</option>
+                  <option value="病假">病假 (剩餘：<span x-text="teacherProfile.sickLeaveRemaining || 0"></span>小時)</option>
+                </select>
+              </label>
+
+              <!-- 日期 -->
+              <label class="block">
+                <span class="text-xs font-semibold text-slate-400">請假日期</span>
+                <input
+                  type="date"
+                  class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                  x-model="leaveForm.date"
+                >
+              </label>
+
+              <!-- 時間段 -->
+              <div class="grid grid-cols-2 gap-3">
+                <label class="block">
+                  <span class="text-xs font-semibold text-slate-400">開始時間</span>
+                  <input
+                    type="time"
+                    class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                    x-model="leaveForm.startTime"
+                  >
+                </label>
+                <label class="block">
+                  <span class="text-xs font-semibold text-slate-400">結束時間</span>
+                  <input
+                    type="time"
+                    class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                    x-model="leaveForm.endTime"
+                  >
+                </label>
+              </div>
+
+              <!-- 提交按鈕 -->
+              <button
+                type="button"
+                class="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/30 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 transition"
+                :disabled="submitting || !leaveForm.date || !leaveForm.startTime || !leaveForm.endTime"
+                @click="submitLeave()"
+              >
+                <span x-show="!submitting">送出請假申請</span>
+                <span x-show="submitting">送出中...</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2D. 行政專區面板 -->
+        <section x-show="activeTab === 'admin'" class="space-y-4">
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg space-y-4">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-900">
+              <h3 class="text-sm font-bold text-amber-400">行政與財務管理</h3>
+              <span class="inline-flex items-center rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400 ring-1 ring-inset ring-amber-500/30">Admin Mode</span>
+            </div>
+
+            <!-- 月份選擇器 -->
+            <label class="block">
+              <span class="text-xs font-semibold text-slate-400">試算與單據月份</span>
+              <input
+                type="month"
+                class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500"
+                x-model="adminMonth"
+              >
+            </label>
+
+            <!-- 操作網格 -->
+            <div class="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
+                @click="runAdminTask('学费试算')"
+              >
+                <span class="text-xs font-bold text-white group-hover:text-amber-400">學費試算</span>
+                <p class="mt-1 text-[10px] text-slate-500 leading-4">學員課費與月結試算</p>
+              </button>
+
+              <button
+                type="button"
+                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
+                @click="runAdminTask('钟点试算')"
+              >
+                <span class="text-xs font-bold text-white group-hover:text-amber-400">鐘點費試算</span>
+                <p class="mt-1 text-[10px] text-slate-500 leading-4">講師鐘點與補充保費計算</p>
+              </button>
+
+              <button
+                type="button"
+                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
+                @click="runAdminTask('产生缴费单')"
+              >
+                <span class="text-xs font-bold text-white group-hover:text-amber-400">產生繳費單</span>
+                <p class="mt-1 text-[10px] text-slate-500 leading-4">批次產出 PDF 單據</p>
+              </button>
+
+              <button
+                type="button"
+                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
+                @click="runAdminTask('寄领据')"
+              >
+                <span class="text-xs font-bold text-white group-hover:text-amber-400">寄發領據</span>
+                <p class="mt-1 text-[10px] text-slate-500 leading-4">批次寄送 Gmail 通知</p>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 安全登出與解除綁定 -->
+        <div class="px-4">
+          <button
+            type="button"
+            class="w-full rounded-xl border border-slate-850 hover:border-red-500/30 hover:bg-red-500/5 py-2.5 text-xs text-slate-500 hover:text-red-400 transition"
+            @click="unbind()"
+          >
+            解除 LINE 帳號綁定
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      function kongApp() {
+        return {
+          config: window.APP_CONFIG || {},
+          state: "loading",
+          message: "",
+          submitting: false,
+          lineUserId: "",
+          profile: null, // LINE Profile
+          teacherProfile: null, // Google Sheets 講師資料
+          activeTab: "register",
+          adminMonth: new Date().toISOString().substring(0, 7), // YYYY-MM
+          options: {
+            students: [],
+            subjects: [],
+          },
+          unverifiedSchedules: [],
+          form: {
+            name: "",
+          },
+          regForm: {
+            mode: "normal", // 'normal' | 'pre'
+            student: "",
+            subject: "",
+            date: new Date().toISOString().substring(0, 10),
+            startTime: "13:00",
+            endTime: "14:00",
+          },
+          leaveForm: {
+            type: "事假",
+            date: new Date().toISOString().substring(0, 10),
+            startTime: "09:00",
+            endTime: "10:00",
+          },
+
+          async init() {
+            try {
+              this.ensureConfig();
+              await this.initLiff();
+              await this.loadMe();
+              if (this.state === "bound") {
+                await this.loadOptions();
+                await this.loadUnverifiedSchedules();
+              }
+            } catch (error) {
+              this.state = "unbound";
+              this.message = error.message || "初始化失敗，請在 LINE 聊天室內重新開啟。";
+            }
+          },
+
+          ensureConfig() {
+            if (!this.config.gasWebAppUrl) {
+              // 測試階段提供 friendly fallback 說明
+              console.warn("GAS URL 未設定，處於本地測試模式。");
+            }
+          },
+
+          async initLiff() {
+            if (!window.liff) {
+              throw new Error("LINE LIFF SDK 載入失敗。");
+            }
+            if (this.config.liffId) {
+              await liff.init({ liffId: this.config.liffId });
+              if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
+              }
+              const profile = await liff.getProfile();
+              this.profile = profile;
+              this.lineUserId = profile.userId;
+            } else {
+              // 本地模擬
+              this.lineUserId = "U_MOCK_USER_ID";
+              this.profile = {
+                displayName: "開發模擬講師",
+                pictureUrl: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+              };
+            }
+          },
+
+          async loadMe() {
+            if (!this.config.gasWebAppUrl) {
+              // 模擬已綁定
+              this.teacherProfile = {
+                name: "李小明",
+                thisMonthHours: 12,
+                casualLeaveRemaining: 8,
+                sickLeaveRemaining: 24,
+                isAdmin: true,
+              };
+              this.state = "bound";
+              return;
+            }
+
+            const result = await this.callApi({
+              action: "me",
+              lineUserId: this.lineUserId,
+            });
+
+            if (result.ok) {
+              this.teacherProfile = result.profile;
+              this.state = "bound";
+              this.message = "";
+            } else if (result.error === "NOT_BOUND") {
+              this.state = "unbound";
+              this.message = "";
+            } else {
+              throw new Error(result.message || "讀取身分資訊失敗。");
+            }
+          },
+
+          async loadOptions() {
+            if (!this.config.gasWebAppUrl) {
+              // 模擬下拉選單資料
+              this.options = {
+                students: ["張學友", "劉德華", "郭富城", "黎明"],
+                subjects: ["英語會話", "初級日語", "重訓指導", "瑜伽基礎"],
+              };
+              return;
+            }
+            const result = await this.callApi({ action: "getFormOptions" });
+            if (result.ok) {
+              this.options = result.options;
+            }
+          },
+
+          async loadUnverifiedSchedules() {
+            if (!this.config.gasWebAppUrl) {
+              this.unverifiedSchedules = [
+                { rowId: 101, student: "張學友", subject: "英語會話", date: "2026-05-30", startTime: "14:00", endTime: "15:30", hours: 1.5 },
+                { rowId: 102, student: "劉德華", subject: "初級日語", date: "2026-05-31", startTime: "10:00", endTime: "12:00", hours: 2.0 },
+              ];
+              return;
+            }
+            const result = await this.callApi({
+              action: "getUnverified",
+              lineUserId: this.lineUserId,
+            });
+            if (result.ok) {
+              this.unverifiedSchedules = result.schedules;
+            }
+          },
+
+          async verifyAndBind() {
+            this.message = "";
+            this.submitting = true;
+            try {
+              if (!this.config.gasWebAppUrl) {
+                this.teacherProfile = {
+                  name: this.form.name,
+                  thisMonthHours: 0,
+                  casualLeaveRemaining: 8,
+                  sickLeaveRemaining: 24,
+                  isAdmin: this.form.name.includes("行政"),
+                };
+                this.state = "bound";
+                await this.loadOptions();
+                await this.loadUnverifiedSchedules();
+                return;
+              }
+
+              const result = await this.callApi({
+                action: "verifyAndBind",
+                name: this.form.name,
+                lineUserId: this.lineUserId,
+              });
+
+              if (result.ok) {
+                this.teacherProfile = result.profile;
+                this.state = "bound";
+                await this.loadOptions();
+                await this.loadUnverifiedSchedules();
+              } else {
+                throw new Error(result.message || "身分驗證失敗，請聯絡管理員確認講師名單。");
+              }
+            } catch (error) {
+              this.message = error.message;
+            } finally {
+              this.submitting = false;
+            }
+          },
+
+          async registerCourse() {
+            this.message = "";
+            this.submitting = true;
+            try {
+              if (!this.config.gasWebAppUrl) {
+                alert(`模擬送出：${this.regForm.mode === "normal" ? "正式授課" : "預排登記"}！\n學生：${this.regForm.student}\n科目：${this.regForm.subject}\n日期：${this.regForm.date}`);
+                this.submitting = false;
+                return;
+              }
+
+              const result = await this.callApi({
+                action: "register",
+                lineUserId: this.lineUserId,
+                mode: this.regForm.mode,
+                student: this.regForm.student,
+                subject: this.regForm.subject,
+                date: this.regForm.date,
+                startTime: this.regForm.startTime,
+                endTime: this.regForm.endTime,
+              });
+
+              if (result.ok) {
+                alert("課程登記成功！");
+                await this.loadMe(); // 更新時數
+                this.activeTab = "register";
+              } else {
+                throw new Error(result.message || "登記失敗，時段可能有重疊，請重新確認。");
+              }
+            } catch (error) {
+              this.message = error.message;
+            } finally {
+              this.submitting = false;
+            }
+          },
+
+          async verifySchedule(rowId, isVerified) {
+            if (!this.config.gasWebAppUrl) {
+              this.unverifiedSchedules = this.unverifiedSchedules.filter(item => item.rowId !== rowId);
+              alert(`模擬核銷：第 ${rowId} 筆，狀態：${isVerified === "yes" ? "已實際上課" : "取消未上課"}`);
+              return;
+            }
+
+            try {
+              const result = await this.callApi({
+                action: "verifySchedule",
+                lineUserId: this.lineUserId,
+                rowId: rowId,
+                isVerified: isVerified,
+              });
+
+              if (result.ok) {
+                await this.loadUnverifiedSchedules();
+                await this.loadMe();
+                alert("核銷成功！");
+              } else {
+                throw new Error(result.message || "核銷更新失敗。");
+              }
+            } catch (error) {
+              alert(error.message);
+            }
+          },
+
+          async submitLeave() {
+            this.message = "";
+            this.submitting = true;
+            try {
+              if (!this.config.gasWebAppUrl) {
+                alert(`模擬請假：${this.leaveForm.type}\n日期：${this.leaveForm.date}\n時間：${this.leaveForm.startTime} - ${this.leaveForm.endTime}`);
+                this.submitting = false;
+                return;
+              }
+
+              const result = await this.callApi({
+                action: "leave",
+                lineUserId: this.lineUserId,
+                type: this.leaveForm.type,
+                date: this.leaveForm.date,
+                startTime: this.leaveForm.startTime,
+                endTime: this.leaveForm.endTime,
+              });
+
+              if (result.ok) {
+                alert("請假申請已成功提交！");
+                await this.loadMe(); // 更新假別餘額
+              } else {
+                throw new Error(result.message || "請假申請失敗，請確認時間是否重複。");
+              }
+            } catch (error) {
+              this.message = error.message;
+            } finally {
+              this.submitting = false;
+            }
+          },
+
+          async runAdminTask(taskName) {
+            const formattedMonth = this.adminMonth.replace("-", "/"); // e.g., '2026/05'
+            if (!this.config.gasWebAppUrl) {
+              alert(`模擬行政任務：${taskName}\n選擇月份：${formattedMonth}`);
+              return;
+            }
+
+            if (!confirm(`確定要針對 ${formattedMonth} 執行【${taskName}】嗎？`)) {
+              return;
+            }
+
+            try {
+              // 這邊模擬呼叫後端財務/單據大項
+              const result = await this.callApi({
+                action: "adminTask",
+                lineUserId: this.lineUserId,
+                task: taskName,
+                month: formattedMonth,
+              });
+
+              if (result.ok) {
+                alert(`【${taskName}】執行成功！\n${result.message || ""}`);
+              } else {
+                throw new Error(result.message || "任務執行失敗。");
+              }
+            } catch (error) {
+              alert(error.message);
+            }
+          },
+
+          async unbind() {
+            if (!confirm("確定要解除此 LINE 帳號的講師綁定嗎？")) {
+              return;
+            }
+            try {
+              if (this.config.gasWebAppUrl) {
+                await this.callApi({
+                  action: "unbind",
+                  lineUserId: this.lineUserId,
+                });
+              }
+              this.teacherProfile = null;
+              this.state = "unbound";
+              alert("已順利解除綁定。");
+            } catch (error) {
+              alert("解除綁定失敗，請稍後再試。");
+            }
+          },
+
+          async callApi(params) {
+            const url = new URL(this.config.gasWebAppUrl);
+            Object.entries(params).forEach(([key, value]) => {
+              if (value !== undefined && value !== null && value !== "") {
+                url.searchParams.set(key, value);
+              }
+            });
+
+            const response = await fetch(url.toString(), {
+              method: "GET",
+              redirect: "follow",
+            });
+            return response.json();
+          },
+        };
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "scriptId": "13y_WgaVHjanVllS-MPgw997VjsC-jZ-erobh3FL8I_EebjmakdqTlB3Q",
+  "rootDir": "build",
+  "scriptExtensions": [
+    ".js"
+  ],
+  "htmlExtensions": [
+    ".html"
+  ],
+  "jsonExtensions": [
+    ".json"
+  ]
+}
