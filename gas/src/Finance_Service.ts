@@ -686,9 +686,20 @@ function executeFinancialSave(event: any, postbackData: string) {
     const invoicePrefix = cacheObj.prefix + rocYearShort + mm + "_";
     
     const sheetData = targetSheet.getDataRange().getValues();
+    const invoiceColumnIndex = getFinancialInvoiceColumnIndex(cacheObj.category);
+    const duplicateKeys = getFinancialDuplicateKeys(cacheObj.save, cacheObj.category);
+    for (let j = 1; j < sheetData.length; j++) {
+      const rowMonth = normalizeFinancialMonth(sheetData[j][0], timeZone);
+      const rowKey = getFinancialRowKey(sheetData[j], cacheObj.category);
+      if (rowMonth === cacheObj.updateTargetMonth && rowKey && duplicateKeys.indexOf(rowKey) > -1) {
+        replyLineMessage(replyToken, "⚠️ " + cacheObj.updateTargetMonth + " 的「" + rowKey + "」已有結算紀錄，系統已阻擋重複寫入。若需重算，請先由行政確認並清理舊結算資料。");
+        return;
+      }
+    }
+
     let maxSerial = 0;
     for (let j = 1; j < sheetData.length; j++) {
-      const rowInvoice = String(sheetData[j][1]);
+      const rowInvoice = String(sheetData[j][invoiceColumnIndex] || "");
       if (rowInvoice.indexOf(invoicePrefix) === 0) {
         const serial = parseInt(rowInvoice.split("_")[1]);
         if (serial > maxSerial) maxSerial = serial;
@@ -697,11 +708,16 @@ function executeFinancialSave(event: any, postbackData: string) {
 
     const outputRows = cacheObj.save;
     for (let k = 0; k < outputRows.length; k++) {
-      maxSerial++;
-      const paddedSerial = (maxSerial < 10 ? "00" : (maxSerial < 100 ? "0" : "")) + maxSerial;
-      const finalInvoiceId = invoicePrefix + paddedSerial;
-      outputRows[k][1] = finalInvoiceId;
-      outputRows[k][0] = new Date(); // 覆蓋寫入時間
+      const shouldIssueInvoice = cacheObj.category !== "學費" || outputRows[k][8];
+      if (shouldIssueInvoice) {
+        maxSerial++;
+        const paddedSerial = (maxSerial < 10 ? "00" : (maxSerial < 100 ? "0" : "")) + maxSerial;
+        const finalInvoiceId = invoicePrefix + paddedSerial;
+        outputRows[k][invoiceColumnIndex] = finalInvoiceId;
+      }
+      if (cacheObj.category === "學費" && shouldIssueInvoice) {
+        outputRows[k][10] = now;
+      }
       targetSheet.appendRow(outputRows[k]);
     }
 
@@ -751,6 +767,34 @@ function executeFinancialSave(event: any, postbackData: string) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function getFinancialInvoiceColumnIndex(category: string): number {
+  if (category === "學費") return 9; // J欄：收據/單據編號
+  if (category === "鐘點費") return 7; // H欄：領據編號
+  return 1;
+}
+
+function getFinancialDuplicateKeys(rows: any[], category: string): string[] {
+  const keys: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const key = getFinancialRowKey(rows[i], category);
+    if (key && keys.indexOf(key) === -1) keys.push(key);
+  }
+  return keys;
+}
+
+function getFinancialRowKey(row: any[], category: string): string {
+  if (category === "學費") return String(row[1] || "").trim(); // B欄：學生姓名
+  if (category === "鐘點費") return String(row[1] || "").trim(); // B欄：講師姓名
+  return "";
+}
+
+function normalizeFinancialMonth(value: any, timeZone: string): string {
+  if (value instanceof Date) return Utilities.formatDate(value, timeZone, "yyyy/MM");
+  const text = String(value || "").trim();
+  if (text.match(/^\d{4}[\/-]\d{2}/)) return text.substring(0, 7).replace("-", "/");
+  return text;
 }
 
 // 記帳、財務三表與會員查詢模組宣告與引進

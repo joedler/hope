@@ -95,6 +95,7 @@ function handleLiffFormOptions(lineUserId?: string) {
     const data = courseSheet.getDataRange().getValues();
     const studentsSet = new Set<string>();
     const subjectsSet = new Set<string>();
+    const coursesByStudent: any = {};
 
     for (let i = 1; i < data.length; i++) {
       const rowTeacher = String(data[i][0]).trim();
@@ -103,6 +104,12 @@ function handleLiffFormOptions(lineUserId?: string) {
       const subjectName = String(data[i][3]).trim();
       if (studentName) studentsSet.add(studentName);
       if (subjectName) subjectsSet.add(subjectName);
+      if (studentName && subjectName) {
+        if (!coursesByStudent[studentName]) coursesByStudent[studentName] = [];
+        if (coursesByStudent[studentName].indexOf(subjectName) === -1) {
+          coursesByStudent[studentName].push(subjectName);
+        }
+      }
     }
 
     const students = Array.from(studentsSet);
@@ -112,7 +119,8 @@ function handleLiffFormOptions(lineUserId?: string) {
       message: students.length === 0 || subjects.length === 0 ? "目前沒有可登記的學生或課程，請聯絡行政確認課程設定表。" : "",
       options: {
         students,
-        subjects
+        subjects,
+        coursesByStudent
       }
     };
   } catch (e) {
@@ -246,9 +254,10 @@ function handleLiffGetUnverified(lineUserId: string) {
   const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
   if (!planSheet) return { ok: true, schedules: [] };
 
-  const data = planSheet.getDataRange().getValues();
-  const schedules: any[] = [];
-  const timeZone = Session.getScriptTimeZone();
+    const data = planSheet.getDataRange().getValues();
+    const schedules: any[] = [];
+    const timeZone = Session.getScriptTimeZone();
+    const now = new Date();
 
   for (let i = 1; i < data.length; i++) {
     const rowTeacher = data[i][1];
@@ -261,6 +270,8 @@ function handleLiffGetUnverified(lineUserId: string) {
     const rowStatus = String(data[i][9]).trim();
 
     if (rowTeacher === userName && rowStatus === "未核銷") {
+      const lessonEnd = buildLessonEndDate(rowDate, rowEnd, timeZone);
+      if (lessonEnd && lessonEnd.getTime() > now.getTime()) continue;
       const dateFormatted = rowDate instanceof Date ? Utilities.formatDate(rowDate, timeZone, "yyyy/MM/dd") : rowDate;
       schedules.push({
         rowId: i + 1, // 記住試算表中的實際 Row 行號，以供核銷定位
@@ -308,6 +319,12 @@ function handleLiffVerifySchedule(params: any) {
   }
   if (recordStatus !== "未核銷") {
     return { ok: false, message: `此預排紀錄目前狀態為「${recordStatus || "空白"}」，不可重複核銷。` };
+  }
+  const recordDate = planSheet.getRange(rowId, 3).getValue();
+  const recordEnd = planSheet.getRange(rowId, 5).getValue();
+  const lessonEnd = buildLessonEndDate(recordDate, recordEnd, Session.getScriptTimeZone());
+  if (lessonEnd && lessonEnd.getTime() > new Date().getTime()) {
+    return { ok: false, message: "此預排課程尚未到下課時間，不可提前核銷。" };
   }
 
   // 2. 進行核銷
@@ -716,6 +733,23 @@ function isCourseOwner(rowOwner: string, lineUserId?: string, teacherName?: stri
   const cleanLineUserId = String(lineUserId || "").trim();
   const cleanTeacherName = String(teacherName || "").trim();
   return owner === cleanLineUserId || owner === cleanTeacherName;
+}
+
+function buildLessonEndDate(dateValue: any, endTimeValue: any, timeZone: string): Date | null {
+  const dateText = dateValue instanceof Date
+    ? Utilities.formatDate(dateValue, timeZone, "yyyy/MM/dd")
+    : String(dateValue || "").replace(/-/g, "/").substring(0, 10);
+  const cleanEnd = String(endTimeValue || "").replace(":", "").trim();
+  const normalizedEnd = cleanEnd.length === 3 ? "0" + cleanEnd : cleanEnd;
+  if (!dateText || normalizedEnd.length !== 4) return null;
+
+  const year = parseInt(dateText.substring(0, 4), 10);
+  const month = parseInt(dateText.substring(5, 7), 10);
+  const day = parseInt(dateText.substring(8, 10), 10);
+  const hour = parseInt(normalizedEnd.substring(0, 2), 10);
+  const minute = parseInt(normalizedEnd.substring(2, 4), 10);
+  if ([year, month, day, hour, minute].some(function (value) { return isNaN(value); })) return null;
+  return new Date(year, month - 1, day, hour, minute, 0, 0);
 }
 
 function getDateFingerprint(value: any, timeZone: string): string {

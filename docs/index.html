@@ -188,6 +188,7 @@
                 <select
                   class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
                   x-model="regForm.student"
+                  @change="regForm.subject = ''"
                 >
                   <option value="">-- 請選擇學生 --</option>
                   <template x-for="std in options.students" :key="std">
@@ -207,11 +208,11 @@
                   x-model="regForm.subject"
                 >
                   <option value="">-- 請選擇課程 --</option>
-                  <template x-for="subj in options.subjects" :key="subj">
+                  <template x-for="subj in filteredSubjects()" :key="subj">
                     <option :value="subj" x-text="subj"></option>
                   </template>
                 </select>
-                <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && options.subjects.length === 0">
+                <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && regForm.student && filteredSubjects().length === 0">
                   目前沒有可登記的課程，請聯絡行政確認課程設定表。
                 </p>
               </label>
@@ -458,6 +459,7 @@
           options: {
             students: [],
             subjects: [],
+            coursesByStudent: {},
           },
           optionsLoaded: false,
           unverifiedSchedules: [],
@@ -561,6 +563,12 @@
               this.options = {
                 students: ["張學友", "劉德華", "郭富城", "黎明"],
                 subjects: ["英語會話", "初級日語", "重訓指導", "瑜伽基礎"],
+                coursesByStudent: {
+                  張學友: ["英語會話", "初級日語"],
+                  劉德華: ["重訓指導"],
+                  郭富城: ["瑜伽基礎"],
+                  黎明: ["英語會話"],
+                },
               };
               this.optionsLoaded = true;
               return;
@@ -570,7 +578,7 @@
               lineUserId: this.lineUserId,
             });
             if (result.ok) {
-              this.options = result.options || { students: [], subjects: [] };
+              this.options = result.options || { students: [], subjects: [], coursesByStudent: {} };
               this.optionsLoaded = true;
               if (result.message) {
                 this.message = result.message;
@@ -579,6 +587,13 @@
               this.optionsLoaded = true;
               throw new Error(result.message || "載入學生與課程選項失敗。");
             }
+          },
+
+          filteredSubjects() {
+            const selectedStudent = this.regForm.student;
+            if (!selectedStudent) return [];
+            const coursesByStudent = this.options.coursesByStudent || {};
+            return coursesByStudent[selectedStudent] || [];
           },
 
           async loadUnverifiedSchedules() {
