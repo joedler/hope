@@ -27,19 +27,11 @@ function handleLiffAdminTask(params: any) {
 
   try {
     if (task === "學費試算" || task === "学费试算") {
-      // 執行試算 (寫入快取 "FIN_" + lineUserId)
-      handleTuitionCalculation(mockEvent, "學費試算 " + month);
-      // 模擬確認寫入，直接存檔！
-      executeFinancialSave(mockEvent, "action=fin_confirm");
-      return { ok: true, message: `✅ ${month} 學費結算與存檔已直接完成！` };
+      return { ok: false, message: "學費試算的 LIFF 預覽/確認流程尚未開放；為避免直接寫入，目前已暫停此按鈕。" };
     } 
     
     if (task === "鐘點試算" || task === "钟点试算") {
-      // 執行試算 (寫入快取 "FIN_" + lineUserId)
-      handleSalaryCalculation(mockEvent, "鐘點試算 " + month);
-      // 模擬確認寫入，直接存檔！
-      executeFinancialSave(mockEvent, "action=fin_confirm");
-      return { ok: true, message: `✅ ${month} 鐘點費結算與存檔已直接完成！` };
+      return { ok: false, message: "鐘點試算的 LIFF 預覽/確認流程尚未開放；為避免直接寫入，目前已暫停此按鈕。" };
     } 
     
     if (task === "產生繳費單" || task === "产生缴费单") {

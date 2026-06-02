@@ -38,7 +38,7 @@ function doGet(e: any) {
         break;
       case "getFormOptions":
         // 讀取登記表單所需的下拉選項
-        result = handleLiffFormOptions();
+        result = handleLiffFormOptions(lineUserId);
         break;
       case "register":
         // 登記課程或預排
@@ -365,7 +365,7 @@ declare function executeGenReceiptSave(event: any, data: string): void;
 
 // LIFF 專屬 API 控制器介面宣告
 declare function handleLiffMe(userId: string): any;
-declare function handleLiffFormOptions(): any;
+declare function handleLiffFormOptions(lineUserId?: string): any;
 declare function handleLiffRegister(params: any): any;
 declare function handleLiffGetUnverified(userId: string): any;
 declare function handleLiffVerifySchedule(params: any): any;

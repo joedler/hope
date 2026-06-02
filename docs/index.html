@@ -194,6 +194,9 @@
                     <option :value="std" x-text="std"></option>
                   </template>
                 </select>
+                <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && options.students.length === 0">
+                  目前沒有可登記的學生，請聯絡行政確認課程設定表。
+                </p>
               </label>
 
               <!-- 課程選擇 -->
@@ -208,6 +211,9 @@
                     <option :value="subj" x-text="subj"></option>
                   </template>
                 </select>
+                <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && options.subjects.length === 0">
+                  目前沒有可登記的課程，請聯絡行政確認課程設定表。
+                </p>
               </label>
 
               <!-- 日期選擇 -->
@@ -453,6 +459,7 @@
             students: [],
             subjects: [],
           },
+          optionsLoaded: false,
           unverifiedSchedules: [],
           form: {
             name: "",
@@ -555,11 +562,22 @@
                 students: ["張學友", "劉德華", "郭富城", "黎明"],
                 subjects: ["英語會話", "初級日語", "重訓指導", "瑜伽基礎"],
               };
+              this.optionsLoaded = true;
               return;
             }
-            const result = await this.callApi({ action: "getFormOptions" });
+            const result = await this.callApi({
+              action: "getFormOptions",
+              lineUserId: this.lineUserId,
+            });
             if (result.ok) {
-              this.options = result.options;
+              this.options = result.options || { students: [], subjects: [] };
+              this.optionsLoaded = true;
+              if (result.message) {
+                this.message = result.message;
+              }
+            } else {
+              this.optionsLoaded = true;
+              throw new Error(result.message || "載入學生與課程選項失敗。");
             }
           },
 
@@ -623,6 +641,9 @@
             this.message = "";
             this.submitting = true;
             try {
+              if (this.regForm.endTime <= this.regForm.startTime) {
+                throw new Error("上課結束時間必須晚於開始時間。");
+              }
               if (!this.config.gasWebAppUrl) {
                 alert(`模擬送出：${this.regForm.mode === "normal" ? "正式授課" : "預排登記"}！\n學生：${this.regForm.student}\n科目：${this.regForm.subject}\n日期：${this.regForm.date}`);
                 this.submitting = false;
@@ -649,6 +670,7 @@
               }
             } catch (error) {
               this.message = error.message;
+              alert(error.message);
             } finally {
               this.submitting = false;
             }
@@ -677,7 +699,9 @@
                 throw new Error(result.message || "核銷更新失敗。");
               }
             } catch (error) {
+              this.message = error.message;
               alert(error.message);
+              await this.loadUnverifiedSchedules();
             }
           },
 
@@ -685,6 +709,9 @@
             this.message = "";
             this.submitting = true;
             try {
+              if (this.leaveForm.endTime <= this.leaveForm.startTime) {
+                throw new Error("請假結束時間必須晚於開始時間。");
+              }
               if (!this.config.gasWebAppUrl) {
                 alert(`模擬請假：${this.leaveForm.type}\n日期：${this.leaveForm.date}\n時間：${this.leaveForm.startTime} - ${this.leaveForm.endTime}`);
                 this.submitting = false;
@@ -708,6 +735,7 @@
               }
             } catch (error) {
               this.message = error.message;
+              alert(error.message);
             } finally {
               this.submitting = false;
             }

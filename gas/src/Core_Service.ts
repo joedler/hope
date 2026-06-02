@@ -74,28 +74,45 @@ function handleLiffMe(lineUserId: string) {
 }
 
 // (2) handleLiffFormOptions : 讀取登記表單所需的下拉選項
-function handleLiffFormOptions() {
+function handleLiffFormOptions(lineUserId?: string) {
   try {
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
     if (!courseSheet) return { ok: false, message: "找不到課程設定分頁。" };
+
+    let teacherName = "";
+    if (lineUserId) {
+      const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+      const teacherData = teacherSheet ? teacherSheet.getDataRange().getValues() : [];
+      for (let i = 1; i < teacherData.length; i++) {
+        if (String(teacherData[i][1]).trim() === String(lineUserId).trim()) {
+          teacherName = String(teacherData[i][0]).trim();
+          break;
+        }
+      }
+    }
 
     const data = courseSheet.getDataRange().getValues();
     const studentsSet = new Set<string>();
     const subjectsSet = new Set<string>();
 
     for (let i = 1; i < data.length; i++) {
+      const rowTeacher = String(data[i][0]).trim();
+      if (teacherName && rowTeacher !== teacherName) continue;
       const studentName = String(data[i][2]).trim();
       const subjectName = String(data[i][3]).trim();
       if (studentName) studentsSet.add(studentName);
       if (subjectName) subjectsSet.add(subjectName);
     }
 
+    const students = Array.from(studentsSet);
+    const subjects = Array.from(subjectsSet);
     return {
       ok: true,
+      message: students.length === 0 || subjects.length === 0 ? "目前沒有可登記的學生或課程，請聯絡行政確認課程設定表。" : "",
       options: {
-        students: Array.from(studentsSet),
-        subjects: Array.from(subjectsSet)
+        students,
+        subjects
       }
     };
   } catch (e) {
@@ -142,6 +159,9 @@ function handleLiffRegister(params: any) {
       break;
     }
   }
+  if (unitFee <= 0) {
+    return { ok: false, message: `找不到「${userName} / ${studentName} / ${subjectName}」的課程設定或鐘點單價，請聯絡行政確認課程設定表。` };
+  }
 
   // 3. 計算時數與金額
   const formattedDateStr = dateStr.replace(/-/g, "/"); // YYYY/MM/DD
@@ -166,13 +186,21 @@ function handleLiffRegister(params: any) {
   const planHistory = planSheet ? planSheet.getDataRange().getValues() : [];
   const recordHistory = recordHistorySheet ? recordHistorySheet.getDataRange().getValues() : [];
 
-  let isOverlap = checkGlobalOverlap(planHistory, userName, inputFingerprint, startNum, endNum, true, timeZone, subjectName);
-  if (!isOverlap) {
-    isOverlap = checkGlobalOverlap(recordHistory, userName, inputFingerprint, startNum, endNum, false, timeZone, subjectName);
-  }
+  const conflicts = findScheduleConflicts(
+    planHistory.concat(recordHistory),
+    {
+      teacher: userName,
+      student: studentName,
+      subject: subjectName,
+      dateFingerprint: inputFingerprint,
+      start: startNum,
+      end: endNum
+    },
+    timeZone
+  );
 
-  if (isOverlap) {
-    return { ok: false, message: `🚫 登記失敗：該時段 (${startTimeStr} - ${endTimeStr}) 已有其他授課安排！` };
+  if (conflicts.length > 0) {
+    return { ok: false, message: "🚫 登記失敗：\n" + conflicts.join("\n") };
   }
 
   // 5. 寫入資料
@@ -269,10 +297,14 @@ function handleLiffVerifySchedule(params: any) {
   if (!userName) return { ok: false, message: "身分驗證失敗。" };
 
   const recordTeacher = planSheet.getRange(rowId, 2).getValue();
+  const recordStatus = String(planSheet.getRange(rowId, 10).getValue()).trim();
   const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
 
   if (recordTeacher !== userName && !isAdmin) {
     return { ok: false, message: "無權限操作此預排紀錄。" };
+  }
+  if (recordStatus !== "未核銷") {
+    return { ok: false, message: `此預排紀錄目前狀態為「${recordStatus || "空白"}」，不可重複核銷。` };
   }
 
   // 2. 進行核銷
@@ -621,6 +653,72 @@ function checkGlobalOverlap(
     }
   }
   return false;
+}
+
+function findScheduleConflicts(
+  data: any[],
+  input: { teacher: string; student: string; subject: string; dateFingerprint: string; start: number; end: number },
+  timeZone: string
+): string[] {
+  const conflicts = new Set<string>();
+  if (hasMagicCourse(input.subject)) return [];
+
+  const cleanTeacher = String(input.teacher).trim();
+  const cleanStudent = String(input.student).trim();
+  const cleanSubject = String(input.subject).trim();
+
+  for (let h = 1; h < data.length; h++) {
+    const rowStatus = String(data[h][9] || "").trim();
+    if (rowStatus === "取消") continue;
+
+    const rowSubject = String(data[h][8] || "").trim();
+    if (hasMagicCourse(rowSubject)) continue;
+
+    const rowFingerprint = getDateFingerprint(data[h][2], timeZone);
+    if (rowFingerprint !== input.dateFingerprint) continue;
+
+    const rowStart = parseTime(String(data[h][3] || ""));
+    const rowEnd = parseTime(String(data[h][4] || ""));
+    const isTimeOverlap = Math.max(input.start, rowStart) < Math.min(input.end, rowEnd);
+    if (!isTimeOverlap) continue;
+
+    const rowTeacher = String(data[h][1] || "").trim();
+    const rowStudent = String(data[h][7] || "").trim();
+    const rowCourse = String(data[h][8] || "").trim();
+
+    if (rowTeacher === cleanTeacher) {
+      conflicts.add(`同一講師在該時段已有課程：${rowStudent} / ${rowCourse}`);
+    }
+    if (rowStudent === cleanStudent) {
+      conflicts.add(`同一學生在該時段已有課程：${rowTeacher} / ${rowCourse}`);
+    }
+    if (rowTeacher === cleanTeacher && rowStudent === cleanStudent && rowCourse === cleanSubject && rowStart === input.start && rowEnd === input.end) {
+      conflicts.add("偵測到同講師、同學生、同課程、同時段的重複輸入。");
+    }
+  }
+
+  return Array.from(conflicts);
+}
+
+function hasMagicCourse(courseName: string): boolean {
+  const course = String(courseName || "");
+  for (let m = 0; m < MAGIC_KEYWORDS.length; m++) {
+    if (course.indexOf(MAGIC_KEYWORDS[m]) > -1) return true;
+  }
+  return false;
+}
+
+function getDateFingerprint(value: any, timeZone: string): string {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, timeZone, "yyyyMMdd");
+  }
+  try {
+    const parsedDate = new Date(value);
+    if (!isNaN(parsedDate.getTime())) {
+      return Utilities.formatDate(parsedDate, timeZone, "yyyyMMdd");
+    }
+  } catch (e) {}
+  return "";
 }
 
 // 輔助函式：時間解析與格式化
