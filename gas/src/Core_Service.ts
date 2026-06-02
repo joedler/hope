@@ -98,7 +98,7 @@ function handleLiffFormOptions(lineUserId?: string) {
 
     for (let i = 1; i < data.length; i++) {
       const rowTeacher = String(data[i][0]).trim();
-      if (teacherName && rowTeacher !== teacherName) continue;
+      if (lineUserId && !isCourseOwner(rowTeacher, lineUserId, teacherName)) continue;
       const studentName = String(data[i][2]).trim();
       const subjectName = String(data[i][3]).trim();
       if (studentName) studentsSet.add(studentName);
@@ -154,7 +154,10 @@ function handleLiffRegister(params: any) {
   const courseData = courseSheet.getDataRange().getValues();
   let unitFee = 0;
   for (let i = 1; i < courseData.length; i++) {
-    if (courseData[i][0] === userName && courseData[i][2] === studentName && courseData[i][3] === subjectName) {
+    const rowOwner = String(courseData[i][0]).trim();
+    const rowStudent = String(courseData[i][2]).trim();
+    const rowSubject = String(courseData[i][3]).trim();
+    if (isCourseOwner(rowOwner, lineUserId, userName) && rowStudent === String(studentName).trim() && rowSubject === String(subjectName).trim()) {
       unitFee = parseFloat(courseData[i][4]) || 0;
       break;
     }
@@ -706,6 +709,13 @@ function hasMagicCourse(courseName: string): boolean {
     if (course.indexOf(MAGIC_KEYWORDS[m]) > -1) return true;
   }
   return false;
+}
+
+function isCourseOwner(rowOwner: string, lineUserId?: string, teacherName?: string): boolean {
+  const owner = String(rowOwner || "").trim();
+  const cleanLineUserId = String(lineUserId || "").trim();
+  const cleanTeacherName = String(teacherName || "").trim();
+  return owner === cleanLineUserId || owner === cleanTeacherName;
 }
 
 function getDateFingerprint(value: any, timeZone: string): string {
