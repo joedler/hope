@@ -288,10 +288,13 @@
                     </svg>
                     <span x-text="item.startTime + ' - ' + item.endTime + ' (' + item.hours + '小時)'"></span>
                   </div>
+                  <p class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300" x-show="item.canVerify === false" x-text="item.verifyMessage || '課程尚未結束，暫不可核銷。'"></p>
                   <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-950">
                     <button
                       type="button"
                       class="rounded-lg bg-teal-500/10 border border-teal-500/30 text-teal-400 py-1.5 text-xs font-semibold hover:bg-teal-500/20 transition"
+                      :disabled="item.canVerify === false"
+                      :class="item.canVerify === false ? 'opacity-40 cursor-not-allowed hover:bg-teal-500/10' : ''"
                       @click="verifySchedule(item.rowId, 'yes')"
                     >
                       有上課
@@ -299,6 +302,8 @@
                     <button
                       type="button"
                       class="rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 py-1.5 text-xs font-semibold hover:bg-red-500/20 transition"
+                      :disabled="item.canVerify === false"
+                      :class="item.canVerify === false ? 'opacity-40 cursor-not-allowed hover:bg-red-500/10' : ''"
                       @click="verifySchedule(item.rowId, 'no')"
                     >
                       未上課

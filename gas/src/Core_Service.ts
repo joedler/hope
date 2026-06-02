@@ -271,7 +271,7 @@ function handleLiffGetUnverified(lineUserId: string) {
 
     if (rowTeacher === userName && rowStatus === "未核銷") {
       const lessonEnd = buildLessonEndDate(rowDate, rowEnd, timeZone);
-      if (lessonEnd && lessonEnd.getTime() > now.getTime()) continue;
+      const canVerify = !lessonEnd || lessonEnd.getTime() <= now.getTime();
       const dateFormatted = rowDate instanceof Date ? Utilities.formatDate(rowDate, timeZone, "yyyy/MM/dd") : rowDate;
       schedules.push({
         rowId: i + 1, // 記住試算表中的實際 Row 行號，以供核銷定位
@@ -280,7 +280,9 @@ function handleLiffGetUnverified(lineUserId: string) {
         date: dateFormatted,
         startTime: formatTimeStr(rowStart),
         endTime: formatTimeStr(rowEnd),
-        hours: rowHours
+        hours: rowHours,
+        canVerify,
+        verifyMessage: canVerify ? "" : "課程尚未結束，暫不可核銷。"
       });
     }
   }
