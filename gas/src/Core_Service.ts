@@ -337,6 +337,11 @@ function handleLiffUnbind(lineUserId: string) {
 // (7) handleLiffVerifyAndBind : 講師驗證姓名並綁定 LINE
 function handleLiffVerifyAndBind(name: string, lineUserId: string) {
   try {
+    const cleanName = String(name || "").trim();
+    const cleanLineUserId = String(lineUserId || "").trim();
+    if (!cleanName) return { ok: false, message: "請輸入姓名。" };
+    if (!cleanLineUserId) return { ok: false, message: "缺少 LINE User ID，請從 LINE LIFF 入口重新開啟。" };
+
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
     if (!teacherSheet) return { ok: false, message: "找不到講師名單工作表。" };
@@ -346,18 +351,18 @@ function handleLiffVerifyAndBind(name: string, lineUserId: string) {
       const rowName = String(data[i][0]).trim();
       const rowLineId = String(data[i][1]).trim();
 
-      if (rowName === name) {
-        if (rowLineId && rowLineId !== lineUserId) {
+      if (rowName === cleanName) {
+        if (rowLineId && rowLineId !== cleanLineUserId) {
           return { ok: false, message: `此姓名已被其他 LINE 帳號綁定。若有疑問請聯絡管理員。` };
         }
         // 寫入綁定 ID
-        teacherSheet.getRange(i + 1, 2).setValue(lineUserId);
+        teacherSheet.getRange(i + 1, 2).setValue(cleanLineUserId);
         
         // 自動載入綁定成功後的 profile
-        return handleLiffMe(lineUserId);
+        return handleLiffMe(cleanLineUserId);
       }
     }
-    return { ok: false, message: `驗證失敗：找不到姓名為「${name}」的講師，請確認輸入是否正確。` };
+    return { ok: false, message: `驗證失敗：找不到姓名為「${cleanName}」的講師，請確認輸入是否正確。` };
   } catch (e) {
     return { ok: false, message: "綁定失敗：" + e.toString() };
   }

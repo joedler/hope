@@ -774,7 +774,15 @@
               method: "GET",
               redirect: "follow",
             });
-            return response.json();
+            const responseText = await response.text();
+            if (!response.ok) {
+              throw new Error(`API HTTP ${response.status}: ${responseText.substring(0, 240)}`);
+            }
+            try {
+              return JSON.parse(responseText);
+            } catch (error) {
+              throw new Error(`API 回應不是 JSON: ${responseText.substring(0, 240)}`);
+            }
           },
         };
       }

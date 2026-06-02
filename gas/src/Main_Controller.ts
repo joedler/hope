@@ -68,6 +68,9 @@ function doGet(e: any) {
         // 講師身分驗證與綁定
         result = handleLiffVerifyAndBind(e.parameter.name, lineUserId);
         break;
+      case "health":
+        result = { ok: true, message: "Dev GAS API OK", time: new Date().toISOString() };
+        break;
       default:
         result = { ok: false, message: `不支援的 API 指令: ${action}` };
     }
