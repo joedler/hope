@@ -553,6 +553,59 @@ function handleTuitionAdjustmentCommand(event: any, userMsg: string) {
   );
 }
 
+function handleLiffTuitionAdjustment(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) return { ok: false, message: "權限不足：限行政人員使用。" };
+
+  const type = String(params.adjustmentType || "").trim();
+  const targetMonth = String(params.month || "").replace("-", "/").trim();
+  const studentName = String(params.student || "").trim();
+  const courseName = String(params.course || "").trim();
+  const lessonDate = String(params.lessonDate || "").replace(/-/g, "/").trim();
+  const startTime = String(params.startTime || "").replace(":", "").trim();
+  const endTime = String(params.endTime || "").replace(":", "").trim();
+  const hours = parseFloat(params.hours);
+  const unitFee = parseFloat(params.unitFee);
+  const relatedDocId = String(params.relatedDocId || "").trim();
+  const reason = String(params.reason || "").trim() || "未填寫";
+
+  if (type !== "補收" && type !== "退費") return { ok: false, message: "調整類型只支援：補收、退費。" };
+  if (!targetMonth.match(/^\d{4}\/\d{2}$/)) return { ok: false, message: "調整月份格式需為 YYYY/MM。" };
+  if (!studentName || !courseName) return { ok: false, message: "請填寫學生與課程。" };
+  if (!lessonDate.match(/^\d{4}\/\d{1,2}\/\d{1,2}$/)) return { ok: false, message: "原上課日期格式需為 YYYY/MM/DD。" };
+  if (!startTime.match(/^\d{3,4}$/) || !endTime.match(/^\d{3,4}$/)) return { ok: false, message: "時間格式需為 HHMM，例如 1400 1530。" };
+  if (!hours || hours <= 0 || !unitFee || unitFee <= 0) return { ok: false, message: "時數與單價必須大於 0。" };
+  if (!relatedDocId) return { ok: false, message: "請填寫關聯原單號。" };
+
+  const operatorName = getOperatorNameByUserId(lineUserId);
+  const amount = Math.round(hours * unitFee) * (type === "退費" ? -1 : 1);
+  const sheet = ensureTuitionAdjustmentSheet();
+  sheet.appendRow([
+    new Date(),
+    targetMonth,
+    studentName,
+    courseName,
+    lessonDate,
+    startTime,
+    endTime,
+    hours,
+    unitFee,
+    amount,
+    type,
+    relatedDocId,
+    reason,
+    "待處理",
+    operatorName,
+    ""
+  ]);
+
+  return {
+    ok: true,
+    message: `已建立${type}紀錄：${studentName} / ${courseName} / ${formatMoney(amount)}，狀態：待處理。`
+  };
+}
+
 function getTuitionAdjustmentHelpText() {
   return "🧾 帳務補救\n\n" +
     "建立補收/退費紀錄，不會直接更改舊繳費單。\n\n" +
