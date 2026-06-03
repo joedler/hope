@@ -64,6 +64,10 @@ function doGet(e: any) {
         // 建立學費補收/退費調整紀錄
         result = handleLiffTuitionAdjustment(e.parameter);
         break;
+      case "tuitionAdjustmentOptions":
+        // 讀取帳務補救表單選項與原單號
+        result = handleLiffTuitionAdjustmentOptions(e.parameter);
+        break;
       case "unbind":
         // 解除 LINE 綁定
         result = handleLiffUnbind(lineUserId);
@@ -378,6 +382,7 @@ declare function handleLiffVerifySchedule(params: any): any;
 declare function handleLiffLeave(params: any): any;
 declare function handleLiffAdminTask(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;
+declare function handleLiffTuitionAdjustmentOptions(params: any): any;
 declare function handleLiffUnbind(userId: string): any;
 declare function handleLiffVerifyAndBind(name: string, userId: string): any;
 

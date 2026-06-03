@@ -539,7 +539,8 @@ function handleTuitionAdjustmentCommand(event: any, userMsg: string) {
     reason,
     "待處理",
     operatorName,
-    ""
+    "",
+    targetMonth
   ]);
 
   replyLineMessage(replyToken,
@@ -559,7 +560,8 @@ function handleLiffTuitionAdjustment(params: any) {
   if (!isAdmin) return { ok: false, message: "權限不足：限行政人員使用。" };
 
   const type = String(params.adjustmentType || "").trim();
-  const targetMonth = String(params.month || "").replace("-", "/").trim();
+  const targetMonth = String(params.processingMonth || params.month || "").replace("-", "/").trim();
+  const originalMonth = String(params.originalMonth || params.month || "").replace("-", "/").trim();
   const studentName = String(params.student || "").trim();
   const courseName = String(params.course || "").trim();
   const lessonDate = String(params.lessonDate || "").replace(/-/g, "/").trim();
@@ -572,6 +574,7 @@ function handleLiffTuitionAdjustment(params: any) {
 
   if (type !== "補收" && type !== "退費") return { ok: false, message: "調整類型只支援：補收、退費。" };
   if (!targetMonth.match(/^\d{4}\/\d{2}$/)) return { ok: false, message: "調整月份格式需為 YYYY/MM。" };
+  if (!originalMonth.match(/^\d{4}\/\d{2}$/)) return { ok: false, message: "原錯誤月份格式需為 YYYY/MM。" };
   if (!studentName || !courseName) return { ok: false, message: "請填寫學生與課程。" };
   if (!lessonDate.match(/^\d{4}\/\d{1,2}\/\d{1,2}$/)) return { ok: false, message: "原上課日期格式需為 YYYY/MM/DD。" };
   if (!startTime.match(/^\d{3,4}$/) || !endTime.match(/^\d{3,4}$/)) return { ok: false, message: "時間格式需為 HHMM，例如 1400 1530。" };
@@ -597,12 +600,65 @@ function handleLiffTuitionAdjustment(params: any) {
     reason,
     "待處理",
     operatorName,
-    ""
+    "",
+    originalMonth
   ]);
 
   return {
     ok: true,
     message: `已建立${type}紀錄：${studentName} / ${courseName} / ${formatMoney(amount)}，狀態：待處理。`
+  };
+}
+
+function handleLiffTuitionAdjustmentOptions(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) return { ok: false, message: "權限不足：限行政人員使用。" };
+
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
+  if (!courseSheet) return { ok: false, message: "找不到課程設定表。" };
+
+  const data = courseSheet.getDataRange().getValues();
+  const studentSet = new Set<string>();
+  const coursesByStudent: any = {};
+
+  for (let i = 1; i < data.length; i++) {
+    const studentName = String(data[i][2] || "").trim();
+    const courseName = String(data[i][3] || "").trim();
+    const unitFee = parseFloat(data[i][4]) || 0;
+    const mode = String(data[i][6] || "").trim() === "預收" ? "預收" : "後收";
+    if (!studentName || !courseName) continue;
+
+    studentSet.add(studentName);
+    if (!coursesByStudent[studentName]) coursesByStudent[studentName] = [];
+    let exists = false;
+    for (let c = 0; c < coursesByStudent[studentName].length; c++) {
+      if (coursesByStudent[studentName][c].name === courseName && coursesByStudent[studentName][c].unitFee === unitFee) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      coursesByStudent[studentName].push({
+        name: courseName,
+        unitFee,
+        mode
+      });
+    }
+  }
+
+  const originalMonth = String(params.originalMonth || params.month || "").replace("-", "/").trim();
+  const studentName = String(params.student || "").trim();
+  const docIds = originalMonth && studentName ? findTuitionDocIds(originalMonth, studentName) : [];
+
+  return {
+    ok: true,
+    options: {
+      students: Array.from(studentSet).sort(),
+      coursesByStudent,
+      docIds
+    }
   };
 }
 
@@ -638,11 +694,32 @@ function ensureTuitionAdjustmentSheet() {
       "原因",
       "狀態",
       "操作人",
-      "備註"
+      "備註",
+      "原錯誤月份"
     ]);
     sheet.setFrozenRows(1);
+  } else if (sheet.getLastColumn() < 17) {
+    sheet.getRange(1, 17).setValue("原錯誤月份");
   }
   return sheet;
+}
+
+function findTuitionDocIds(targetMonth: string, studentName: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  if (!sheet) return [];
+
+  const data = sheet.getDataRange().getValues();
+  const docIds: string[] = [];
+  for (let i = data.length - 1; i >= 1; i--) {
+    const rowMonth = normalizeSheetMonth(data[i][0]);
+    const rowStudent = String(data[i][1] || "").trim();
+    const docId = String(data[i][9] || "").trim();
+    if (rowMonth === targetMonth && rowStudent === studentName && docId && docIds.indexOf(docId) === -1) {
+      docIds.push(docId);
+    }
+  }
+  return docIds;
 }
 
 function queryTuitionAdjustments(targetMonth: string, studentName: string) {
