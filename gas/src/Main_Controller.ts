@@ -231,6 +231,7 @@ function handleMessage(event: any) {
   
   if (userMsg.indexOf("產生繳費單") === 0) { handlePaymentDocCommand(event, userMsg); return; }
   if (userMsg.indexOf("查詢繳費單") === 0) { handlePaymentQueryCommand(event, userMsg); return; }
+  if (userMsg.indexOf("帳務補救") === 0) { handleTuitionAdjustmentCommand(event, userMsg); return; }
   
   if (userMsg.indexOf("開收據") === 0) { handleReceiptCommand(event, userMsg); return; } 
   if (userMsg.indexOf("寄收據") === 0) { handleSingleSendReceiptCommand(event, userMsg); return; } 
@@ -336,6 +337,7 @@ declare function handleTaxExemptionDashboardCommand(event: any, cmd: string): vo
 declare function handleManualJournalEntryCommand(event: any, cmd: string): void;
 declare function handleFinancialReportCommand(event: any, cmd: string, type: string): void;
 declare function handlePaymentQueryCommand(event: any, cmd: string): void;
+declare function handleTuitionAdjustmentCommand(event: any, cmd: string): void;
 declare function handleReceiptCommand(event: any, cmd: string): void;
 declare function handleSingleSendReceiptCommand(event: any, cmd: string): void;
 declare function handleSingleAllowanceCommand(event: any, cmd: string): void;

@@ -472,6 +472,176 @@ function handlePaymentQueryCommand(event: any, userMsg: string) {
   } catch (e) { replyLineMessage(replyToken, "❌ 查詢錯誤：" + e.toString()); }
 }
 
+function handleTuitionAdjustmentCommand(event: any, userMsg: string) {
+  const replyToken = event.replyToken;
+  const userId = event.source.userId;
+  const isAdmin = ADMIN_LIST.indexOf(userId) > -1;
+  if (!isAdmin) { replyLineMessage(replyToken, "❌ 權限不足：限行政人員使用。"); return; }
+
+  const parts = userMsg.trim().split(/\s+/);
+  if (parts.length === 1 || parts[1] === "說明") {
+    replyLineMessage(replyToken, getTuitionAdjustmentHelpText());
+    ensureTuitionAdjustmentSheet();
+    return;
+  }
+
+  if (parts[1] === "查詢") {
+    if (parts.length < 4) {
+      replyLineMessage(replyToken, "❌ 格式：帳務補救 查詢 YYYY/MM 學生姓名");
+      return;
+    }
+    replyLineMessage(replyToken, queryTuitionAdjustments(parts[2], parts[3]));
+    return;
+  }
+
+  const type = parts[1];
+  if (type !== "補收" && type !== "退費") {
+    replyLineMessage(replyToken, "❌ 調整類型只支援：補收、退費。\n\n" + getTuitionAdjustmentHelpText());
+    return;
+  }
+  if (parts.length < 11) {
+    replyLineMessage(replyToken, "❌ 格式不足。\n\n" + getTuitionAdjustmentHelpText());
+    return;
+  }
+
+  const targetMonth = parts[2];
+  const studentName = parts[3];
+  const courseName = parts[4];
+  const lessonDate = parts[5].replace(/-/g, "/");
+  const startTime = parts[6].replace(/:/g, "");
+  const endTime = parts[7].replace(/:/g, "");
+  const hours = parseFloat(parts[8]);
+  const unitFee = parseFloat(parts[9]);
+  const relatedDocId = parts[10];
+  const reason = parts.slice(11).join(" ") || "未填寫";
+
+  if (!targetMonth.match(/^\d{4}\/\d{2}$/)) { replyLineMessage(replyToken, "❌ 調整月份格式需為 YYYY/MM。"); return; }
+  if (!lessonDate.match(/^\d{4}\/\d{1,2}\/\d{1,2}$/)) { replyLineMessage(replyToken, "❌ 原上課日期格式需為 YYYY/MM/DD。"); return; }
+  if (!startTime.match(/^\d{3,4}$/) || !endTime.match(/^\d{3,4}$/)) { replyLineMessage(replyToken, "❌ 時間格式需為 HHMM，例如 1400 1530。"); return; }
+  if (!hours || hours <= 0 || !unitFee || unitFee <= 0) { replyLineMessage(replyToken, "❌ 時數與單價必須大於 0。"); return; }
+
+  const operatorName = getOperatorNameByUserId(userId);
+  const amount = Math.round(hours * unitFee) * (type === "退費" ? -1 : 1);
+  const sheet = ensureTuitionAdjustmentSheet();
+  sheet.appendRow([
+    new Date(),
+    targetMonth,
+    studentName,
+    courseName,
+    lessonDate,
+    startTime,
+    endTime,
+    hours,
+    unitFee,
+    amount,
+    type,
+    relatedDocId,
+    reason,
+    "待處理",
+    operatorName,
+    ""
+  ]);
+
+  replyLineMessage(replyToken,
+    "✅ 已建立學費調整紀錄\n" +
+    "類型：" + type + "\n" +
+    "月份：" + targetMonth + "\n" +
+    "學生：" + studentName + "\n" +
+    "課程：" + courseName + "\n" +
+    "金額：" + formatMoney(amount) + "\n" +
+    "狀態：待處理"
+  );
+}
+
+function getTuitionAdjustmentHelpText() {
+  return "🧾 帳務補救\n\n" +
+    "建立補收/退費紀錄，不會直接更改舊繳費單。\n\n" +
+    "格式：\n" +
+    "帳務補救 補收 YYYY/MM 學生 課程 YYYY/MM/DD 開始 結束 時數 單價 原單號 原因\n\n" +
+    "範例：\n" +
+    "帳務補救 補收 2026/05 均逸 陪伴對話/自學紀錄同行 2026/04/18 1400 1530 1.5 1000 R_2026_04_019 講師漏登\n\n" +
+    "查詢：\n" +
+    "帳務補救 查詢 2026/05 均逸";
+}
+
+function ensureTuitionAdjustmentSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(SHEET_NAME_TUITION_ADJUSTMENT);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME_TUITION_ADJUSTMENT);
+    sheet.appendRow([
+      "建立時間",
+      "調整月份",
+      "學生姓名",
+      "課程名稱",
+      "原上課日期",
+      "開始時間",
+      "結束時間",
+      "時數",
+      "單價",
+      "調整金額",
+      "調整類型",
+      "關聯原單號",
+      "原因",
+      "狀態",
+      "操作人",
+      "備註"
+    ]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function queryTuitionAdjustments(targetMonth: string, studentName: string) {
+  const sheet = ensureTuitionAdjustmentSheet();
+  const data = sheet.getDataRange().getValues();
+  const lines: string[] = [];
+  let total = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeSheetMonth(data[i][1]);
+    const rowStudent = String(data[i][2] || "").trim();
+    if (rowMonth !== targetMonth || rowStudent !== studentName) continue;
+
+    const amount = parseFloat(data[i][9]) || 0;
+    total += amount;
+    lines.push(
+      data[i][10] + " " +
+      data[i][4] + " " +
+      data[i][5] + "-" + data[i][6] + " " +
+      data[i][3] + " " +
+      formatMoney(amount) + "\n" +
+      "原單：" + data[i][11] + "｜狀態：" + data[i][13] + "\n" +
+      "原因：" + data[i][12]
+    );
+  }
+
+  if (lines.length === 0) return "ℹ️ 找不到 " + targetMonth + "「" + studentName + "」的帳務補救紀錄。";
+  return "🧾 帳務補救查詢\n" +
+    "月份：" + targetMonth + "\n" +
+    "學生：" + studentName + "\n\n" +
+    lines.join("\n\n") + "\n\n" +
+    "調整合計：" + formatMoney(total);
+}
+
+function normalizeSheetMonth(value: any) {
+  if (value instanceof Date) return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy/MM");
+  const text = String(value || "").trim();
+  if (text.match(/^\d{4}[\/-]\d{2}/)) return text.substring(0, 7).replace("-", "/");
+  return text;
+}
+
+function getOperatorNameByUserId(userId: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (!teacherSheet) return userId;
+  const data = teacherSheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]).trim() === userId) return String(data[i][0] || userId);
+  }
+  return userId;
+}
+
 function handlePaymentDocCommand(event: any, userMsg: string) {
   const replyToken = event.replyToken;
   const userId = event.source.userId;

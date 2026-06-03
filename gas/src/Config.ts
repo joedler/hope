@@ -33,6 +33,7 @@ var SHEET_NAME_RECORD: string = "授課紀錄";
 var SHEET_NAME_PLAN: string = "預排紀錄";
 var SHEET_NAME_FIN_FEE: string = "學費結算表";
 var SHEET_NAME_FIN_PAY: string = "鐘點結算表";
+var SHEET_NAME_TUITION_ADJUSTMENT: string = "學費調整紀錄表";
 
 // 群組 ID (推播用)
 var GROUP_ID: string = "C0227dd553381f2503d344481ae1b4453";
