@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>蝛箇征BOT - 雓葦銵蝟餌絞</title>
+    <title>空空BOT - 講師行政系統</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts -->
@@ -25,53 +25,54 @@
       x-data="kongApp()"
       x-init="init()"
     >
-      <!-- ?璅?? -->
+      <!-- 頂部標題區 -->
       <header class="mb-6 flex items-center justify-between">
         <div>
           <p class="text-xs font-semibold uppercase tracking-wider text-teal-400">LINE Bot Extension</p>
-          <h1 class="mt-1 text-2xl font-bold text-white" x-text="config.activityName || '蝛箇征BOT 蝟餌絞'"></h1>
+          <h1 class="mt-1 text-2xl font-bold text-white" x-text="config.activityName || '空空BOT 系統'"></h1>
         </div>
         <template x-if="profile && profile.pictureUrl">
           <img :src="profile.pictureUrl" class="h-10 w-10 rounded-full border border-teal-500/30" alt="Avatar">
         </template>
       </header>
 
-      <!-- 霈????-->
+      <!-- 讀取狀態 -->
       <section
         class="rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur-md p-6 shadow-xl"
         x-show="state === 'loading'"
       >
         <div class="flex flex-col items-center justify-center py-8">
           <div class="h-8 w-8 animate-spin rounded-full border-2 border-teal-500 border-t-transparent"></div>
-          <p class="mt-4 text-sm font-medium text-slate-400">甇????頂蝯梯?撽?頨怠?...</p>
+          <p class="mt-4 text-sm font-medium text-slate-400">正在初始化系統與驗證身分...</p>
         </div>
       </section>
 
-      <!-- ?航炊/?內閮 -->
+      <!-- 錯誤/提示訊息 -->
       <section
         class="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300"
         x-show="message"
         x-text="message"
       ></section>
 
-      <!-- 1. ?芰?摰???擐活撽? -->
+      <!-- 1. 未綁定狀態：首次驗證 -->
       <section
         class="space-y-4 rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-2xl"
         x-show="state === 'unbound'"
       >
         <div class="text-center">
-          <h2 class="text-lg font-bold text-white">雓葦頨怠?隤?</h2>
+          <h2 class="text-lg font-bold text-white">講師身分認證</h2>
           <p class="mt-1 text-xs text-slate-400 leading-5">
-            擐活雿輻隢撓?交????隞亙?甇?LINE 撣唾?蝬??喟征蝛慷OT雓葦?銝准?          </p>
+            首次使用請輸入您的姓名，以將此 LINE 帳號綁定至空空BOT講師名單中。
+          </p>
         </div>
 
         <div class="space-y-4">
           <label class="block">
-            <span class="text-xs font-semibold text-slate-400">憪?</span>
+            <span class="text-xs font-semibold text-slate-400">姓名</span>
             <input
               class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
               x-model.trim="form.name"
-              placeholder="隢撓?交?刻?撣怠??桐?????
+              placeholder="請輸入您在講師名單上的姓名"
             >
           </label>
 
@@ -81,16 +82,16 @@
             :disabled="submitting || !form.name"
             @click="verifyAndBind()"
           >
-            <span x-show="!submitting">撽?銝衣?摰?LINE</span>
-            <span x-show="submitting">撽?銝?..</span>
+            <span x-show="!submitting">驗證並綁定 LINE</span>
+            <span x-show="submitting">驗證中...</span>
           </button>
         </div>
       </section>
 
-      <!-- 2. 撌脩?摰?????銝駁??-->
+      <!-- 2. 已綁定狀態：操作主面板 -->
       <section x-show="state === 'bound' && teacherProfile" class="space-y-5">
         
-        <!-- 雓葦鞈???-->
+        <!-- 講師資訊卡 -->
         <div class="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl">
           <div class="absolute right-0 top-0 h-24 w-24 rounded-full bg-teal-500/5 blur-xl"></div>
           <div class="flex items-center space-x-3">
@@ -100,24 +101,24 @@
               </svg>
             </div>
             <div>
-              <p class="text-xs text-slate-400">甇∟???</p>
-              <h2 class="text-lg font-bold text-white" x-text="teacherProfile.name + ' ?葦'"></h2>
+              <p class="text-xs text-slate-400">歡迎回來</p>
+              <h2 class="text-lg font-bold text-white" x-text="teacherProfile.name + ' 老師'"></h2>
             </div>
           </div>
           
           <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-900 pt-4 text-center">
             <div>
-              <p class="text-[10px] text-slate-500 uppercase tracking-wider">?祆??玨?</p>
+              <p class="text-[10px] text-slate-500 uppercase tracking-wider">本月授課堂數</p>
               <p class="mt-1 text-lg font-bold text-teal-400" x-text="teacherProfile.thisMonthHours || '0'"></p>
             </div>
             <div>
-              <p class="text-[10px] text-slate-500 uppercase tracking-wider">隢?擗?(鈭???</p>
+              <p class="text-[10px] text-slate-500 uppercase tracking-wider">請假餘額(事/病)</p>
               <p class="mt-1 text-lg font-bold text-indigo-400" x-text="(teacherProfile.casualLeaveRemaining || '0') + ' / ' + (teacherProfile.sickLeaveRemaining || '0')"></p>
             </div>
           </div>
         </div>
 
-        <!-- ???璅惜 -->
+        <!-- 功能分頁標籤 -->
         <nav class="flex space-x-2 rounded-xl bg-slate-950 p-1 border border-slate-800">
           <button
             type="button"
@@ -125,7 +126,7 @@
             :class="activeTab === 'register' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'"
             @click="activeTab = 'register'"
           >
-            ?玨?餉?
+            授課登記
           </button>
           <button
             type="button"
@@ -133,7 +134,7 @@
             :class="activeTab === 'verify' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'"
             @click="activeTab = 'verify'"
           >
-            ???賊
+            預排核銷
           </button>
           <button
             type="button"
@@ -141,7 +142,7 @@
             :class="activeTab === 'leave' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'"
             @click="activeTab = 'leave'"
           >
-            隢??唾?
+            請假申請
           </button>
           <template x-if="teacherProfile.isAdmin">
             <button
@@ -150,18 +151,18 @@
               :class="activeTab === 'admin' ? 'bg-amber-500/10 border border-amber-500/30 font-semibold' : 'hover:text-amber-300'"
               @click="activeTab = 'admin'"
             >
-              銵撠?
+              行政專區
             </button>
           </template>
         </nav>
 
-        <!-- 2A. ?玨?餉??Ｘ -->
+        <!-- 2A. 授課登記面板 -->
         <section x-show="activeTab === 'register'" class="space-y-4">
           <div class="rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg">
-            <h3 class="text-sm font-bold text-white mb-4">?餉??玨???玨蝔?/h3>
+            <h3 class="text-sm font-bold text-white mb-4">登記授課或預排課程</h3>
             
             <div class="space-y-4">
-              <!-- ?餉?璅∪? -->
+              <!-- 登記模式 -->
               <div class="grid grid-cols-2 gap-2 rounded-lg bg-slate-900 p-1">
                 <button
                   type="button"
@@ -169,7 +170,7 @@
                   :class="regForm.mode === 'normal' ? 'bg-slate-800 text-white shadow' : 'text-slate-400'"
                   @click="regForm.mode = 'normal'"
                 >
-                  甇???玨 (?餉?)
+                  正式授課 (登記)
                 </button>
                 <button
                   type="button"
@@ -177,46 +178,48 @@
                   :class="regForm.mode === 'pre' ? 'bg-slate-800 text-white shadow' : 'text-slate-400'"
                   @click="regForm.mode = 'pre'"
                 >
-                  ?芣?瑁玨蝔?(??)
+                  未核銷課程 (預排)
                 </button>
               </div>
 
-              <!-- 摮貊??豢? -->
+              <!-- 學生選擇 -->
               <label class="block">
-                <span class="text-xs font-semibold text-slate-400">摮貊?</span>
+                <span class="text-xs font-semibold text-slate-400">學生</span>
                 <select
                   class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
                   x-model="regForm.student"
                   @change="regForm.subject = ''"
                 >
-                  <option value="">-- 隢?飛??--</option>
+                  <option value="">-- 請選擇學生 --</option>
                   <template x-for="std in options.students" :key="std">
                     <option :value="std" x-text="std"></option>
                   </template>
                 </select>
                 <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && options.students.length === 0">
-                  ?桀?瘝??舐閮?摮貊?嚗??舐窗銵蝣箄?隤脩?閮剖?銵具?                </p>
+                  目前沒有可登記的學生，請聯絡行政確認課程設定表。
+                </p>
               </label>
 
-              <!-- 隤脩??豢? -->
+              <!-- 課程選擇 -->
               <label class="block">
-                <span class="text-xs font-semibold text-slate-400">隤脩? / 蝘</span>
+                <span class="text-xs font-semibold text-slate-400">課程 / 科目</span>
                 <select
                   class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
                   x-model="regForm.subject"
                 >
-                  <option value="">-- 隢?玨蝔?--</option>
+                  <option value="">-- 請選擇課程 --</option>
                   <template x-for="subj in filteredSubjects()" :key="subj">
                     <option :value="subj" x-text="subj"></option>
                   </template>
                 </select>
                 <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && regForm.student && filteredSubjects().length === 0">
-                  ?桀?瘝??舐閮?隤脩?嚗??舐窗銵蝣箄?隤脩?閮剖?銵具?                </p>
+                  目前沒有可登記的課程，請聯絡行政確認課程設定表。
+                </p>
               </label>
 
-              <!-- ?交??豢? -->
+              <!-- 日期選擇 -->
               <label class="block">
-                <span class="text-xs font-semibold text-slate-400">銝玨?交?</span>
+                <span class="text-xs font-semibold text-slate-400">上課日期</span>
                 <input
                   type="date"
                   class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
@@ -224,10 +227,10 @@
                 >
               </label>
 
-              <!-- ???豢? -->
+              <!-- 時間選擇 -->
               <div class="grid grid-cols-2 gap-3">
                 <label class="block">
-                  <span class="text-xs font-semibold text-slate-400">????</span>
+                  <span class="text-xs font-semibold text-slate-400">開始時間</span>
                   <input
                     type="time"
                     class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
@@ -235,7 +238,7 @@
                   >
                 </label>
                 <label class="block">
-                  <span class="text-xs font-semibold text-slate-400">蝯???</span>
+                  <span class="text-xs font-semibold text-slate-400">結束時間</span>
                   <input
                     type="time"
                     class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
@@ -244,37 +247,38 @@
                 </label>
               </div>
 
-              <!-- ?漱?? -->
+              <!-- 提交按鈕 -->
               <button
                 type="button"
                 class="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-900/30 hover:bg-teal-500 disabled:bg-slate-800 disabled:text-slate-500 transition"
                 :disabled="submitting || !regForm.student || !regForm.subject || !regForm.date || !regForm.startTime || !regForm.endTime"
                 @click="registerCourse()"
               >
-                <span x-show="!submitting" x-text="regForm.mode === 'normal' ? '??玨?餉?' : '????餉?'"></span>
-                <span x-show="submitting">甇??脣?銝行炎?仿??葉...</span>
+                <span x-show="!submitting" x-text="regForm.mode === 'normal' ? '送出授課登記' : '送出預排登記'"></span>
+                <span x-show="submitting">正在儲存並檢查重疊中...</span>
               </button>
             </div>
           </div>
         </section>
 
-        <!-- 2B. ???賊?Ｘ -->
+        <!-- 2B. 預排核銷面板 -->
         <section x-show="activeTab === 'verify'" class="space-y-4">
           <div class="rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg">
-            <h3 class="text-sm font-bold text-white mb-2">敺?琿??玨蝔?/h3>
-            <p class="text-xs text-slate-400 mb-4">隢???Ⅱ隤迨???玨蝔?行?撖阡?銝玨??/p>
+            <h3 class="text-sm font-bold text-white mb-2">待核銷預排課程</h3>
+            <p class="text-xs text-slate-400 mb-4">請點擊卡片確認此堂預排課程是否有實際上課。</p>
 
             <div class="space-y-3">
               <template x-show="unverifiedSchedules.length === 0">
                 <div class="text-center py-8 text-slate-500 text-sm">
-                  ?桀??∪??賊??????                </div>
+                  目前無待核銷的預排紀錄。
+                </div>
               </template>
               <template x-for="item in unverifiedSchedules" :key="item.rowId">
                 <div class="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-3 transition hover:border-slate-700">
                   <div class="flex justify-between items-start">
                     <div>
                       <span class="inline-flex items-center rounded-md bg-indigo-500/10 px-2 py-1 text-[10px] font-medium text-indigo-400 ring-1 ring-inset ring-indigo-500/30" x-text="item.subject"></span>
-                      <h4 class="mt-1 text-sm font-bold text-white" x-text="item.student + ' 摮貊?'"></h4>
+                      <h4 class="mt-1 text-sm font-bold text-white" x-text="item.student + ' 學生'"></h4>
                     </div>
                     <span class="text-xs font-semibold text-teal-400" x-text="item.date"></span>
                   </div>
@@ -282,9 +286,9 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <span x-text="item.startTime + ' - ' + item.endTime + ' (' + item.hours + '撠?)'"></span>
+                    <span x-text="item.startTime + ' - ' + item.endTime + ' (' + item.hours + '小時)'"></span>
                   </div>
-                  <p class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300" x-show="item.canVerify === false" x-text="item.verifyMessage || '隤脩?撠蝯?嚗銝?賊??"></p>
+                  <p class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300" x-show="item.canVerify === false" x-text="item.verifyMessage || '課程尚未結束，暫不可核銷。'"></p>
                   <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-950">
                     <button
                       type="button"
@@ -293,7 +297,8 @@
                       :class="item.canVerify === false ? 'opacity-40 cursor-not-allowed hover:bg-teal-500/10' : ''"
                       @click="verifySchedule(item.rowId, 'yes')"
                     >
-                      ??隤?                    </button>
+                      有上課
+                    </button>
                     <button
                       type="button"
                       class="rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 py-1.5 text-xs font-semibold hover:bg-red-500/20 transition"
@@ -301,7 +306,8 @@
                       :class="item.canVerify === false ? 'opacity-40 cursor-not-allowed hover:bg-red-500/10' : ''"
                       @click="verifySchedule(item.rowId, 'no')"
                     >
-                      ?芯?隤?                    </button>
+                      未上課
+                    </button>
                   </div>
                 </div>
               </template>
@@ -309,27 +315,27 @@
           </div>
         </section>
 
-        <!-- 2C. 隢??唾??Ｘ -->
+        <!-- 2C. 請假申請面板 -->
         <section x-show="activeTab === 'leave'" class="space-y-4">
           <div class="rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg">
-            <h3 class="text-sm font-bold text-white mb-4">隢??唾?銵?/h3>
+            <h3 class="text-sm font-bold text-white mb-4">請假申請表</h3>
             
             <div class="space-y-4">
-              <!-- ? -->
+              <!-- 假別 -->
               <label class="block">
-                <span class="text-xs font-semibold text-slate-400">?</span>
+                <span class="text-xs font-semibold text-slate-400">假別</span>
                 <select
                   class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
                   x-model="leaveForm.type"
                 >
-                  <option value="鈭?">鈭? (?拚?嚗?span x-text="teacherProfile.casualLeaveRemaining || 0"></span>撠?)</option>
-                  <option value="??">?? (?拚?嚗?span x-text="teacherProfile.sickLeaveRemaining || 0"></span>撠?)</option>
+                  <option value="事假">事假 (剩餘：<span x-text="teacherProfile.casualLeaveRemaining || 0"></span>小時)</option>
+                  <option value="病假">病假 (剩餘：<span x-text="teacherProfile.sickLeaveRemaining || 0"></span>小時)</option>
                 </select>
               </label>
 
-              <!-- ?交? -->
+              <!-- 日期 -->
               <label class="block">
-                <span class="text-xs font-semibold text-slate-400">隢??交?</span>
+                <span class="text-xs font-semibold text-slate-400">請假日期</span>
                 <input
                   type="date"
                   class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
@@ -337,10 +343,10 @@
                 >
               </label>
 
-              <!-- ??畾?-->
+              <!-- 時間段 -->
               <div class="grid grid-cols-2 gap-3">
                 <label class="block">
-                  <span class="text-xs font-semibold text-slate-400">????</span>
+                  <span class="text-xs font-semibold text-slate-400">開始時間</span>
                   <input
                     type="time"
                     class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
@@ -348,7 +354,7 @@
                   >
                 </label>
                 <label class="block">
-                  <span class="text-xs font-semibold text-slate-400">蝯???</span>
+                  <span class="text-xs font-semibold text-slate-400">結束時間</span>
                   <input
                     type="time"
                     class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
@@ -357,31 +363,31 @@
                 </label>
               </div>
 
-              <!-- ?漱?? -->
+              <!-- 提交按鈕 -->
               <button
                 type="button"
                 class="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/30 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 transition"
                 :disabled="submitting || !leaveForm.date || !leaveForm.startTime || !leaveForm.endTime"
                 @click="submitLeave()"
               >
-                <span x-show="!submitting">?隢??唾?</span>
-                <span x-show="submitting">?銝?..</span>
+                <span x-show="!submitting">送出請假申請</span>
+                <span x-show="submitting">送出中...</span>
               </button>
             </div>
           </div>
         </section>
 
-        <!-- 2D. 銵撠??Ｘ -->
+        <!-- 2D. 行政專區面板 -->
         <section x-show="activeTab === 'admin'" class="space-y-4">
           <div class="rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg space-y-4">
             <div class="flex justify-between items-center pb-3 border-b border-slate-900">
-              <h3 class="text-sm font-bold text-amber-400">銵?瓷?恣??/h3>
+              <h3 class="text-sm font-bold text-amber-400">行政與財務管理</h3>
               <span class="inline-flex items-center rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400 ring-1 ring-inset ring-amber-500/30">Admin Mode</span>
             </div>
 
-            <!-- ?遢?豢???-->
+            <!-- 月份選擇器 -->
             <label class="block">
-              <span class="text-xs font-semibold text-slate-400">閰衣????隞?/span>
+              <span class="text-xs font-semibold text-slate-400">試算與單據月份</span>
               <input
                 type="month"
                 class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500"
@@ -389,44 +395,45 @@
               >
             </label>
 
-            <!-- ??蝬脫 -->
+            <!-- 操作網格 -->
             <div class="grid grid-cols-2 gap-3 pt-2">
               <button
                 type="button"
                 class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('摮西晶霂?')"
+                @click="runAdminTask('学费试算')"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">摮貉祥閰衣?</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">摮詨隤脰祥??蝯岫蝞?/p>
+                <span class="text-xs font-bold text-white group-hover:text-amber-400">學費試算</span>
+                <p class="mt-1 text-[10px] text-slate-500 leading-4">學員課費與月結試算</p>
               </button>
 
               <button
                 type="button"
                 class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('?霂?')"
+                @click="runAdminTask('钟点试算')"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">??鞎餉岫蝞?/span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">雓葦??????鞎餉?蝞?/p>
+                <span class="text-xs font-bold text-white group-hover:text-amber-400">鐘點費試算</span>
+                <p class="mt-1 text-[10px] text-slate-500 leading-4">講師鐘點與補充保費計算</p>
               </button>
 
               <button
                 type="button"
                 class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('鈭抒?蝻渲晶??)"
+                @click="runAdminTask('产生缴费单')"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">?Ｙ?蝜唾祥??/span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">?寞活?Ｗ PDF ?格?</p>
+                <span class="text-xs font-bold text-white group-hover:text-amber-400">產生繳費單</span>
+                <p class="mt-1 text-[10px] text-slate-500 leading-4">批次產出 PDF 單據</p>
               </button>
 
               <button
                 type="button"
                 class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('撖???)"
+                @click="runAdminTask('寄领据')"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">撖??</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">?寞活撖?Gmail ?</p>
+                <span class="text-xs font-bold text-white group-hover:text-amber-400">寄發領據</span>
+                <p class="mt-1 text-[10px] text-slate-500 leading-4">批次寄送 Gmail 通知</p>
               </button>
             </div>
+
             <div class="space-y-3 border-t border-slate-900 pt-4">
               <div>
                 <h4 class="text-sm font-bold text-white">帳務補救</h4>
@@ -450,12 +457,13 @@
               <label class="block">
                 <span class="text-xs font-semibold text-slate-400">處理月份</span>
                 <input type="month" class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500" x-model="adjustmentForm.processingMonth">
+                <span class="mt-1 block text-[10px] leading-4 text-slate-500">通常使用本月，表示這筆補救要併入哪個月處理。</span>
               </label>
 
               <label class="block">
                 <span class="text-xs font-semibold text-slate-400">學生姓名</span>
                 <select class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500" x-model="adjustmentForm.student" @change="onAdjustmentStudentChange()">
-                  <option value="">-- 請選擇學生 --</option>
+                  <option value="">-- 選擇學生 --</option>
                   <template x-for="student in adjustmentOptions.students" :key="student">
                     <option :value="student" x-text="student"></option>
                   </template>
@@ -465,9 +473,9 @@
               <label class="block">
                 <span class="text-xs font-semibold text-slate-400">課程名稱</span>
                 <select class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500" x-model="adjustmentForm.course" @change="onAdjustmentCourseChange()">
-                  <option value="">-- 請選擇課程 --</option>
-                  <template x-for="course in adjustmentCourses()" :key="course.name + '-' + course.unitFee">
-                    <option :value="course.name" x-text="course.name + ' / ' + course.mode + ' / $' + course.unitFee"></option>
+                  <option value="">-- 先選學生，再選課程 --</option>
+                  <template x-for="course in adjustmentCourses()" :key="course.name + course.unitFee">
+                    <option :value="course.name" x-text="`${course.name} / ${course.mode} / $${course.unitFee}`"></option>
                   </template>
                 </select>
               </label>
@@ -502,16 +510,17 @@
               <label class="block">
                 <span class="text-xs font-semibold text-slate-400">關聯原單號</span>
                 <select class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500" x-model="adjustmentForm.relatedDocId">
-                  <option value="">-- 請選擇或確認原單號 --</option>
+                  <option value="">-- 選擇原繳費單 --</option>
                   <template x-for="docId in adjustmentOptions.docIds" :key="docId">
                     <option :value="docId" x-text="docId"></option>
                   </template>
                 </select>
-                <p class="mt-2 text-xs text-amber-300" x-show="adjustmentForm.student && adjustmentForm.originalMonth && adjustmentOptions.docIds.length === 0">找不到該學生該月份的原單號，請先確認月份或結算資料。</p>
+                <span class="mt-1 block text-[10px] leading-4 text-amber-300" x-show="adjustmentForm.student && adjustmentForm.originalMonth && adjustmentOptions.docIds.length === 0">找不到該月份的原繳費單，請先確認原錯誤月份。</span>
               </label>
 
-              <div class="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">
-                <p>預覽金額：<span class="font-bold text-amber-300" x-text="adjustmentPreviewAmount()"></span></p>
+              <div class="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">
+                預覽金額：
+                <span class="font-bold text-amber-300" x-text="adjustmentPreviewAmount()"></span>
               </div>
 
               <label class="block">
@@ -528,18 +537,17 @@
                 建立補救紀錄
               </button>
             </div>
-            </div>
           </div>
         </section>
 
-        <!-- 摰?餃?圾?斤?摰?-->
+        <!-- 安全登出與解除綁定 -->
         <div class="px-4">
           <button
             type="button"
             class="w-full rounded-xl border border-slate-850 hover:border-red-500/30 hover:bg-red-500/5 py-2.5 text-xs text-slate-500 hover:text-red-400 transition"
             @click="unbind()"
           >
-            閫? LINE 撣唾?蝬?
+            解除 LINE 帳號綁定
           </button>
         </div>
       </section>
@@ -554,7 +562,7 @@
           submitting: false,
           lineUserId: "",
           profile: null, // LINE Profile
-          teacherProfile: null, // Google Sheets 雓葦鞈?
+          teacherProfile: null, // Google Sheets 講師資料
           activeTab: "register",
           adminMonth: new Date().toISOString().substring(0, 7), // YYYY-MM
           options: {
@@ -581,7 +589,7 @@
             endTime: "14:00",
           },
           leaveForm: {
-            type: "鈭?",
+            type: "事假",
             date: new Date().toISOString().substring(0, 10),
             startTime: "09:00",
             endTime: "10:00",
@@ -619,8 +627,8 @@
 
           ensureConfig() {
             if (!this.config.gasWebAppUrl) {
-              // 皜祈岫?挾?? friendly fallback 隤芣?
-              console.warn("GAS URL 未設定，使用模擬模式。");
+              // 測試階段提供 friendly fallback 說明
+              console.warn("GAS URL 未設定，處於本地測試模式。");
             }
           },
 
@@ -638,10 +646,10 @@
               this.profile = profile;
               this.lineUserId = profile.userId;
             } else {
-              // ?砍璅⊥
+              // 本地模擬
               this.lineUserId = "U_MOCK_USER_ID";
               this.profile = {
-                displayName: "?璅⊥雓葦",
+                displayName: "開發模擬講師",
                 pictureUrl: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
               };
             }
@@ -649,8 +657,9 @@
 
           async loadMe() {
             if (!this.config.gasWebAppUrl) {
+              // 模擬已綁定
               this.teacherProfile = {
-                name: "開發模擬講師",
+                name: "李小明",
                 thisMonthHours: 12,
                 casualLeaveRemaining: 8,
                 sickLeaveRemaining: 24,
@@ -673,12 +682,13 @@
               this.state = "unbound";
               this.message = "";
             } else {
-              throw new Error(result.message || "讀取講師資料失敗。");
+              throw new Error(result.message || "讀取身分資訊失敗。");
             }
           },
 
           async loadOptions() {
             if (!this.config.gasWebAppUrl) {
+              // 模擬下拉選單資料
               this.options = {
                 students: ["張學友", "劉德華", "郭富城", "黎明"],
                 subjects: ["英語會話", "初級日語", "重訓指導", "瑜伽基礎"],
@@ -716,28 +726,39 @@
           },
 
           async loadTuitionAdjustmentOptions() {
-            if (!this.config.gasWebAppUrl || !this.teacherProfile?.isAdmin) {
+            if (!this.teacherProfile || !this.teacherProfile.isAdmin) return;
+            if (!this.config.gasWebAppUrl) {
+              this.adjustmentOptions = {
+                students: ["均逸", "張學友", "劉德華"],
+                coursesByStudent: {
+                  均逸: [{ name: "陪伴對話/自學紀錄同行", unitFee: 1000, mode: "預收" }],
+                  張學友: [{ name: "英語會話", unitFee: 1200, mode: "後收" }],
+                  劉德華: [{ name: "重訓指導", unitFee: 1500, mode: "後收" }],
+                },
+                docIds: this.adjustmentForm.student ? ["R_2026_05_019"] : [],
+              };
               return;
             }
+
             const result = await this.callApi({
               action: "tuitionAdjustmentOptions",
               lineUserId: this.lineUserId,
               originalMonth: this.adjustmentForm.originalMonth.replace("-", "/"),
               student: this.adjustmentForm.student,
             });
-            if (result.ok) {
-              this.adjustmentOptions = result.options || { students: [], coursesByStudent: {}, docIds: [] };
-              if (this.adjustmentOptions.docIds.length === 1) {
-                this.adjustmentForm.relatedDocId = this.adjustmentOptions.docIds[0];
-              }
+            if (!result.ok) {
+              throw new Error(result.message || "載入帳務補救選項失敗。");
+            }
+            this.adjustmentOptions = result.options || { students: [], coursesByStudent: {}, docIds: [] };
+            if (this.adjustmentOptions.docIds.length === 1) {
+              this.adjustmentForm.relatedDocId = this.adjustmentOptions.docIds[0];
             }
           },
 
           adjustmentCourses() {
-            const selectedStudent = this.adjustmentForm.student;
-            if (!selectedStudent) return [];
+            if (!this.adjustmentForm.student) return [];
             const coursesByStudent = this.adjustmentOptions.coursesByStudent || {};
-            return coursesByStudent[selectedStudent] || [];
+            return coursesByStudent[this.adjustmentForm.student] || [];
           },
 
           async onAdjustmentStudentChange() {
@@ -748,42 +769,53 @@
           },
 
           onAdjustmentCourseChange() {
-            const selectedCourse = this.adjustmentCourses().find(course => course.name === this.adjustmentForm.course);
-            this.adjustmentForm.unitFee = selectedCourse ? selectedCourse.unitFee : "";
+            const selectedCourse = this.adjustmentCourses().find((course) => course.name === this.adjustmentForm.course);
+            this.adjustmentForm.unitFee = selectedCourse ? String(selectedCourse.unitFee || "") : "";
             this.recalculateAdjustmentHours();
           },
 
           async refreshAdjustmentDocIds() {
-            if (!this.adjustmentForm.student || !this.adjustmentForm.originalMonth) return;
+            if (!this.adjustmentForm.student || !this.adjustmentForm.originalMonth) {
+              this.adjustmentOptions.docIds = [];
+              this.adjustmentForm.relatedDocId = "";
+              return;
+            }
+            this.adjustmentForm.relatedDocId = "";
             await this.loadTuitionAdjustmentOptions();
           },
 
           recalculateAdjustmentHours() {
-            if (!this.adjustmentForm.startTime || !this.adjustmentForm.endTime) return;
             const start = this.parseClockTime(this.adjustmentForm.startTime);
             const end = this.parseClockTime(this.adjustmentForm.endTime);
-            if (end > start) {
-              this.adjustmentForm.hours = String(Math.round((end - start) * 100) / 100);
+            if (start === null || end === null || end <= start) {
+              this.adjustmentForm.hours = "";
+              return;
             }
+            const hours = (end - start) / 60;
+            this.adjustmentForm.hours = Number.isInteger(hours) ? String(hours) : hours.toFixed(2).replace(/0$/, "");
           },
 
           parseClockTime(value) {
-            const clean = String(value || "").replace(":", "");
-            if (clean.length !== 4) return 0;
-            return Number(clean.substring(0, 2)) + Number(clean.substring(2, 4)) / 60;
+            const parts = String(value || "").split(":");
+            if (parts.length !== 2) return null;
+            const hour = Number(parts[0]);
+            const minute = Number(parts[1]);
+            if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+            return hour * 60 + minute;
           },
 
           adjustmentPreviewAmount() {
             const amount = Math.round(Number(this.adjustmentForm.hours || 0) * Number(this.adjustmentForm.unitFee || 0));
+            if (!amount || amount <= 0) return "NT$ 0";
             const signedAmount = this.adjustmentForm.type === "退費" ? -amount : amount;
-            return Number.isFinite(signedAmount) ? signedAmount : 0;
+            return `NT$ ${signedAmount.toLocaleString()}`;
           },
 
           async loadUnverifiedSchedules() {
             if (!this.config.gasWebAppUrl) {
               this.unverifiedSchedules = [
-                { rowId: 101, student: "張學友", subject: "英語會話", date: "2026-05-30", startTime: "14:00", endTime: "15:30", hours: 1.5, canVerify: true },
-                { rowId: 102, student: "劉德華", subject: "初級日語", date: "2026-06-30", startTime: "10:00", endTime: "12:00", hours: 2.0, canVerify: false, verifyMessage: "課程尚未結束，暫不可核銷。" },
+                { rowId: 101, student: "張學友", subject: "英語會話", date: "2026-05-30", startTime: "14:00", endTime: "15:30", hours: 1.5 },
+                { rowId: 102, student: "劉德華", subject: "初級日語", date: "2026-05-31", startTime: "10:00", endTime: "12:00", hours: 2.0 },
               ];
               return;
             }
@@ -806,7 +838,7 @@
                   thisMonthHours: 0,
                   casualLeaveRemaining: 8,
                   sickLeaveRemaining: 24,
-                  isAdmin: this.form.name.includes("銵"),
+                  isAdmin: this.form.name.includes("行政"),
                 };
                 this.state = "bound";
                 await this.loadOptions();
@@ -845,7 +877,7 @@
                 throw new Error("上課結束時間必須晚於開始時間。");
               }
               if (!this.config.gasWebAppUrl) {
-                alert(`模擬送出：${this.regForm.mode === "normal" ? "正式授課" : "預排登記"}\n學生：${this.regForm.student}\n課程：${this.regForm.subject}\n日期：${this.regForm.date}`);
+                alert(`模擬送出：${this.regForm.mode === "normal" ? "正式授課" : "預排登記"}！\n學生：${this.regForm.student}\n科目：${this.regForm.subject}\n日期：${this.regForm.date}`);
                 this.submitting = false;
                 return;
               }
@@ -862,11 +894,11 @@
               });
 
               if (result.ok) {
-                alert("登記成功！");
-                await this.loadMe(); // ?湔?
+                alert("課程登記成功！");
+                await this.loadMe(); // 更新時數
                 this.activeTab = "register";
               } else {
-                throw new Error(result.message || "登記失敗，請重新確認。");
+                throw new Error(result.message || "登記失敗，時段可能有重疊，請重新確認。");
               }
             } catch (error) {
               this.message = error.message;
@@ -928,8 +960,8 @@
               });
 
               if (result.ok) {
-                alert("請假申請已送出。");
-                await this.loadMe(); // ?湔?擗?
+                alert("請假申請已成功提交！");
+                await this.loadMe(); // 更新假別餘額
               } else {
                 throw new Error(result.message || "請假申請失敗，請確認時間是否重複。");
               }
@@ -944,16 +976,16 @@
           async runAdminTask(taskName) {
             const formattedMonth = this.adminMonth.replace("-", "/"); // e.g., '2026/05'
             if (!this.config.gasWebAppUrl) {
-              alert(`模擬行政任務：${taskName}\n月份：${formattedMonth}`);
+              alert(`模擬行政任務：${taskName}\n選擇月份：${formattedMonth}`);
               return;
             }
 
-            if (!confirm(`確定執行 ${formattedMonth} 的「${taskName}」？`)) {
+            if (!confirm(`確定要針對 ${formattedMonth} 執行【${taskName}】嗎？`)) {
               return;
             }
 
             try {
-              // ??璅⊥?澆敺垢鞎∪?/?格?憭折?
+              // 這邊模擬呼叫後端財務/單據大項
               const result = await this.callApi({
                 action: "adminTask",
                 lineUserId: this.lineUserId,
@@ -962,9 +994,9 @@
               });
 
               if (result.ok) {
-                alert(`${taskName} 執行完成。\n${result.message || ""}`);
+                alert(`【${taskName}】執行成功！\n${result.message || ""}`);
               } else {
-                throw new Error(result.message || "行政任務執行失敗。");
+                throw new Error(result.message || "任務執行失敗。");
               }
             } catch (error) {
               alert(error.message);
@@ -985,10 +1017,10 @@
               const signedAmount = this.adjustmentForm.type === "退費" ? -amount : amount;
               const confirmed = confirm(
                 `建立${this.adjustmentForm.type}紀錄？\n` +
+                `原錯誤月份：${this.adjustmentForm.originalMonth}\n` +
+                `處理月份：${this.adjustmentForm.processingMonth}\n` +
                 `學生：${this.adjustmentForm.student}\n` +
                 `課程：${this.adjustmentForm.course}\n` +
-                `原錯誤月份：${this.adjustmentForm.originalMonth.replace("-", "/")}\n` +
-                `處理月份：${this.adjustmentForm.processingMonth.replace("-", "/")}\n` +
                 `金額：${signedAmount}\n\n` +
                 "此操作只會建立調整紀錄，不會直接更改舊繳費單。"
               );
@@ -1048,7 +1080,7 @@
               }
               this.teacherProfile = null;
               this.state = "unbound";
-              alert("已解除綁定。");
+              alert("已順利解除綁定。");
             } catch (error) {
               alert("解除綁定失敗，請稍後再試。");
             }
@@ -1073,7 +1105,7 @@
             try {
               return JSON.parse(responseText);
             } catch (error) {
-              throw new Error(`API ??銝 JSON: ${responseText.substring(0, 240)}`);
+              throw new Error(`API 回應不是 JSON: ${responseText.substring(0, 240)}`);
             }
           },
         };
@@ -1081,4 +1113,3 @@
     </script>
   </body>
 </html>
-
