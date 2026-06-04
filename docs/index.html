@@ -646,100 +646,168 @@
               >
             </label>
 
-            <!-- 操作網格 -->
-            <div class="grid grid-cols-2 gap-3 pt-2">
+            <!-- 行政功能分頁 -->
+            <div class="grid grid-cols-3 gap-2 pt-2">
               <button
                 type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('學費試算')"
+                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'calc' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                @click="activeAdminTab = 'calc'"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">學費試算</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">學員課費與月結試算</p>
+                試算
               </button>
-
               <button
                 type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('鐘點試算')"
+                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'tuition' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                @click="activeAdminTab = 'tuition'"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">鐘點試算</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">講師鐘點與補充保費計算</p>
+                繳費單
               </button>
-
               <button
                 type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('產生繳費單')"
+                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'receipt' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                @click="activeAdminTab = 'receipt'"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">產生繳費單</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">批次產出 PDF 單據</p>
+                收據
               </button>
-
               <button
                 type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('產生收據')"
+                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'voucher' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                @click="activeAdminTab = 'voucher'"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">產生收據</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">繳費完成後產出收據</p>
+                領據
               </button>
-
               <button
                 type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('寄送收據')"
+                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'adjustment' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                @click="activeAdminTab = 'adjustment'"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">寄送收據</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">寄送學生收據通知</p>
+                帳務補救
               </button>
-
               <button
                 type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('產生領據')"
+                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'tools' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                @click="activeAdminTab = 'tools'"
               >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">產生領據</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">產出講師鐘點費領據</p>
-              </button>
-
-              <button
-                type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('寄送領據')"
-              >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">寄送領據</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">批次寄送 Gmail 通知</p>
-              </button>
-
-              <button
-                type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('一般收據')"
-              >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">一般收據</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">入會費、常年會費、捐款</p>
-              </button>
-
-              <button
-                type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="runAdminTask('稅務專區')"
-              >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">稅務專區</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">年度資料與稅務檢核</p>
-              </button>
-
-              <button
-                type="button"
-                class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group"
-                @click="showMyLineId()"
-              >
-                <span class="text-xs font-bold text-white group-hover:text-amber-400">查我的 ID</span>
-                <p class="mt-1 text-[10px] text-slate-500 leading-4">綁定與權限排查使用</p>
+                工具
               </button>
             </div>
 
-            <div class="space-y-3 border-t border-slate-900 pt-4">
+            <!-- 分頁工作區 -->
+            <div class="rounded-2xl border border-slate-800 bg-white p-4">
+              <div x-show="activeAdminTab === 'calc'" class="space-y-3">
+                <div>
+                  <h4 class="text-sm font-bold text-white">試算</h4>
+                  <p class="mt-1 text-[10px] leading-4 text-slate-500">先產生預覽，確認後才允許寫入試算結果。</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('學費試算')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">學費試算預覽</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">學員課費與月結試算</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('鐘點試算')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">鐘點試算預覽</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">講師鐘點與補充保費計算</p>
+                  </button>
+                </div>
+                <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">確認寫入功能待接正式預覽結果後開放。</div>
+              </div>
+
+              <div x-show="activeAdminTab === 'tuition'" class="space-y-3">
+                <div>
+                  <h4 class="text-sm font-bold text-white">繳費單</h4>
+                  <p class="mt-1 text-[10px] leading-4 text-slate-500">產生、寄送與 LINE push 前都必須先預覽。</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('產生繳費單')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">繳費單預覽</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">確認金額後才產生</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="adminFeaturePending('查看已產生單據')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">已產生單據</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">查看、補發、作廢</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="adminFeaturePending('寄送繳費單 Email')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">寄送 Email</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">寄送給家長</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="adminFeaturePending('LINE push 繳費單')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">LINE push</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">推送給家長</p>
+                  </button>
+                </div>
+              </div>
+
+              <div x-show="activeAdminTab === 'receipt'" class="space-y-3">
+                <div>
+                  <h4 class="text-sm font-bold text-white">收據</h4>
+                  <p class="mt-1 text-[10px] leading-4 text-slate-500">學費收據與一般收據都先預覽，再寄送。</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('產生收據')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">收據預覽</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">確認後產生收據</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('寄送收據')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">寄送收據</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">Email 給家長</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('一般收據')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">一般收據</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">入會費、常年會費、捐款</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="adminFeaturePending('LINE push 收據')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">LINE push</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">推送給家長</p>
+                  </button>
+                </div>
+              </div>
+
+              <div x-show="activeAdminTab === 'voucher'" class="space-y-3">
+                <div>
+                  <h4 class="text-sm font-bold text-white">領據</h4>
+                  <p class="mt-1 text-[10px] leading-4 text-slate-500">講師鐘點領據需先預覽，再寄送或 LINE push。</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('產生領據')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">領據預覽</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">確認鐘點後產生</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('寄送領據')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">寄送領據</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">Email 給講師</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="adminFeaturePending('LINE push 領據')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">LINE push</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">推送給講師</p>
+                  </button>
+                </div>
+              </div>
+
+              <div x-show="activeAdminTab === 'tools'" class="space-y-3">
+                <div>
+                  <h4 class="text-sm font-bold text-white">工具</h4>
+                  <p class="mt-1 text-[10px] leading-4 text-slate-500">權限、綁定與稅務資料整理。</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('稅務專區')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">稅務專區</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">年度資料與稅務檢核</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showMyLineId()">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">查我的 ID</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">綁定與權限排查</p>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div x-show="activeAdminTab === 'adjustment'" class="space-y-3 rounded-2xl border border-slate-800 bg-white p-4">
               <div>
                 <h4 class="text-sm font-bold text-white">帳務補救</h4>
                 <p class="mt-1 text-[10px] leading-4 text-slate-500">建立補收/退費紀錄，不會直接更改舊繳費單。</p>
@@ -975,6 +1043,7 @@
           teacherProfile: null, // Google Sheets 講師資料
           activeTab: "home",
           activeStatusPanel: "registered",
+          activeAdminTab: "calc",
           activeTimePicker: null,
           timePickerHours: ["06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"],
           timePickerMinutes: ["00", "15", "30", "45"],
@@ -1677,6 +1746,13 @@
 
           showMyLineId() {
             alert(`您的 LINE User ID：\n${this.lineUserId || "尚未取得"}`);
+          },
+
+          adminFeaturePending(featureName) {
+            alert(
+              `${featureName} 已納入行政工作台規劃。\n\n` +
+              "此功能必須先完成預覽、收件人確認與二次確認流程，尚未開放實際寫入或寄送。"
+            );
           },
 
           async submitTuitionAdjustment() {
