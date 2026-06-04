@@ -8,7 +8,7 @@
 
 function handleLiffAdminTask(params: any) {
   const lineUserId = params.lineUserId;
-  const task = params.task; // '学费试算' | '钟点试算' | '产生缴费单' | '寄领据'
+  const task = params.task; // 行政作業名稱，由 LIFF 行政端傳入
   const month = params.month; // YYYY/MM (例如 "2026/05")
 
   // 1. 驗證管理員權限
@@ -39,9 +39,25 @@ function handleLiffAdminTask(params: any) {
       return { ok: true, message: `✅ ${month} 學生繳費單已批次生成至 Google 雲端硬碟！` };
     } 
     
-    if (task === "寄領據" || task === "寄领据") {
+    if (task === "寄送領據" || task === "寄領據" || task === "寄领据") {
       handleBatchSendAllowanceEmailCommand(mockEvent, "寄領據 " + month);
       return { ok: true, message: `✅ ${month} 講師領據 Email 已發送完畢！` };
+    }
+
+    if (task === "產生收據" || task === "寄送收據") {
+      return { ok: false, message: `${task} 的 LIFF 流程尚未開放；請先維持原 LINE 對話流程，避免誤寄或重複開立。` };
+    }
+
+    if (task === "產生領據") {
+      return { ok: false, message: "產生領據目前採單一講師對話流程；請在 LINE 輸入：開領據 YYYY/MM 講師名。" };
+    }
+
+    if (task === "一般收據") {
+      return { ok: false, message: "一般收據目前採 LINE 對話流程；請輸入：開一般收據 YYYY/MM/DD 姓名 金額，或：寄一般收據 YYYY/MM 姓名。" };
+    }
+
+    if (task === "稅務專區") {
+      return { ok: false, message: "稅務專區尚在規劃中，後續會整合年度收據、捐款/會費分類與稅務檢核。" };
     }
 
     return { ok: false, message: `不支援的行政任務: ${task}` };
