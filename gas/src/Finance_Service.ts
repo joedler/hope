@@ -119,6 +119,8 @@ function handleLiffAdminPreview(params: any) {
     return { ok: false, message: `不支援的行政預覽功能: ${feature}` };
   }
 
+  const metrics = buildAdminPreviewMetrics(month, feature);
+
   return {
     ok: true,
     preview: {
@@ -126,6 +128,7 @@ function handleLiffAdminPreview(params: any) {
       month,
       summary: preview.summary,
       items: preview.items,
+      metrics,
       status: "後端只讀預覽，尚未寫入或寄送",
       nextAction: preview.nextAction
     }
@@ -138,6 +141,73 @@ function normalizeAdminPreviewMonth(value: any) {
   if (/^\d{4}-\d{2}$/.test(raw)) return raw.replace("-", "/");
   const now = new Date();
   return Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy/MM");
+}
+
+function buildAdminPreviewMetrics(month: string, feature: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const metrics: any[] = [];
+
+  if (feature === "學費試算" || feature === "繳費單" || feature === "收據") {
+    metrics.push(adminMetric("授課紀錄", countSheetRowsByMonth(ss, SHEET_NAME_RECORD, 2, month), "指定月份已登記授課筆數"));
+    metrics.push(adminMetric("預排紀錄", countSheetRowsByMonth(ss, SHEET_NAME_PLAN, 2, month), "指定月份預排資料筆數"));
+    metrics.push(adminMetric("學費結算", countSheetRowsByMonth(ss, SHEET_NAME_FIN_FEE, 0, month), "既有學費結算表筆數"));
+    metrics.push(adminMetric("帳務補救", countSheetRowsByMonth(ss, SHEET_NAME_TUITION_ADJUSTMENT, 2, month), "處理月份符合的補收/退費筆數"));
+    return metrics;
+  }
+
+  if (feature === "鐘點試算" || feature === "領據") {
+    metrics.push(adminMetric("授課紀錄", countSheetRowsByMonth(ss, SHEET_NAME_RECORD, 2, month), "指定月份已登記授課筆數"));
+    metrics.push(adminMetric("預排紀錄", countSheetRowsByMonth(ss, SHEET_NAME_PLAN, 2, month), "指定月份預排資料筆數"));
+    metrics.push(adminMetric("鐘點結算", countSheetRowsByMonth(ss, SHEET_NAME_FIN_PAY, 0, month), "既有鐘點結算表筆數"));
+    return metrics;
+  }
+
+  if (feature === "一般收據") {
+    metrics.push(adminMetric("一般收據紀錄", countSheetRowsByMonth(ss, SHEET_NAME_GEN_RECORD, 2, month), "指定月份一般收據紀錄筆數"));
+    return metrics;
+  }
+
+  if (feature === "稅務專區") {
+    metrics.push(adminMetric("學費結算", countSheetRowsByMonth(ss, SHEET_NAME_FIN_FEE, 0, month), "指定月份學費結算筆數"));
+    metrics.push(adminMetric("鐘點結算", countSheetRowsByMonth(ss, SHEET_NAME_FIN_PAY, 0, month), "指定月份鐘點結算筆數"));
+    metrics.push(adminMetric("一般收據", countSheetRowsByMonth(ss, SHEET_NAME_GEN_RECORD, 2, month), "指定月份一般收據紀錄筆數"));
+  }
+
+  return metrics;
+}
+
+function adminMetric(label: string, value: number, note: string) {
+  return { label, value, note };
+}
+
+function countSheetRowsByMonth(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string, dateColumnIndex: number, month: string) {
+  try {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return 0;
+    const values = sheet.getDataRange().getValues();
+    let count = 0;
+    for (let i = 1; i < values.length; i++) {
+      if (isValueInMonth(values[i][dateColumnIndex], month)) count++;
+    }
+    return count;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function isValueInMonth(value: any, month: string) {
+  if (!value) return false;
+  const timeZone = Session.getScriptTimeZone();
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, timeZone, "yyyy/MM") === month;
+  }
+  const text = String(value).trim().replace(/-/g, "/");
+  if (/^\d{4}\/\d{2}/.test(text)) return text.substring(0, 7) === month;
+  if (/^\d{4}\/\d{1}\//.test(text)) {
+    const parts = text.split("/");
+    return `${parts[0]}/${String(Number(parts[1])).padStart(2, "0")}` === month;
+  }
+  return false;
 }
 
 // ==========================================

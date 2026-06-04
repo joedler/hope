@@ -822,6 +822,15 @@
                     </template>
                   </ul>
                 </div>
+                <div class="mt-3 grid grid-cols-2 gap-2" x-show="adminPreview && adminPreview.metrics && adminPreview.metrics.length">
+                  <template x-for="metric in (adminPreview ? adminPreview.metrics : [])" :key="metric.label">
+                    <div class="rounded-lg border border-amber-200 bg-white px-3 py-2">
+                      <p class="text-[10px] font-semibold text-amber-700" x-text="metric.label"></p>
+                      <p class="mt-1 text-lg font-bold text-slate-100" x-text="metric.value"></p>
+                      <p class="mt-1 text-[10px] leading-4 text-slate-500" x-text="metric.note"></p>
+                    </div>
+                  </template>
+                </div>
                 <div class="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs text-amber-700">
                   <p class="font-semibold">目前狀態：<span x-text="adminPreview ? adminPreview.status : ''"></span></p>
                   <p class="mt-1">確認寫入、產生、寄送與 LINE push 需接上正式預覽 API 與二次確認後才會開放。</p>
@@ -1856,6 +1865,7 @@
               title: featureName,
               summary: preview.summary,
               items: preview.items,
+              metrics: [],
               status: "僅顯示前端預覽，尚未寫入或寄送",
               nextAction: preview.nextAction,
             };
