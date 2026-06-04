@@ -824,9 +824,15 @@
                 </div>
                 <div class="mt-3 grid grid-cols-2 gap-2" x-show="adminPreview && adminPreview.metrics && adminPreview.metrics.length">
                   <template x-for="metric in (adminPreview ? adminPreview.metrics : [])" :key="metric.label">
-                    <div class="rounded-lg border border-amber-200 bg-white px-3 py-2">
-                      <p class="text-[10px] font-semibold text-amber-700" x-text="metric.label"></p>
-                      <p class="mt-1 text-lg font-bold text-slate-100" x-text="metric.value"></p>
+                    <div class="rounded-lg border bg-white px-3 py-2"
+                      :class="metric.state === 'missing' || metric.state === 'error' ? 'border-red-200' : metric.state === 'empty' ? 'border-amber-200' : 'border-teal-200'">
+                      <p class="text-[10px] font-semibold"
+                        :class="metric.state === 'missing' || metric.state === 'error' ? 'text-red-600' : metric.state === 'empty' ? 'text-amber-700' : 'text-teal-700'"
+                        x-text="metric.label"></p>
+                      <p class="mt-1 text-lg font-bold text-slate-900" x-text="metric.value"></p>
+                      <p class="mt-1 text-[10px] font-semibold"
+                        :class="metric.state === 'missing' || metric.state === 'error' ? 'text-red-600' : metric.state === 'empty' ? 'text-amber-600' : 'text-teal-600'"
+                        x-text="metric.stateText || ''"></p>
                       <p class="mt-1 text-[10px] leading-4 text-slate-500" x-text="metric.note"></p>
                     </div>
                   </template>

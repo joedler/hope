@@ -148,51 +148,53 @@ function buildAdminPreviewMetrics(month: string, feature: string) {
   const metrics: any[] = [];
 
   if (feature === "學費試算" || feature === "繳費單" || feature === "收據") {
-    metrics.push(adminMetric("授課紀錄", countSheetRowsByMonth(ss, SHEET_NAME_RECORD, 2, month), "指定月份已登記授課筆數"));
-    metrics.push(adminMetric("預排紀錄", countSheetRowsByMonth(ss, SHEET_NAME_PLAN, 2, month), "指定月份預排資料筆數"));
-    metrics.push(adminMetric("學費結算", countSheetRowsByMonth(ss, SHEET_NAME_FIN_FEE, 0, month), "既有學費結算表筆數"));
-    metrics.push(adminMetric("帳務補救", countSheetRowsByMonth(ss, SHEET_NAME_TUITION_ADJUSTMENT, 2, month), "處理月份符合的補收/退費筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "授課紀錄", SHEET_NAME_RECORD, 2, month, "指定月份已登記授課筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "預排紀錄", SHEET_NAME_PLAN, 2, month, "指定月份預排資料筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "學費結算", SHEET_NAME_FIN_FEE, 0, month, "既有學費結算表筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "帳務補救", SHEET_NAME_TUITION_ADJUSTMENT, 2, month, "處理月份符合的補收/退費筆數"));
     return metrics;
   }
 
   if (feature === "鐘點試算" || feature === "領據") {
-    metrics.push(adminMetric("授課紀錄", countSheetRowsByMonth(ss, SHEET_NAME_RECORD, 2, month), "指定月份已登記授課筆數"));
-    metrics.push(adminMetric("預排紀錄", countSheetRowsByMonth(ss, SHEET_NAME_PLAN, 2, month), "指定月份預排資料筆數"));
-    metrics.push(adminMetric("鐘點結算", countSheetRowsByMonth(ss, SHEET_NAME_FIN_PAY, 0, month), "既有鐘點結算表筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "授課紀錄", SHEET_NAME_RECORD, 2, month, "指定月份已登記授課筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "預排紀錄", SHEET_NAME_PLAN, 2, month, "指定月份預排資料筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "鐘點結算", SHEET_NAME_FIN_PAY, 0, month, "既有鐘點結算表筆數"));
     return metrics;
   }
 
   if (feature === "一般收據") {
-    metrics.push(adminMetric("一般收據紀錄", countSheetRowsByMonth(ss, SHEET_NAME_GEN_RECORD, 2, month), "指定月份一般收據紀錄筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "一般收據紀錄", SHEET_NAME_GEN_RECORD, 2, month, "指定月份一般收據紀錄筆數"));
     return metrics;
   }
 
   if (feature === "稅務專區") {
-    metrics.push(adminMetric("學費結算", countSheetRowsByMonth(ss, SHEET_NAME_FIN_FEE, 0, month), "指定月份學費結算筆數"));
-    metrics.push(adminMetric("鐘點結算", countSheetRowsByMonth(ss, SHEET_NAME_FIN_PAY, 0, month), "指定月份鐘點結算筆數"));
-    metrics.push(adminMetric("一般收據", countSheetRowsByMonth(ss, SHEET_NAME_GEN_RECORD, 2, month), "指定月份一般收據紀錄筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "學費結算", SHEET_NAME_FIN_FEE, 0, month, "指定月份學費結算筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "鐘點結算", SHEET_NAME_FIN_PAY, 0, month, "指定月份鐘點結算筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "一般收據", SHEET_NAME_GEN_RECORD, 2, month, "指定月份一般收據紀錄筆數"));
   }
 
   return metrics;
 }
 
-function adminMetric(label: string, value: number, note: string) {
-  return { label, value, note };
-}
-
-function countSheetRowsByMonth(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string, dateColumnIndex: number, month: string) {
+function buildSheetMonthMetric(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, label: string, sheetName: string, dateColumnIndex: number, month: string, note: string) {
   try {
     const sheet = ss.getSheetByName(sheetName);
-    if (!sheet) return 0;
+    if (!sheet) return adminMetric(label, 0, note, "missing", `找不到分頁：${sheetName}`);
     const values = sheet.getDataRange().getValues();
     let count = 0;
     for (let i = 1; i < values.length; i++) {
       if (isValueInMonth(values[i][dateColumnIndex], month)) count++;
     }
-    return count;
+    const state = count > 0 ? "ok" : "empty";
+    const stateText = count > 0 ? "有資料" : "本月無資料";
+    return adminMetric(label, count, note, state, stateText);
   } catch (e) {
-    return 0;
+    return adminMetric(label, 0, note, "error", "讀取失敗：" + e.toString());
   }
+}
+
+function adminMetric(label: string, value: number, note: string, state: string, stateText: string) {
+  return { label, value, note, state, stateText };
 }
 
 function isValueInMonth(value: any, month: string) {
