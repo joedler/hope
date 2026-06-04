@@ -706,11 +706,11 @@
                   <p class="mt-1 text-[10px] leading-4 text-slate-500">先產生預覽，確認後才允許寫入試算結果。</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('學費試算')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('學費試算')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">學費試算預覽</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">學員課費與月結試算</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('鐘點試算')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('鐘點試算')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">鐘點試算預覽</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">講師鐘點與補充保費計算</p>
                   </button>
@@ -724,7 +724,7 @@
                   <p class="mt-1 text-[10px] leading-4 text-slate-500">產生、寄送與 LINE push 前都必須先預覽。</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('產生繳費單')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('繳費單')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">繳費單預覽</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">確認金額後才產生</p>
                   </button>
@@ -749,15 +749,15 @@
                   <p class="mt-1 text-[10px] leading-4 text-slate-500">學費收據與一般收據都先預覽，再寄送。</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('產生收據')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('收據')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">收據預覽</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">確認後產生收據</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('寄送收據')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="adminFeaturePending('寄送收據 Email')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">寄送收據</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">Email 給家長</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('一般收據')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('一般收據')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">一般收據</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">入會費、常年會費、捐款</p>
                   </button>
@@ -774,11 +774,11 @@
                   <p class="mt-1 text-[10px] leading-4 text-slate-500">講師鐘點領據需先預覽，再寄送或 LINE push。</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('產生領據')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('領據')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">領據預覽</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">確認鐘點後產生</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('寄送領據')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="adminFeaturePending('寄送領據 Email')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">寄送領據</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">Email 給講師</p>
                   </button>
@@ -795,7 +795,7 @@
                   <p class="mt-1 text-[10px] leading-4 text-slate-500">權限、綁定與稅務資料整理。</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="runAdminTask('稅務專區')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('稅務專區')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">稅務專區</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">年度資料與稅務檢核</p>
                   </button>
@@ -804,6 +804,25 @@
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">綁定與權限排查</p>
                   </button>
                 </div>
+              </div>
+
+              <div x-show="adminPreview" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-xs font-semibold text-amber-600">預覽模式</p>
+                    <h4 class="mt-1 text-base font-bold" x-text="adminPreview ? adminPreview.title : ''"></h4>
+                  </div>
+                  <button type="button" class="rounded-lg border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-700" @click="adminPreview = null">關閉</button>
+                </div>
+                <div class="mt-3 space-y-2">
+                  <p x-text="adminPreview ? adminPreview.summary : ''"></p>
+                  <ul class="list-disc space-y-1 pl-5">
+                    <template x-for="item in (adminPreview ? adminPreview.items : [])" :key="item">
+                      <li x-text="item"></li>
+                    </template>
+                  </ul>
+                </div>
+                <div class="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs text-amber-700">確認寫入、產生、寄送與 LINE push 需接上正式預覽 API 與二次確認後才會開放。</div>
               </div>
             </div>
 
@@ -1044,6 +1063,7 @@
           activeTab: "home",
           activeStatusPanel: "registered",
           activeAdminTab: "calc",
+          adminPreview: null,
           activeTimePicker: null,
           timePickerHours: ["06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"],
           timePickerMinutes: ["00", "15", "30", "45"],
@@ -1753,6 +1773,49 @@
               `${featureName} 已納入行政工作台規劃。\n\n` +
               "此功能必須先完成預覽、收件人確認與二次確認流程，尚未開放實際寫入或寄送。"
             );
+          },
+
+          showAdminPreview(featureName) {
+            const formattedMonth = this.adminMonth.replace("-", "/");
+            const previewMap = {
+              "學費試算": {
+                summary: `預覽 ${formattedMonth} 學費試算。`,
+                items: ["檢查學生姓名與課程", "檢查預收/後收", "檢查補收/退費", "確認後才可寫入試算結果"],
+              },
+              "鐘點試算": {
+                summary: `預覽 ${formattedMonth} 講師鐘點試算。`,
+                items: ["檢查授課紀錄", "檢查預排核銷", "檢查補充鐘點與保費", "確認後才可寫入試算結果"],
+              },
+              "繳費單": {
+                summary: `預覽 ${formattedMonth} 繳費單。`,
+                items: ["檢查學生、課程與金額", "檢查補收/退費是否併入", "確認後才產生單據", "寄送 Email 或 LINE push 前需再次確認收件人"],
+              },
+              "收據": {
+                summary: `預覽 ${formattedMonth} 學費收據。`,
+                items: ["檢查繳費狀態", "檢查收據金額與抬頭", "確認後才產生收據", "寄送前需確認家長收件資訊"],
+              },
+              "一般收據": {
+                summary: "預覽入會費、常年會費或捐款一般收據。",
+                items: ["選擇收據類型", "檢查收款人與金額", "確認後才產生或寄送", "後續需接正式收件人資料"],
+              },
+              "領據": {
+                summary: `預覽 ${formattedMonth} 講師領據。`,
+                items: ["檢查講師與鐘點費", "檢查授課紀錄與補充項目", "確認後才產生領據", "LINE push 對象為講師本人"],
+              },
+              "稅務專區": {
+                summary: `預覽 ${formattedMonth} 稅務資料整理。`,
+                items: ["年度資料彙整", "收據與捐款資料檢核", "後續需定義稅務輸出格式"],
+              },
+            };
+            const preview = previewMap[featureName] || {
+              summary: `${featureName} 預覽。`,
+              items: ["此功能尚待定義正式預覽內容。"],
+            };
+            this.adminPreview = {
+              title: featureName,
+              summary: preview.summary,
+              items: preview.items,
+            };
           },
 
           async submitTuitionAdjustment() {
