@@ -278,33 +278,12 @@
             <h3 class="text-sm font-bold text-white mb-4" x-text="regForm.mode === 'normal' ? '授課登記' : '預排課程'"></h3>
             
             <div class="space-y-4">
-              <!-- 登記模式 -->
-              <div class="grid grid-cols-2 gap-2 rounded-lg bg-slate-900 p-1" x-show="false">
-                <button
-                  type="button"
-                  class="rounded-md py-1.5 text-xs font-medium transition"
-                  :class="regForm.mode === 'normal' ? 'bg-slate-800 text-white shadow' : 'text-slate-400'"
-                  @click="regForm.mode = 'normal'"
-                >
-                  正式授課 (登記)
-                </button>
-                <button
-                  type="button"
-                  class="rounded-md py-1.5 text-xs font-medium transition"
-                  :class="regForm.mode === 'pre' ? 'bg-slate-800 text-white shadow' : 'text-slate-400'"
-                  @click="regForm.mode = 'pre'"
-                >
-                  未核銷課程 (預排)
-                </button>
-              </div>
-
-              <!-- 學生選擇 -->
               <label class="block">
                 <span class="text-xs font-semibold text-slate-400">學生</span>
                 <select
                   class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
                   x-model="regForm.student"
-                  @change="regForm.subject = ''"
+                  @change="onRegisterStudentChange()"
                 >
                   <option value="">-- 請選擇學生 --</option>
                   <template x-for="std in options.students" :key="std">
@@ -314,63 +293,95 @@
                 <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && options.students.length === 0">
                   目前沒有可登記的學生，請聯絡行政確認課程設定表。
                 </p>
+                <p class="mt-2 text-xs text-slate-500">一次可登記同一位學生最多 5 筆課程。</p>
               </label>
 
-              <!-- 課程選擇 -->
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-400">課程 / 科目</span>
-                <select
-                  class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
-                  x-model="regForm.subject"
-                >
-                  <option value="">-- 請選擇課程 --</option>
-                  <template x-for="subj in filteredSubjects()" :key="subj">
-                    <option :value="subj" x-text="subj"></option>
-                  </template>
-                </select>
-                <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && regForm.student && filteredSubjects().length === 0">
-                  目前沒有可登記的課程，請聯絡行政確認課程設定表。
-                </p>
-              </label>
+              <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && regForm.student && filteredSubjects().length === 0">
+                目前沒有可登記的課程，請聯絡行政確認課程設定表。
+              </p>
 
-              <!-- 日期選擇 -->
-              <label class="block">
-                <span class="text-xs font-semibold text-slate-400">上課日期</span>
-                <input
-                  type="date"
-                  class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
-                  x-model="regForm.date"
-                >
-              </label>
+              <template x-for="(lesson, index) in regForm.lessons" :key="lesson.id">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <h4 class="text-base font-bold text-white" x-text="`第 ${index + 1} 筆`"></h4>
+                    <button
+                      type="button"
+                      class="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-500"
+                      x-show="regForm.lessons.length > 1"
+                      @click="removeLesson(index)"
+                    >
+                      刪除
+                    </button>
+                  </div>
 
-              <!-- 時間選擇 -->
+                  <label class="block">
+                    <span class="text-xs font-semibold text-slate-400">課程 / 科目</span>
+                    <select
+                      class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                      x-model="lesson.subject"
+                    >
+                      <option value="">-- 請選擇課程 --</option>
+                      <template x-for="subj in filteredSubjects()" :key="subj">
+                        <option :value="subj" x-text="subj"></option>
+                      </template>
+                    </select>
+                  </label>
+
+                  <label class="block">
+                    <span class="text-xs font-semibold text-slate-400">日期</span>
+                    <input
+                      type="date"
+                      class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                      x-model="lesson.date"
+                    >
+                  </label>
+
+                  <div class="grid grid-cols-2 gap-3">
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-400">開始時間</span>
+                      <input
+                        type="time"
+                        class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                        x-model="lesson.startTime"
+                      >
+                    </label>
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-400">結束時間</span>
+                      <input
+                        type="time"
+                        class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
+                        x-model="lesson.endTime"
+                      >
+                    </label>
+                  </div>
+                </div>
+              </template>
+
               <div class="grid grid-cols-2 gap-3">
-                <label class="block">
-                  <span class="text-xs font-semibold text-slate-400">開始時間</span>
-                  <input
-                    type="time"
-                    class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
-                    x-model="regForm.startTime"
-                  >
-                </label>
-                <label class="block">
-                  <span class="text-xs font-semibold text-slate-400">結束時間</span>
-                  <input
-                    type="time"
-                    class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
-                    x-model="regForm.endTime"
-                  >
-                </label>
+                <button
+                  type="button"
+                  class="rounded-xl border border-teal-200 bg-white px-4 py-3 text-sm font-semibold text-teal-500 disabled:text-slate-500 transition"
+                  :disabled="!regForm.student || regForm.lessons.length >= 5"
+                  @click="addLesson()"
+                >
+                  ＋ 新增一筆
+                </button>
+                <button
+                  type="button"
+                  class="rounded-xl border border-slate-800 bg-white px-4 py-3 text-sm font-semibold text-slate-500 transition"
+                  @click="resetLessons()"
+                >
+                  清空重填
+                </button>
               </div>
 
-              <!-- 提交按鈕 -->
               <button
                 type="button"
                 class="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-900/30 hover:bg-teal-500 disabled:bg-slate-800 disabled:text-slate-500 transition"
-                :disabled="submitting || !regForm.student || !regForm.subject || !regForm.date || !regForm.startTime || !regForm.endTime"
+                :disabled="submitting || !canSubmitLessons()"
                 @click="registerCourse()"
               >
-                <span x-show="!submitting" x-text="regForm.mode === 'normal' ? '送出授課登記' : '送出預排登記'"></span>
+                <span x-show="!submitting" x-text="regForm.mode === 'normal' ? `送出 ${regForm.lessons.length} 筆授課登記` : `送出 ${regForm.lessons.length} 筆預排登記`"></span>
                 <span x-show="submitting">正在儲存並檢查重疊中...</span>
               </button>
             </div>
@@ -726,10 +737,15 @@
           regForm: {
             mode: "normal", // 'normal' | 'pre'
             student: "",
-            subject: "",
-            date: new Date().toISOString().substring(0, 10),
-            startTime: "13:00",
-            endTime: "14:00",
+            lessons: [
+              {
+                id: 1,
+                subject: "",
+                date: new Date().toISOString().substring(0, 10),
+                startTime: "13:00",
+                endTime: "14:00",
+              }
+            ],
           },
           adjustmentForm: {
             type: "補收",
@@ -889,6 +905,70 @@
             if (!selectedStudent) return [];
             const coursesByStudent = this.options.coursesByStudent || {};
             return coursesByStudent[selectedStudent] || [];
+          },
+
+          createLessonFromPrevious(previous) {
+            const baseDate = previous ? previous.date : new Date().toISOString().substring(0, 10);
+            const baseSubject = previous ? previous.subject : "";
+            const startTime = previous ? previous.endTime : "13:00";
+            const duration = previous ? this.lessonDurationMinutes(previous) : 60;
+            return {
+              id: Date.now() + Math.floor(Math.random() * 1000),
+              subject: baseSubject,
+              date: baseDate,
+              startTime,
+              endTime: this.addMinutesToTime(startTime, duration),
+            };
+          },
+
+          onRegisterStudentChange() {
+            this.regForm.lessons = [this.createLessonFromPrevious(null)];
+          },
+
+          addLesson() {
+            if (!this.regForm.student || this.regForm.lessons.length >= 5) return;
+            const previous = this.regForm.lessons[this.regForm.lessons.length - 1];
+            this.regForm.lessons.push(this.createLessonFromPrevious(previous));
+          },
+
+          removeLesson(index) {
+            if (this.regForm.lessons.length <= 1) return;
+            this.regForm.lessons.splice(index, 1);
+          },
+
+          resetLessons() {
+            this.regForm.lessons = [this.createLessonFromPrevious(null)];
+          },
+
+          lessonDurationMinutes(lesson) {
+            const start = this.parseClockTime(lesson.startTime);
+            const end = this.parseClockTime(lesson.endTime);
+            if (start === null || end === null || end <= start) return 60;
+            return end - start;
+          },
+
+          addMinutesToTime(value, minutes) {
+            const start = this.parseClockTime(value);
+            if (start === null) return "14:00";
+            const total = Math.max(0, Math.min(start + minutes, 23 * 60 + 59));
+            const hour = String(Math.floor(total / 60)).padStart(2, "0");
+            const minute = String(total % 60).padStart(2, "0");
+            return `${hour}:${minute}`;
+          },
+
+          canSubmitLessons() {
+            if (!this.regForm.student || this.regForm.lessons.length === 0) return false;
+            return this.regForm.lessons.every((lesson) => {
+              const start = this.parseClockTime(lesson.startTime);
+              const end = this.parseClockTime(lesson.endTime);
+              return lesson.subject && lesson.date && start !== null && end !== null && end > start;
+            });
+          },
+
+          lessonSummary() {
+            return this.regForm.lessons.map((lesson, index) => {
+              return `${index + 1}. ${this.regForm.student}｜${lesson.subject}｜${lesson.date} ${lesson.startTime}-${lesson.endTime}`;
+            }).join("\n");
           },
 
           roleLabel() {
@@ -1058,33 +1138,50 @@
             this.message = "";
             this.submitting = true;
             try {
-              if (this.regForm.endTime <= this.regForm.startTime) {
-                throw new Error("上課結束時間必須晚於開始時間。");
+              if (!this.canSubmitLessons()) {
+                throw new Error("請確認每一筆都有課程、日期，且結束時間晚於開始時間。");
               }
+              const actionName = this.regForm.mode === "normal" ? "授課登記" : "預排登記";
+              const confirmed = confirm(
+                `即將送出 ${this.regForm.lessons.length} 筆${actionName}：\n\n` +
+                this.lessonSummary() +
+                "\n\n確認送出？"
+              );
+              if (!confirmed) return;
+
               if (!this.config.gasWebAppUrl) {
-                alert(`模擬送出：${this.regForm.mode === "normal" ? "正式授課" : "預排登記"}！\n學生：${this.regForm.student}\n科目：${this.regForm.subject}\n日期：${this.regForm.date}`);
-                this.submitting = false;
+                alert(`模擬送出：${actionName}\n\n${this.lessonSummary()}`);
                 return;
               }
 
-              const result = await this.callApi({
-                action: "register",
-                lineUserId: this.lineUserId,
-                mode: this.regForm.mode,
-                student: this.regForm.student,
-                subject: this.regForm.subject,
-                date: this.regForm.date,
-                startTime: this.regForm.startTime,
-                endTime: this.regForm.endTime,
-              });
-
-              if (result.ok) {
-                alert("課程登記成功！");
-                await this.loadMe(); // 更新時數
-                this.activeTab = "register";
-              } else {
-                throw new Error(result.message || "登記失敗，時段可能有重疊，請重新確認。");
+              const results = [];
+              for (let i = 0; i < this.regForm.lessons.length; i++) {
+                const lesson = this.regForm.lessons[i];
+                try {
+                  const result = await this.callApi({
+                    action: "register",
+                    lineUserId: this.lineUserId,
+                    mode: this.regForm.mode,
+                    student: this.regForm.student,
+                    subject: lesson.subject,
+                    date: lesson.date,
+                    startTime: lesson.startTime,
+                    endTime: lesson.endTime,
+                  });
+                  if (result.ok) {
+                    results.push(`第 ${i + 1} 筆成功`);
+                  } else {
+                    results.push(`第 ${i + 1} 筆失敗：${result.message || "登記失敗"}`);
+                  }
+                } catch (error) {
+                  results.push(`第 ${i + 1} 筆失敗：${error.message || "登記失敗"}`);
+                }
               }
+
+              alert(`${actionName}完成：\n\n${results.join("\n")}`);
+              await this.loadMe(); // 更新時數
+              await this.loadUnverifiedSchedules();
+              this.resetLessons();
             } catch (error) {
               this.message = error.message;
               alert(error.message);
