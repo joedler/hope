@@ -114,7 +114,7 @@ function handleLiffAdminPreview(params: any) {
     }
   };
 
-  const preview = previewMap[feature];
+  const preview = feature === "學費試算" ? buildTuitionAdminPreview(month) : previewMap[feature];
   if (!preview) {
     return { ok: false, message: `不支援的行政預覽功能: ${feature}` };
   }
@@ -143,6 +143,176 @@ function normalizeAdminPreviewMonth(value: any) {
   return Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy/MM");
 }
 
+function buildTuitionAdminPreview(month: string) {
+  try {
+    const result = buildTuitionReadOnlyPreview(month);
+    const items = result.items.slice(0, 12);
+    if (result.items.length > items.length) {
+      items.push(`另有 ${result.items.length - items.length} 筆課程彙總未列出，正式預覽頁後續再提供完整清單。`);
+    }
+    return {
+      summary: `${month} 學費試算只讀預覽：${result.studentCount} 位學生，預估總額 ${formatCurrency(result.grandTotal)}。`,
+      items,
+      nextAction: "確認寫入試算結果（尚未開放）"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 學費試算只讀預覽讀取失敗。`,
+      items: ["請先檢查 Google Sheets 分頁、欄位與 GAS 權限。", "錯誤：" + e.toString()],
+      nextAction: "確認寫入試算結果（尚未開放）"
+    };
+  }
+}
+
+function buildTuitionReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const splitDt = month.split("/");
+  const nextDate = new Date(parseInt(splitDt[0], 10), parseInt(splitDt[1], 10), 1);
+  const nextMonthStr = Utilities.formatDate(nextDate, timeZone, "yyyy/MM");
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const recordSheet = ss.getSheetByName(SHEET_NAME_RECORD);
+  const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
+  const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
+  if (!recordSheet || !planSheet || !courseSheet) throw new Error("找不到授課紀錄、預排紀錄或課程設定表。");
+
+  const configMap: any = {};
+  const courseData = courseSheet.getDataRange().getValues();
+  for (let i = 1; i < courseData.length; i++) {
+    const studentName = String(courseData[i][2] || "").trim();
+    const courseName = String(courseData[i][3] || "").trim();
+    if (!studentName || !courseName) continue;
+    configMap[studentName + "_" + courseName] = {
+      fee: parseFloat(courseData[i][4]) || 0,
+      mode: String(courseData[i][6] || "").trim() === "預收" ? "預收" : "後收",
+      teacher: String(courseData[i][1] || "").trim()
+    };
+  }
+
+  const stats: any = {};
+  function initStats(studentName: string, courseName: string, teacherName: string, fee: number, mode: string) {
+    if (!stats[studentName]) stats[studentName] = {};
+    if (!stats[studentName][courseName]) {
+      stats[studentName][courseName] = {
+        teacher: teacherName,
+        fee,
+        mode,
+        recordBase: 0,
+        planBase: 0,
+        planNext: 0,
+        detailsRec: [],
+        detailsPlan: [],
+        adjustments: []
+      };
+    }
+  }
+
+  const recordData = recordSheet.getDataRange().getValues();
+  for (let i = 1; i < recordData.length; i++) {
+    const rowMonth = normalizeFinancialMonth(recordData[i][2], timeZone);
+    const settled = recordData[i][9];
+    if (rowMonth !== month || settled) continue;
+    const studentName = String(recordData[i][7] || "").trim();
+    const courseName = String(recordData[i][8] || "").trim();
+    const hours = parseFloat(recordData[i][5]) || 0;
+    const conf = configMap[studentName + "_" + courseName] || { fee: 0, mode: "後收", teacher: recordData[i][1] };
+    initStats(studentName, courseName, conf.teacher, conf.fee, conf.mode);
+    stats[studentName][courseName].recordBase += hours;
+    const perLessonAmt = Math.round(hours * conf.fee);
+    stats[studentName][courseName].detailsRec.push("[實上] " + formatSheetMonthDay(recordData[i][2], timeZone) + " " + recordData[i][3] + "-" + recordData[i][4] + " (" + formatCurrency(perLessonAmt) + ")");
+  }
+
+  const planData = planSheet.getDataRange().getValues();
+  for (let i = 1; i < planData.length; i++) {
+    const lessonDateMonth = normalizeFinancialMonth(planData[i][2], timeZone);
+    const refundSettledMonth = normalizeFinancialMonth(planData[i][11], timeZone);
+    const status = String(planData[i][9] || "").trim();
+    const targetMonthForPlanBase = refundSettledMonth || lessonDateMonth;
+    if (status === "取消" && !refundSettledMonth) continue;
+
+    const studentName = String(planData[i][7] || "").trim();
+    const courseName = String(planData[i][8] || "").trim();
+    const hours = parseFloat(planData[i][5]) || 0;
+    const conf = configMap[studentName + "_" + courseName];
+    if (!conf || conf.mode !== "預收") continue;
+    initStats(studentName, courseName, conf.teacher, conf.fee, conf.mode);
+
+    if (targetMonthForPlanBase === month) {
+      stats[studentName][courseName].planBase += hours;
+      if (status === "取消") {
+        stats[studentName][courseName].detailsRec.push("[歷史取消退費] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4]);
+      }
+    } else if (lessonDateMonth === nextMonthStr && status !== "取消") {
+      stats[studentName][courseName].planNext += hours;
+      const perLessonAmt = Math.round(hours * conf.fee);
+      stats[studentName][courseName].detailsPlan.push("[下月預收] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4] + " (" + formatCurrency(perLessonAmt) + ")");
+    }
+  }
+
+  appendTuitionAdjustmentsToStats(ss, stats, configMap, month);
+
+  const items: string[] = [];
+  const existingSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_FEE, 0, month);
+  if (existingSettlementCount > 0) {
+    items.push(`注意：${month} 已有 ${existingSettlementCount} 筆學費結算資料；若只是回看舊單，應改用「已產生單據」，不要重新試算。`);
+  }
+
+  let grandTotal = 0;
+  let studentCount = 0;
+  for (const studentName in stats) {
+    let studentTotal = 0;
+    const courseSummaries: string[] = [];
+    for (const courseName in stats[studentName]) {
+      const item = stats[studentName][courseName];
+      const adjustmentTotal = item.adjustments.reduce(function(sum: number, adj: any) { return sum + adj.amount; }, 0);
+      let courseTotal = 0;
+      let formula = "";
+      if (item.mode === "預收") {
+        const diff = Math.round((item.recordBase - item.planBase) * 10) / 10;
+        const totalHours = Math.round((item.planNext + diff) * 10) / 10;
+        courseTotal = Math.round(totalHours * item.fee) + adjustmentTotal;
+        formula = `預收 ${item.planNext}hr，核對差異 ${diff}hr，調整 ${formatCurrency(adjustmentTotal)}`;
+      } else {
+        courseTotal = Math.round(item.recordBase * item.fee) + adjustmentTotal;
+        formula = `後收實上 ${item.recordBase}hr，調整 ${formatCurrency(adjustmentTotal)}`;
+      }
+      if (courseTotal !== 0 || item.recordBase > 0 || item.planNext > 0 || adjustmentTotal !== 0) {
+        studentTotal += courseTotal;
+        courseSummaries.push(`${courseName}（${item.mode}）：${formula}，小計 ${formatCurrency(courseTotal)}`);
+      }
+    }
+    if (courseSummaries.length > 0) {
+      studentCount++;
+      grandTotal += studentTotal;
+      items.push(`${studentName}：${formatCurrency(studentTotal)}；` + courseSummaries.join("；"));
+    }
+  }
+
+  if (items.length === 0) items.push(`${month} 目前沒有待試算學費資料。`);
+  return { items, grandTotal, studentCount };
+}
+
+function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, stats: any, configMap: any, month: string) {
+  const sheet = ss.getSheetByName(SHEET_NAME_TUITION_ADJUSTMENT);
+  if (!sheet) return;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const targetMonth = normalizeFinancialMonth(data[i][1], Session.getScriptTimeZone());
+    if (targetMonth !== month) continue;
+    const status = String(data[i][13] || "").trim();
+    if (status === "作廢" || status === "已取消") continue;
+    const studentName = String(data[i][2] || "").trim();
+    const courseName = String(data[i][3] || "").trim();
+    const amount = parseFloat(data[i][9]) || 0;
+    const type = String(data[i][10] || "").trim();
+    const conf = configMap[studentName + "_" + courseName] || { fee: parseFloat(data[i][8]) || 0, mode: "後收", teacher: "" };
+    if (!stats[studentName]) stats[studentName] = {};
+    if (!stats[studentName][courseName]) {
+      stats[studentName][courseName] = { teacher: conf.teacher, fee: conf.fee, mode: conf.mode, recordBase: 0, planBase: 0, planNext: 0, detailsRec: [], detailsPlan: [], adjustments: [] };
+    }
+    stats[studentName][courseName].adjustments.push({ amount, type, status });
+  }
+}
+
 function buildAdminPreviewMetrics(month: string, feature: string) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const metrics: any[] = [];
@@ -151,7 +321,7 @@ function buildAdminPreviewMetrics(month: string, feature: string) {
     metrics.push(buildSheetMonthMetric(ss, "授課紀錄", SHEET_NAME_RECORD, 2, month, "指定月份已登記授課筆數"));
     metrics.push(buildSheetMonthMetric(ss, "預排紀錄", SHEET_NAME_PLAN, 2, month, "指定月份預排資料筆數"));
     metrics.push(buildSheetMonthMetric(ss, "學費結算", SHEET_NAME_FIN_FEE, 0, month, "既有學費結算表筆數"));
-    metrics.push(buildSheetMonthMetric(ss, "帳務補救", SHEET_NAME_TUITION_ADJUSTMENT, 2, month, "處理月份符合的補收/退費筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "帳務補救", SHEET_NAME_TUITION_ADJUSTMENT, 1, month, "處理月份符合的補收/退費筆數"));
     return metrics;
   }
 
@@ -197,6 +367,17 @@ function adminMetric(label: string, value: number, note: string, state: string, 
   return { label, value, note, state, stateText };
 }
 
+function countSheetRowsByMonthOnly(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string, dateColumnIndex: number, month: string) {
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return 0;
+  const values = sheet.getDataRange().getValues();
+  let count = 0;
+  for (let i = 1; i < values.length; i++) {
+    if (isValueInMonth(values[i][dateColumnIndex], month)) count++;
+  }
+  return count;
+}
+
 function isValueInMonth(value: any, month: string) {
   if (!value) return false;
   const timeZone = Session.getScriptTimeZone();
@@ -210,6 +391,21 @@ function isValueInMonth(value: any, month: string) {
     return `${parts[0]}/${String(Number(parts[1])).padStart(2, "0")}` === month;
   }
   return false;
+}
+
+function formatSheetMonthDay(value: any, timeZone: string) {
+  if (value instanceof Date) return Utilities.formatDate(value, timeZone, "MM/dd");
+  const text = String(value || "").trim().replace(/-/g, "/");
+  if (/^\d{4}\/\d{1,2}\/\d{1,2}/.test(text)) {
+    const parts = text.split("/");
+    return parts[1].padStart(2, "0") + "/" + parts[2].padStart(2, "0");
+  }
+  return text;
+}
+
+function formatCurrency(value: number) {
+  const amount = Math.round(value || 0);
+  return "NT$ " + amount.toLocaleString();
 }
 
 // ==========================================
