@@ -652,7 +652,7 @@
                 type="button"
                 class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
                 :class="activeAdminTab === 'calc' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
-                @click="activeAdminTab = 'calc'"
+                @click="setAdminTab('calc')"
               >
                 試算
               </button>
@@ -660,7 +660,7 @@
                 type="button"
                 class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
                 :class="activeAdminTab === 'tuition' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
-                @click="activeAdminTab = 'tuition'"
+                @click="setAdminTab('tuition')"
               >
                 繳費單
               </button>
@@ -668,7 +668,7 @@
                 type="button"
                 class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
                 :class="activeAdminTab === 'receipt' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
-                @click="activeAdminTab = 'receipt'"
+                @click="setAdminTab('receipt')"
               >
                 收據
               </button>
@@ -676,7 +676,7 @@
                 type="button"
                 class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
                 :class="activeAdminTab === 'voucher' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
-                @click="activeAdminTab = 'voucher'"
+                @click="setAdminTab('voucher')"
               >
                 領據
               </button>
@@ -684,7 +684,7 @@
                 type="button"
                 class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
                 :class="activeAdminTab === 'adjustment' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
-                @click="activeAdminTab = 'adjustment'"
+                @click="setAdminTab('adjustment')"
               >
                 帳務補救
               </button>
@@ -692,7 +692,7 @@
                 type="button"
                 class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
                 :class="activeAdminTab === 'tools' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
-                @click="activeAdminTab = 'tools'"
+                @click="setAdminTab('tools')"
               >
                 工具
               </button>
@@ -822,7 +822,16 @@
                     </template>
                   </ul>
                 </div>
-                <div class="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs text-amber-700">確認寫入、產生、寄送與 LINE push 需接上正式預覽 API 與二次確認後才會開放。</div>
+                <div class="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs text-amber-700">
+                  <p class="font-semibold">目前狀態：<span x-text="adminPreview ? adminPreview.status : ''"></span></p>
+                  <p class="mt-1">確認寫入、產生、寄送與 LINE push 需接上正式預覽 API 與二次確認後才會開放。</p>
+                </div>
+                <button
+                  type="button"
+                  class="mt-3 w-full rounded-xl border border-slate-800 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-500 opacity-70"
+                  disabled
+                  x-text="adminPreview ? adminPreview.nextAction : '確認執行尚未開放'"
+                ></button>
               </div>
             </div>
 
@@ -1768,6 +1777,11 @@
             alert(`您的 LINE User ID：\n${this.lineUserId || "尚未取得"}`);
           },
 
+          setAdminTab(tab) {
+            this.activeAdminTab = tab;
+            this.adminPreview = null;
+          },
+
           adminFeaturePending(featureName) {
             alert(
               `${featureName} 已納入行政工作台規劃。\n\n` +
@@ -1781,40 +1795,50 @@
               "學費試算": {
                 summary: `預覽 ${formattedMonth} 學費試算。`,
                 items: ["檢查學生姓名與課程", "檢查預收/後收", "檢查補收/退費", "確認後才可寫入試算結果"],
+                nextAction: "確認寫入試算結果（尚未開放）",
               },
               "鐘點試算": {
                 summary: `預覽 ${formattedMonth} 講師鐘點試算。`,
                 items: ["檢查授課紀錄", "檢查預排核銷", "檢查補充鐘點與保費", "確認後才可寫入試算結果"],
+                nextAction: "確認寫入鐘點試算（尚未開放）",
               },
               "繳費單": {
                 summary: `預覽 ${formattedMonth} 繳費單。`,
                 items: ["檢查學生、課程與金額", "檢查補收/退費是否併入", "確認後才產生單據", "寄送 Email 或 LINE push 前需再次確認收件人"],
+                nextAction: "確認產生繳費單（尚未開放）",
               },
               "收據": {
                 summary: `預覽 ${formattedMonth} 學費收據。`,
                 items: ["檢查繳費狀態", "檢查收據金額與抬頭", "確認後才產生收據", "寄送前需確認家長收件資訊"],
+                nextAction: "確認產生收據（尚未開放）",
               },
               "一般收據": {
                 summary: "預覽入會費、常年會費或捐款一般收據。",
                 items: ["選擇收據類型", "檢查收款人與金額", "確認後才產生或寄送", "後續需接正式收件人資料"],
+                nextAction: "確認產生一般收據（尚未開放）",
               },
               "領據": {
                 summary: `預覽 ${formattedMonth} 講師領據。`,
                 items: ["檢查講師與鐘點費", "檢查授課紀錄與補充項目", "確認後才產生領據", "LINE push 對象為講師本人"],
+                nextAction: "確認產生領據（尚未開放）",
               },
               "稅務專區": {
                 summary: `預覽 ${formattedMonth} 稅務資料整理。`,
                 items: ["年度資料彙整", "收據與捐款資料檢核", "後續需定義稅務輸出格式"],
+                nextAction: "確認產生稅務資料（尚未開放）",
               },
             };
             const preview = previewMap[featureName] || {
               summary: `${featureName} 預覽。`,
               items: ["此功能尚待定義正式預覽內容。"],
+              nextAction: "確認執行（尚未開放）",
             };
             this.adminPreview = {
               title: featureName,
               summary: preview.summary,
               items: preview.items,
+              status: "僅顯示前端預覽，尚未寫入或寄送",
+              nextAction: preview.nextAction,
             };
           },
 
