@@ -48,6 +48,10 @@ function doGet(e: any) {
         // 取得待核銷課程
         result = handleLiffGetUnverified(lineUserId);
         break;
+      case "getRecentRegistered":
+        // 取得本月最近已登記授課
+        result = handleLiffGetRecentRegistered(lineUserId, e.parameter.limit);
+        break;
       case "verifySchedule":
         // 執行核銷
         result = handleLiffVerifySchedule(e.parameter);
@@ -378,6 +382,7 @@ declare function handleLiffMe(userId: string): any;
 declare function handleLiffFormOptions(lineUserId?: string): any;
 declare function handleLiffRegister(params: any): any;
 declare function handleLiffGetUnverified(userId: string): any;
+declare function handleLiffGetRecentRegistered(userId: string, limit?: any): any;
 declare function handleLiffVerifySchedule(params: any): any;
 declare function handleLiffLeave(params: any): any;
 declare function handleLiffAdminTask(params: any): any;

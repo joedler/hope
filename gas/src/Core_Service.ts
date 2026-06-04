@@ -301,6 +301,46 @@ function handleLiffGetUnverified(lineUserId: string) {
   return { ok: true, schedules: schedules };
 }
 
+// (4b) handleLiffGetRecentRegistered : 取得該講師本月最近已登記授課
+function handleLiffGetRecentRegistered(lineUserId: string, limit?: any) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const teacherName = getTeacherNameByLineUserId(lineUserId);
+  if (!teacherName) return { ok: false, message: "身分驗證失敗。" };
+
+  const recordSheet = ss.getSheetByName(SHEET_NAME_RECORD);
+  if (!recordSheet) return { ok: true, lessons: [] };
+
+  const maxRows = Math.max(1, Math.min(parseInt(limit || "5", 10) || 5, 20));
+  const data = recordSheet.getDataRange().getValues();
+  const timeZone = Session.getScriptTimeZone();
+  const now = new Date();
+  const currentMonth = Utilities.formatDate(now, timeZone, "yyyyMM");
+  const lessons: any[] = [];
+
+  for (let i = data.length - 1; i >= 1; i--) {
+    const rowTeacher = String(data[i][1] || "").trim();
+    if (rowTeacher !== teacherName) continue;
+
+    const rowDate = data[i][2];
+    const rowMonth = getDateFingerprint(rowDate, timeZone).substring(0, 6);
+    if (rowMonth !== currentMonth) continue;
+
+    lessons.push({
+      rowId: i + 1,
+      date: rowDate instanceof Date ? Utilities.formatDate(rowDate, timeZone, "yyyy/MM/dd") : String(rowDate || ""),
+      startTime: formatTimeStr(data[i][3]),
+      endTime: formatTimeStr(data[i][4]),
+      hours: parseFloat(data[i][5]) || 0,
+      student: String(data[i][7] || "").trim(),
+      subject: String(data[i][8] || "").trim()
+    });
+
+    if (lessons.length >= maxRows) break;
+  }
+
+  return { ok: true, lessons };
+}
+
 // (5) handleLiffVerifySchedule : 執行預排核銷
 function handleLiffVerifySchedule(params: any) {
   const lineUserId = params.lineUserId;
@@ -746,6 +786,20 @@ function isCourseOwner(rowOwner: string, lineUserId?: string, teacherName?: stri
   const cleanLineUserId = String(lineUserId || "").trim();
   const cleanTeacherName = String(teacherName || "").trim();
   return owner === cleanLineUserId || owner === cleanTeacherName;
+}
+
+function getTeacherNameByLineUserId(lineUserId: string): string {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (!teacherSheet) return "";
+  const teacherData = teacherSheet.getDataRange().getValues();
+  const cleanLineUserId = String(lineUserId || "").trim();
+  for (let i = 1; i < teacherData.length; i++) {
+    if (String(teacherData[i][1] || "").trim() === cleanLineUserId) {
+      return String(teacherData[i][0] || "").trim();
+    }
+  }
+  return "";
 }
 
 function buildLessonEndDate(dateValue: any, endTimeValue: any, timeZone: string): Date | null {
