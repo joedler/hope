@@ -1789,8 +1789,27 @@
             );
           },
 
-          showAdminPreview(featureName) {
+          async showAdminPreview(featureName) {
             const formattedMonth = this.adminMonth.replace("-", "/");
+            if (this.config.gasWebAppUrl) {
+              try {
+                const result = await this.callApi({
+                  action: "adminPreview",
+                  lineUserId: this.lineUserId,
+                  feature: featureName,
+                  month: formattedMonth,
+                });
+                if (result.ok && result.preview) {
+                  this.adminPreview = result.preview;
+                  return;
+                }
+                if (result.message) {
+                  this.message = result.message;
+                }
+              } catch (error) {
+                this.message = `行政預覽 API 尚未可用，先顯示本機預覽：${error.message}`;
+              }
+            }
             const previewMap = {
               "學費試算": {
                 summary: `預覽 ${formattedMonth} 學費試算。`,

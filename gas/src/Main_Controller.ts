@@ -64,6 +64,10 @@ function doGet(e: any) {
         // 執行行政/財務月結任務
         result = handleLiffAdminTask(e.parameter);
         break;
+      case "adminPreview":
+        // 讀取行政作業預覽，不寫入、不產生、不寄送
+        result = handleLiffAdminPreview(e.parameter);
+        break;
       case "tuitionAdjustment":
         // 建立學費補收/退費調整紀錄
         result = handleLiffTuitionAdjustment(e.parameter);
@@ -386,6 +390,7 @@ declare function handleLiffGetRecentRegistered(userId: string, limit?: any): any
 declare function handleLiffVerifySchedule(params: any): any;
 declare function handleLiffLeave(params: any): any;
 declare function handleLiffAdminTask(params: any): any;
+declare function handleLiffAdminPreview(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;
 declare function handleLiffTuitionAdjustmentOptions(params: any): any;
 declare function handleLiffUnbind(userId: string): any;

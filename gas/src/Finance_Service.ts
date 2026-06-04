@@ -66,6 +66,80 @@ function handleLiffAdminTask(params: any) {
   }
 }
 
+function handleLiffAdminPreview(params: any) {
+  const lineUserId = params.lineUserId;
+  const feature = String(params.feature || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+
+  const previewMap: any = {
+    "學費試算": {
+      summary: `預覽 ${month} 學費試算。`,
+      items: ["檢查學生姓名與課程", "檢查預收/後收", "檢查補收/退費", "確認後才可寫入試算結果"],
+      nextAction: "確認寫入試算結果（尚未開放）"
+    },
+    "鐘點試算": {
+      summary: `預覽 ${month} 講師鐘點試算。`,
+      items: ["檢查授課紀錄", "檢查預排核銷", "檢查補充鐘點與保費", "確認後才可寫入試算結果"],
+      nextAction: "確認寫入鐘點試算（尚未開放）"
+    },
+    "繳費單": {
+      summary: `預覽 ${month} 繳費單。`,
+      items: ["檢查學生、課程與金額", "檢查補收/退費是否併入", "確認後才產生單據", "寄送 Email 或 LINE push 前需再次確認收件人"],
+      nextAction: "確認產生繳費單（尚未開放）"
+    },
+    "收據": {
+      summary: `預覽 ${month} 學費收據。`,
+      items: ["檢查繳費狀態", "檢查收據金額與抬頭", "確認後才產生收據", "寄送前需確認家長收件資訊"],
+      nextAction: "確認產生收據（尚未開放）"
+    },
+    "一般收據": {
+      summary: "預覽入會費、常年會費或捐款一般收據。",
+      items: ["選擇收據類型", "檢查收款人與金額", "確認後才產生或寄送", "後續需接正式收件人資料"],
+      nextAction: "確認產生一般收據（尚未開放）"
+    },
+    "領據": {
+      summary: `預覽 ${month} 講師領據。`,
+      items: ["檢查講師與鐘點費", "檢查授課紀錄與補充項目", "確認後才產生領據", "LINE push 對象為講師本人"],
+      nextAction: "確認產生領據（尚未開放）"
+    },
+    "稅務專區": {
+      summary: `預覽 ${month} 稅務資料整理。`,
+      items: ["年度資料彙整", "收據與捐款資料檢核", "後續需定義稅務輸出格式"],
+      nextAction: "確認產生稅務資料（尚未開放）"
+    }
+  };
+
+  const preview = previewMap[feature];
+  if (!preview) {
+    return { ok: false, message: `不支援的行政預覽功能: ${feature}` };
+  }
+
+  return {
+    ok: true,
+    preview: {
+      title: feature,
+      month,
+      summary: preview.summary,
+      items: preview.items,
+      status: "後端只讀預覽，尚未寫入或寄送",
+      nextAction: preview.nextAction
+    }
+  };
+}
+
+function normalizeAdminPreviewMonth(value: any) {
+  const raw = String(value || "").trim();
+  if (/^\d{4}\/\d{2}$/.test(raw)) return raw;
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw.replace("-", "/");
+  const now = new Date();
+  return Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy/MM");
+}
+
 // ==========================================
 // 2. 原 LINE 對話控制與財務引擎重構模組
 // ==========================================
