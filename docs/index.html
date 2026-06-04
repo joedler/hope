@@ -299,6 +299,7 @@
               <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && regForm.student && filteredSubjects().length === 0">
                 目前沒有可登記的課程，請聯絡行政確認課程設定表。
               </p>
+              <p class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-500" x-show="batchLessonError()" x-text="batchLessonError()"></p>
 
               <template x-for="(lesson, index) in regForm.lessons" :key="lesson.id">
                 <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4 space-y-3">
@@ -339,21 +340,33 @@
                   <div class="grid grid-cols-2 gap-3">
                     <label class="block">
                       <span class="text-xs font-semibold text-slate-400">開始時間</span>
-                      <input
-                        type="time"
+                      <select
                         class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
                         x-model="lesson.startTime"
                       >
+                        <template x-for="time in timeOptions" :key="'start-' + lesson.id + '-' + time">
+                          <option :value="time" x-text="time"></option>
+                        </template>
+                      </select>
                     </label>
                     <label class="block">
                       <span class="text-xs font-semibold text-slate-400">結束時間</span>
-                      <input
-                        type="time"
+                      <select
                         class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
                         x-model="lesson.endTime"
                       >
+                        <template x-for="time in timeOptions" :key="'end-' + lesson.id + '-' + time">
+                          <option :value="time" x-text="time"></option>
+                        </template>
+                      </select>
                     </label>
                   </div>
+
+                  <div class="rounded-xl border border-slate-800 bg-white px-3 py-2 text-sm">
+                    課程時數：
+                    <span class="font-bold text-teal-400" x-text="lessonHoursLabel(lesson)"></span>
+                  </div>
+                  <p class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-500" x-show="lessonError(lesson)" x-text="lessonError(lesson)"></p>
                 </div>
               </template>
 
@@ -607,11 +620,19 @@
               <div class="grid grid-cols-2 gap-2">
                 <label class="block">
                   <span class="text-xs font-semibold text-slate-400">開始</span>
-                  <input type="time" class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500" x-model="adjustmentForm.startTime" @change="recalculateAdjustmentHours()">
+                  <select class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500" x-model="adjustmentForm.startTime" @change="recalculateAdjustmentHours()">
+                    <template x-for="time in timeOptions" :key="'adjust-start-' + time">
+                      <option :value="time" x-text="time"></option>
+                    </template>
+                  </select>
                 </label>
                 <label class="block">
                   <span class="text-xs font-semibold text-slate-400">結束</span>
-                  <input type="time" class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500" x-model="adjustmentForm.endTime" @change="recalculateAdjustmentHours()">
+                  <select class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500" x-model="adjustmentForm.endTime" @change="recalculateAdjustmentHours()">
+                    <template x-for="time in timeOptions" :key="'adjust-end-' + time">
+                      <option :value="time" x-text="time"></option>
+                    </template>
+                  </select>
                 </label>
               </div>
 
@@ -717,6 +738,7 @@
           lineUserId: "",
           profile: null, // LINE Profile
           teacherProfile: null, // Google Sheets 講師資料
+          timeOptions: [],
           activeTab: "home",
           adminMonth: new Date().toISOString().substring(0, 7), // YYYY-MM
           options: {
@@ -764,6 +786,7 @@
 
           async init() {
             try {
+              this.timeOptions = this.buildTimeOptions();
               this.ensureConfig();
               await this.initLiff();
               await this.loadMe();
@@ -907,6 +930,16 @@
             return coursesByStudent[selectedStudent] || [];
           },
 
+          buildTimeOptions() {
+            const options = [];
+            for (let minutes = 0; minutes < 24 * 60; minutes += 15) {
+              const hour = String(Math.floor(minutes / 60)).padStart(2, "0");
+              const minute = String(minutes % 60).padStart(2, "0");
+              options.push(`${hour}:${minute}`);
+            }
+            return options;
+          },
+
           createLessonFromPrevious(previous) {
             const baseDate = previous ? previous.date : new Date().toISOString().substring(0, 10);
             const baseSubject = previous ? previous.subject : "";
@@ -958,17 +991,86 @@
 
           canSubmitLessons() {
             if (!this.regForm.student || this.regForm.lessons.length === 0) return false;
-            return this.regForm.lessons.every((lesson) => {
-              const start = this.parseClockTime(lesson.startTime);
-              const end = this.parseClockTime(lesson.endTime);
-              return lesson.subject && lesson.date && start !== null && end !== null && end > start;
-            });
+            return !this.batchLessonError() && this.regForm.lessons.every((lesson) => !this.lessonError(lesson));
           },
 
           lessonSummary() {
             return this.regForm.lessons.map((lesson, index) => {
-              return `${index + 1}. ${this.regForm.student}｜${lesson.subject}｜${lesson.date} ${lesson.startTime}-${lesson.endTime}`;
+              return `${index + 1}. ${this.regForm.student}｜${lesson.subject}｜${lesson.date} ${lesson.startTime}-${lesson.endTime}（${this.lessonHoursLabel(lesson)}）`;
             }).join("\n");
+          },
+
+          lessonHours(lesson) {
+            const minutes = this.lessonDurationMinutes(lesson);
+            return minutes > 0 ? Math.round((minutes / 60) * 100) / 100 : 0;
+          },
+
+          lessonHoursLabel(lesson) {
+            const hours = this.lessonHours(lesson);
+            if (!hours) return "--";
+            return `${hours} 小時`;
+          },
+
+          lessonError(lesson) {
+            if (!this.regForm.student) return "請先選擇學生。";
+            if (!lesson.subject) return "請選擇課程。";
+            if (!lesson.date) return "請選擇日期。";
+            if (!lesson.startTime || !lesson.endTime) return "請選擇開始與結束時間。";
+
+            const start = this.parseClockTime(lesson.startTime);
+            const end = this.parseClockTime(lesson.endTime);
+            if (start === null || end === null) return "時間格式錯誤，請使用 24 小時制。";
+            if (end <= start) return "結束時間必須晚於開始時間。";
+
+            const hours = this.lessonHours(lesson);
+            if (hours > 4) return "課程時數超過 4 小時，請確認是否填錯。";
+
+            const lessonStart = this.buildLocalDateTime(lesson.date, lesson.startTime);
+            const lessonEnd = this.buildLocalDateTime(lesson.date, lesson.endTime);
+            const now = new Date();
+            if (!lessonStart || !lessonEnd) return "日期或時間格式錯誤。";
+
+            if (this.regForm.mode === "normal" && lessonEnd.getTime() > now.getTime()) {
+              return "授課登記限已完成課程，不能登錄未來時間。";
+            }
+            if (this.regForm.mode === "pre" && lessonStart.getTime() < now.getTime()) {
+              return "預排課程不能選擇已過去的時間。";
+            }
+            return "";
+          },
+
+          batchLessonError() {
+            const validLessons = this.regForm.lessons
+              .map((lesson, index) => ({
+                index,
+                date: lesson.date,
+                start: this.parseClockTime(lesson.startTime),
+                end: this.parseClockTime(lesson.endTime),
+              }))
+              .filter((lesson) => lesson.date && lesson.start !== null && lesson.end !== null && lesson.end > lesson.start);
+
+            for (let i = 0; i < validLessons.length; i++) {
+              for (let j = i + 1; j < validLessons.length; j++) {
+                const a = validLessons[i];
+                const b = validLessons[j];
+                if (a.date !== b.date) continue;
+                if (a.start < b.end && b.start < a.end) {
+                  return `第 ${a.index + 1} 筆與第 ${b.index + 1} 筆時間重疊，請調整時間。`;
+                }
+              }
+            }
+            return "";
+          },
+
+          buildLocalDateTime(dateText, timeText) {
+            if (!dateText || !timeText) return null;
+            const dateParts = String(dateText).split("-").map(Number);
+            const timeParts = String(timeText).split(":").map(Number);
+            if (dateParts.length !== 3 || timeParts.length !== 2) return null;
+            const [year, month, day] = dateParts;
+            const [hour, minute] = timeParts;
+            if (![year, month, day, hour, minute].every(Number.isFinite)) return null;
+            return new Date(year, month - 1, day, hour, minute, 0, 0);
           },
 
           roleLabel() {

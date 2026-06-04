@@ -185,11 +185,22 @@ function handleLiffRegister(params: any) {
   const totalPay = Math.round(duration * unitFee);
 
   if (duration <= 0) return { ok: false, message: "上課結束時間必須晚於開始時間。" };
+  if (duration > 4) return { ok: false, message: "課程時數超過 4 小時，請確認是否填錯。" };
 
   // 4. 重疊防護檢查
   const timeZone = Session.getScriptTimeZone();
   const inputDate = new Date(formattedDateStr);
   const inputFingerprint = Utilities.formatDate(inputDate, timeZone, "yyyyMMdd");
+  const lessonStartDate = buildLessonDateTime(formattedDateStr, cleanStart, timeZone);
+  const lessonEndDate = buildLessonDateTime(formattedDateStr, cleanEnd, timeZone);
+  const currentTime = new Date();
+  if (!lessonStartDate || !lessonEndDate) return { ok: false, message: "日期或時間格式錯誤。" };
+  if (!isPlan && lessonEndDate.getTime() > currentTime.getTime()) {
+    return { ok: false, message: "授課登記限已完成課程，不能登錄未來時間。" };
+  }
+  if (isPlan && lessonStartDate.getTime() < currentTime.getTime()) {
+    return { ok: false, message: "預排課程不能選擇已過去的時間。" };
+  }
 
   const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
   const recordHistorySheet = ss.getSheetByName(SHEET_NAME_RECORD);
@@ -738,18 +749,22 @@ function isCourseOwner(rowOwner: string, lineUserId?: string, teacherName?: stri
 }
 
 function buildLessonEndDate(dateValue: any, endTimeValue: any, timeZone: string): Date | null {
+  return buildLessonDateTime(dateValue, endTimeValue, timeZone);
+}
+
+function buildLessonDateTime(dateValue: any, timeValue: any, timeZone: string): Date | null {
   const dateText = dateValue instanceof Date
     ? Utilities.formatDate(dateValue, timeZone, "yyyy/MM/dd")
     : String(dateValue || "").replace(/-/g, "/").substring(0, 10);
-  const cleanEnd = String(endTimeValue || "").replace(":", "").trim();
-  const normalizedEnd = cleanEnd.length === 3 ? "0" + cleanEnd : cleanEnd;
-  if (!dateText || normalizedEnd.length !== 4) return null;
+  const cleanTime = String(timeValue || "").replace(":", "").trim();
+  const normalizedTime = cleanTime.length === 3 ? "0" + cleanTime : cleanTime;
+  if (!dateText || normalizedTime.length !== 4) return null;
 
   const year = parseInt(dateText.substring(0, 4), 10);
   const month = parseInt(dateText.substring(5, 7), 10);
   const day = parseInt(dateText.substring(8, 10), 10);
-  const hour = parseInt(normalizedEnd.substring(0, 2), 10);
-  const minute = parseInt(normalizedEnd.substring(2, 4), 10);
+  const hour = parseInt(normalizedTime.substring(0, 2), 10);
+  const minute = parseInt(normalizedTime.substring(2, 4), 10);
   if ([year, month, day, hour, minute].some(function (value) { return isNaN(value); })) return null;
   return new Date(year, month - 1, day, hour, minute, 0, 0);
 }
