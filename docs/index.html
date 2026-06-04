@@ -80,6 +80,19 @@
         border-color: #bddfd8 !important;
         color: #21424a !important;
       }
+      .time-native-input {
+        color: transparent !important;
+        caret-color: transparent;
+      }
+      .time-native-input::-webkit-datetime-edit,
+      .time-native-input::-webkit-datetime-edit-hour-field,
+      .time-native-input::-webkit-datetime-edit-minute-field,
+      .time-native-input::-webkit-datetime-edit-text {
+        color: transparent !important;
+      }
+      .time-native-input::-webkit-calendar-picker-indicator {
+        opacity: 0.9;
+      }
       .text-\[10px\] {
         font-size: 0.78rem !important;
         line-height: 1.25rem !important;
@@ -415,23 +428,29 @@
                   <div class="grid grid-cols-2 gap-3">
                     <label class="block">
                       <span class="text-xs font-semibold text-slate-400">開始時間</span>
-                      <input
-                        type="time"
-                        lang="en-GB"
-                        step="60"
-                        class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
-                        x-model="lesson.startTime"
-                      >
+                      <div class="relative mt-1">
+                        <input
+                          type="time"
+                          lang="en-GB"
+                          step="900"
+                          class="time-native-input w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 pr-10 text-sm text-white outline-none transition focus:border-teal-500"
+                          x-model="lesson.startTime"
+                        >
+                        <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-100" x-text="lesson.startTime || '--:--'"></span>
+                      </div>
                     </label>
                     <label class="block">
                       <span class="text-xs font-semibold text-slate-400">結束時間</span>
-                      <input
-                        type="time"
-                        lang="en-GB"
-                        step="60"
-                        class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
-                        x-model="lesson.endTime"
-                      >
+                      <div class="relative mt-1">
+                        <input
+                          type="time"
+                          lang="en-GB"
+                          step="900"
+                          class="time-native-input w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 pr-10 text-sm text-white outline-none transition focus:border-teal-500"
+                          x-model="lesson.endTime"
+                        >
+                        <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-100" x-text="lesson.endTime || '--:--'"></span>
+                      </div>
                     </label>
                   </div>
 
@@ -693,25 +712,31 @@
               <div class="grid grid-cols-2 gap-2">
                 <label class="block">
                   <span class="text-xs font-semibold text-slate-400">開始</span>
-                  <input
-                    type="time"
-                    lang="en-GB"
-                    step="60"
-                    class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500"
-                    x-model="adjustmentForm.startTime"
-                    @change="recalculateAdjustmentHours()"
-                  >
+                  <div class="relative mt-1">
+                    <input
+                      type="time"
+                      lang="en-GB"
+                      step="900"
+                      class="time-native-input w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 pr-10 text-sm text-white outline-none transition focus:border-amber-500"
+                      x-model="adjustmentForm.startTime"
+                      @change="recalculateAdjustmentHours()"
+                    >
+                    <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-100" x-text="adjustmentForm.startTime || '--:--'"></span>
+                  </div>
                 </label>
                 <label class="block">
                   <span class="text-xs font-semibold text-slate-400">結束</span>
-                  <input
-                    type="time"
-                    lang="en-GB"
-                    step="60"
-                    class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500"
-                    x-model="adjustmentForm.endTime"
-                    @change="recalculateAdjustmentHours()"
-                  >
+                  <div class="relative mt-1">
+                    <input
+                      type="time"
+                      lang="en-GB"
+                      step="900"
+                      class="time-native-input w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 pr-10 text-sm text-white outline-none transition focus:border-amber-500"
+                      x-model="adjustmentForm.endTime"
+                      @change="recalculateAdjustmentHours()"
+                    >
+                    <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-100" x-text="adjustmentForm.endTime || '--:--'"></span>
+                  </div>
                 </label>
               </div>
 
