@@ -116,6 +116,7 @@ function handleLiffAdminPreview(params: any) {
 
   const preview = feature === "學費試算" ? buildTuitionAdminPreview(month) :
     feature === "鐘點試算" ? buildSalaryAdminPreview(month) :
+    feature === "繳費單" ? buildPaymentNoticeAdminPreview(month) :
     previewMap[feature];
   if (!preview) {
     return { ok: false, message: `不支援的行政預覽功能: ${feature}` };
@@ -427,6 +428,89 @@ function calculateSalaryDeductions(total: number, taxConfig: any) {
     nhiAmount = Math.round(total * 0.0211);
   }
   return { taxAmount, nhiAmount, netAmount: total - taxAmount - nhiAmount };
+}
+
+function buildPaymentNoticeAdminPreview(month: string) {
+  try {
+    const result = buildPaymentNoticeReadOnlyPreview(month);
+    const items = result.items.slice(0, 12);
+    if (result.items.length > items.length) {
+      items.push(`另有 ${result.items.length - items.length} 位學生單據未列出，正式預覽頁後續再提供完整清單。`);
+    }
+    return {
+      summary: `${month} 繳費單只讀預覽：${result.studentCount} 位學生，總金額 ${formatCurrency(result.grandTotal)}，已產生 PDF ${result.generatedCount} 份。`,
+      items,
+      nextAction: "確認產生繳費單（尚未開放）"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 繳費單只讀預覽讀取失敗。`,
+      items: ["請先檢查學費結算表欄位、單據編號與 GAS 權限。", "錯誤：" + e.toString()],
+      nextAction: "確認產生繳費單（尚未開放）"
+    };
+  }
+}
+
+function buildPaymentNoticeReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  if (!sheet) throw new Error("找不到學費結算表。");
+  const data = sheet.getDataRange().getValues();
+  const studentsMap: any = {};
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    if (rowMonth !== month) continue;
+    const studentName = String(data[i][1] || "").trim();
+    if (!studentName) continue;
+    if (!studentsMap[studentName]) {
+      studentsMap[studentName] = {
+        name: studentName,
+        total: 0,
+        docId: "",
+        saveTime: "",
+        pdfUrl: "",
+        status: "",
+        courses: [],
+        missingDocId: false,
+        missingTotal: false
+      };
+    }
+    const item = studentsMap[studentName];
+    item.courses.push({
+      title: String(data[i][2] || "").trim(),
+      mode: String(data[i][3] || "").trim(),
+      detail: String(data[i][4] || "").trim()
+    });
+    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
+    if (data[i][9]) item.docId = String(data[i][9]).trim();
+    if (data[i][10]) item.saveTime = data[i][10] instanceof Date ? Utilities.formatDate(data[i][10], timeZone, "yyyy/MM/dd") : String(data[i][10]).trim();
+    if (data[i][15]) item.pdfUrl = String(data[i][15]).trim();
+    if (data[i][16]) item.status = String(data[i][16]).trim();
+  }
+
+  const items: string[] = [];
+  let grandTotal = 0;
+  let studentCount = 0;
+  let generatedCount = 0;
+  for (const studentName in studentsMap) {
+    const item = studentsMap[studentName];
+    studentCount++;
+    grandTotal += item.total;
+    if (item.pdfUrl || item.status.indexOf("已產") > -1) generatedCount++;
+    const statusText = item.pdfUrl ? "已有 PDF" : item.status ? item.status : "尚未產生 PDF";
+    const warnings: string[] = [];
+    if (!item.docId) warnings.push("缺單據編號");
+    if (!item.total) warnings.push("缺總金額");
+    const warningText = warnings.length > 0 ? "；提醒：" + warnings.join("、") : "";
+    items.push(`${studentName}：${formatCurrency(item.total)}，${item.courses.length} 項課程，單號 ${item.docId || "未填"}，${statusText}${warningText}`);
+  }
+
+  if (items.length === 0) {
+    items.push(`${month} 學費結算表沒有可產生繳費單的資料；請先完成學費試算確認寫入。`);
+  }
+  return { items, grandTotal, studentCount, generatedCount };
 }
 
 function buildAdminPreviewMetrics(month: string, feature: string) {
