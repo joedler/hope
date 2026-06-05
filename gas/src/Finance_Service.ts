@@ -114,7 +114,9 @@ function handleLiffAdminPreview(params: any) {
     }
   };
 
-  const preview = feature === "學費試算" ? buildTuitionAdminPreview(month) : previewMap[feature];
+  const preview = feature === "學費試算" ? buildTuitionAdminPreview(month) :
+    feature === "鐘點試算" ? buildSalaryAdminPreview(month) :
+    previewMap[feature];
   if (!preview) {
     return { ok: false, message: `不支援的行政預覽功能: ${feature}` };
   }
@@ -311,6 +313,120 @@ function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spread
     }
     stats[studentName][courseName].adjustments.push({ amount, type, status });
   }
+}
+
+function buildSalaryAdminPreview(month: string) {
+  try {
+    const result = buildSalaryReadOnlyPreview(month);
+    const items = result.items.slice(0, 12);
+    if (result.items.length > items.length) {
+      items.push(`另有 ${result.items.length - items.length} 位講師彙總未列出，正式預覽頁後續再提供完整清單。`);
+    }
+    return {
+      summary: `${month} 鐘點試算只讀預覽：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}。`,
+      items,
+      nextAction: "確認寫入鐘點試算（尚未開放）"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 鐘點試算只讀預覽讀取失敗。`,
+      items: ["請先檢查授課紀錄、課程設定表、講師名單與 GAS 權限。", "錯誤：" + e.toString()],
+      nextAction: "確認寫入鐘點試算（尚未開放）"
+    };
+  }
+}
+
+function buildSalaryReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const recordSheet = ss.getSheetByName(SHEET_NAME_RECORD);
+  const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (!recordSheet || !courseSheet || !teacherSheet) throw new Error("找不到授課紀錄、課程設定表或講師名單。");
+
+  const courseData = courseSheet.getDataRange().getValues();
+  const profitMap: any = {};
+  for (let i = 1; i < courseData.length; i++) {
+    const studentName = String(courseData[i][2] || "").trim();
+    const courseName = String(courseData[i][3] || "").trim();
+    const fee = parseFloat(courseData[i][4]) || 0;
+    const ratio = parseFloat(courseData[i][5]) || 0;
+    if (studentName && courseName && fee && ratio) {
+      profitMap[studentName + "_" + courseName] = { fee, ratio };
+    }
+  }
+
+  const teacherData = teacherSheet.getDataRange().getValues();
+  const taxConfigMap: any = {};
+  for (let i = 1; i < teacherData.length; i++) {
+    const teacherName = String(teacherData[i][0] || "").trim();
+    if (!teacherName) continue;
+    taxConfigMap[teacherName] = {
+      formatCode: teacherData[i][11] || "9B",
+      nationality: teacherData[i][12] || "本國人",
+      nhiExempt: teacherData[i][13] || "否"
+    };
+  }
+
+  const salaryStats: any = {};
+  const recordData = recordSheet.getDataRange().getValues();
+  for (let i = 1; i < recordData.length; i++) {
+    const rowMonth = normalizeFinancialMonth(recordData[i][2], timeZone);
+    const settled = recordData[i][10];
+    const courseName = String(recordData[i][8] || "").trim();
+    if (courseName.indexOf("取消") > -1 || rowMonth !== month || settled) continue;
+
+    const teacherName = String(recordData[i][1] || "").trim();
+    const studentName = String(recordData[i][7] || "").trim();
+    const hours = parseFloat(recordData[i][5]) || 0;
+    const conf = profitMap[studentName + "_" + courseName] || { fee: 0, ratio: 0 };
+    const payRate = conf.fee * conf.ratio;
+    const payAmount = Math.round(hours * payRate);
+    if (!salaryStats[teacherName]) salaryStats[teacherName] = { total: 0, hours: 0, details: [], missingRateCount: 0 };
+    salaryStats[teacherName].total += payAmount;
+    salaryStats[teacherName].hours += hours;
+    if (!payRate) salaryStats[teacherName].missingRateCount++;
+    salaryStats[teacherName].details.push(`${studentName} / ${courseName} ${formatSheetMonthDay(recordData[i][2], timeZone)} ${recordData[i][3]}-${recordData[i][4]}：${hours}hr，${formatCurrency(payAmount)}`);
+  }
+
+  const items: string[] = [];
+  const existingSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_PAY, 0, month);
+  if (existingSettlementCount > 0) {
+    items.push(`注意：${month} 已有 ${existingSettlementCount} 筆鐘點結算資料；若只是回看舊領據或結算，應改用「已產生單據 / 領據紀錄」，不要重新試算。`);
+  }
+
+  let grossTotal = 0;
+  let netTotal = 0;
+  let teacherCount = 0;
+  for (const teacherName in salaryStats) {
+    const item = salaryStats[teacherName];
+    const taxConfig = taxConfigMap[teacherName] || { formatCode: "9B", nationality: "本國人", nhiExempt: "否" };
+    const taxAndNhi = calculateSalaryDeductions(item.total, taxConfig);
+    grossTotal += item.total;
+    netTotal += taxAndNhi.netAmount;
+    teacherCount++;
+    const warnings = item.missingRateCount > 0 ? `，${item.missingRateCount} 筆缺少鐘點比例/單價` : "";
+    items.push(`${teacherName}（${taxConfig.formatCode}）：${item.hours}hr，應付 ${formatCurrency(item.total)}，扣繳 ${formatCurrency(taxAndNhi.taxAmount)}，補充保費 ${formatCurrency(taxAndNhi.nhiAmount)}，實發 ${formatCurrency(taxAndNhi.netAmount)}${warnings}`);
+  }
+
+  if (items.length === 0) items.push(`${month} 目前沒有待試算鐘點資料。`);
+  return { items, grossTotal, netTotal, teacherCount };
+}
+
+function calculateSalaryDeductions(total: number, taxConfig: any) {
+  let taxAmount = 0;
+  let nhiAmount = 0;
+  if (String(taxConfig.nationality || "").indexOf("外籍") > -1) {
+    taxAmount = Math.round(total * 0.18);
+  } else if (taxConfig.formatCode === "9B" && total > 20000) {
+    taxAmount = Math.round(total * 0.10);
+  } else if (taxConfig.formatCode === "50" && total >= 86001) {
+    taxAmount = Math.round(total * 0.05);
+  }
+  if (total >= 20000 && taxConfig.nhiExempt !== "是") {
+    nhiAmount = Math.round(total * 0.0211);
+  }
+  return { taxAmount, nhiAmount, netAmount: total - taxAmount - nhiAmount };
 }
 
 function buildAdminPreviewMetrics(month: string, feature: string) {
