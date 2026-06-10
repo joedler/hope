@@ -117,6 +117,9 @@ function handleLiffAdminPreview(params: any) {
   const preview = feature === "學費試算" ? buildTuitionAdminPreview(month) :
     feature === "鐘點試算" ? buildSalaryAdminPreview(month) :
     feature === "繳費單" ? buildPaymentNoticeAdminPreview(month) :
+    feature === "收據" ? buildReceiptAdminPreview(month) :
+    feature === "領據" ? buildAllowanceAdminPreview(month) :
+    feature === "一般收據" ? buildGeneralReceiptAdminPreview(month) :
     previewMap[feature];
   if (!preview) {
     return { ok: false, message: `不支援的行政預覽功能: ${feature}` };
@@ -681,6 +684,196 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
     items.push(`${month} 學費結算表沒有可產生繳費單的資料；請先完成學費試算確認寫入。`);
   }
   return { items, grandTotal, studentCount, generatedCount };
+}
+
+function buildReceiptAdminPreview(month: string) {
+  try {
+    const result = buildReceiptReadOnlyPreview(month);
+    const items = result.items.slice(0, 12);
+    if (result.items.length > items.length) {
+      items.push(`另有 ${result.items.length - items.length} 位學生收據資料未列出，正式預覽頁後續再提供完整清單。`);
+    }
+    return {
+      summary: `${month} 收據只讀預覽：${result.studentCount} 位學生，應開收據總額 ${formatCurrency(result.grandTotal)}，已有收據 PDF ${result.generatedCount} 份，待寄送 ${result.pendingSendCount} 份。`,
+      items,
+      nextAction: "確認產生收據（尚未開放）"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 收據只讀預覽讀取失敗。`,
+      items: ["請先檢查學費結算表、收款方式、收據類別、收款日期與 GAS 權限。", "錯誤：" + e.toString()],
+      nextAction: "確認產生收據（尚未開放）"
+    };
+  }
+}
+
+function buildReceiptReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  if (!sheet) throw new Error("找不到學費結算表。");
+  const data = sheet.getDataRange().getValues();
+  const studentsMap: any = {};
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    if (rowMonth !== month) continue;
+    const studentName = String(data[i][1] || "").trim();
+    if (!studentName) continue;
+    if (!studentsMap[studentName]) {
+      studentsMap[studentName] = {
+        name: studentName,
+        total: 0,
+        docId: "",
+        method: "",
+        category: "",
+        date: "",
+        receiptUrl: "",
+        status: "",
+        courseCount: 0
+      };
+    }
+    const item = studentsMap[studentName];
+    if (data[i][2]) item.courseCount++;
+    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
+    if (data[i][9]) item.docId = String(data[i][9]).trim();
+    if (data[i][12]) item.method = String(data[i][12]).trim();
+    if (data[i][13]) item.category = String(data[i][13]).trim();
+    if (data[i][14]) item.date = data[i][14] instanceof Date ? Utilities.formatDate(data[i][14], timeZone, "yyyy/MM/dd") : String(data[i][14]).trim();
+    if (data[i][15]) item.receiptUrl = String(data[i][15]).trim();
+    if (data[i][16]) item.status = String(data[i][16]).trim();
+  }
+
+  const items: string[] = [];
+  let grandTotal = 0;
+  let studentCount = 0;
+  let generatedCount = 0;
+  let pendingSendCount = 0;
+  for (const studentName in studentsMap) {
+    const item = studentsMap[studentName];
+    studentCount++;
+    grandTotal += item.total;
+    if (item.receiptUrl) generatedCount++;
+    if (item.status === "待寄送") pendingSendCount++;
+    const warnings: string[] = [];
+    if (!item.docId) warnings.push("缺單據編號");
+    if (!item.method) warnings.push("缺收款方式");
+    if (!item.category) warnings.push("缺收據類別");
+    if (!item.date) warnings.push("缺收款日期");
+    if (!item.total) warnings.push("缺收據金額");
+    const receiptState = item.receiptUrl ? (item.status || "已有收據 PDF") : "尚未產生收據 PDF";
+    items.push(`${studentName}：${formatCurrency(item.total)}，${item.courseCount} 項課程，單號 ${item.docId || "未填"}，${item.method || "方式未填"} / ${item.category || "類別未填"} / ${item.date || "日期未填"}，${receiptState}${warnings.length ? "；提醒：" + warnings.join("、") : ""}`);
+  }
+
+  if (items.length === 0) items.push(`${month} 學費結算表沒有可開收據的資料；請先完成學費試算與繳費單流程。`);
+  return { items, grandTotal, studentCount, generatedCount, pendingSendCount };
+}
+
+function buildAllowanceAdminPreview(month: string) {
+  try {
+    const result = buildAllowanceReadOnlyPreview(month);
+    const items = result.items.slice(0, 12);
+    if (result.items.length > items.length) {
+      items.push(`另有 ${result.items.length - items.length} 位講師領據資料未列出，正式預覽頁後續再提供完整清單。`);
+    }
+    return {
+      summary: `${month} 領據只讀預覽：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}，已有領據 PDF ${result.generatedCount} 份，待寄送 ${result.pendingSendCount} 份。`,
+      items,
+      nextAction: "確認產生領據（尚未開放）"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 領據只讀預覽讀取失敗。`,
+      items: ["請先檢查鐘點結算表、領據編號、PDF 與寄送狀態。", "錯誤：" + e.toString()],
+      nextAction: "確認產生領據（尚未開放）"
+    };
+  }
+}
+
+function buildAllowanceReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
+  if (!sheet) throw new Error("找不到鐘點結算表。");
+  const data = sheet.getDataRange().getValues();
+  const items: string[] = [];
+  let grossTotal = 0;
+  let netTotal = 0;
+  let teacherCount = 0;
+  let generatedCount = 0;
+  let pendingSendCount = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    if (rowMonth !== month) continue;
+    const teacherName = String(data[i][1] || "").trim();
+    if (!teacherName) continue;
+    const gross = parseFloat(data[i][5]) || 0;
+    const net = parseFloat(data[i][14]) || parseFloat(data[i][6]) || gross;
+    const docId = String(data[i][7] || "").trim();
+    const pdfUrl = String(data[i][10] || "").trim();
+    const status = String(data[i][11] || "").trim();
+    const taxAmount = parseFloat(data[i][12]) || 0;
+    const nhiAmount = parseFloat(data[i][13]) || 0;
+    const detail = String(data[i][4] || "").trim();
+    teacherCount++;
+    grossTotal += gross;
+    netTotal += net;
+    if (pdfUrl) generatedCount++;
+    if (status === "待寄送") pendingSendCount++;
+    const warnings: string[] = [];
+    if (!docId) warnings.push("缺領據編號");
+    if (!gross) warnings.push("缺應付金額");
+    const stateText = pdfUrl ? (status || "已有領據 PDF") : "尚未產生領據 PDF";
+    items.push(`${teacherName}：應付 ${formatCurrency(gross)}，扣繳 ${formatCurrency(taxAmount)}，補充保費 ${formatCurrency(nhiAmount)}，實發 ${formatCurrency(net)}，領據 ${docId || "未填"}，${stateText}${detail ? "；明細：" + detail : ""}${warnings.length ? "；提醒：" + warnings.join("、") : ""}`);
+  }
+
+  if (items.length === 0) items.push(`${month} 鐘點結算表沒有可開領據的資料；請先完成鐘點試算確認寫入。`);
+  return { items, grossTotal, netTotal, teacherCount, generatedCount, pendingSendCount };
+}
+
+function buildGeneralReceiptAdminPreview(month: string) {
+  try {
+    const result = buildGeneralReceiptReadOnlyPreview(month);
+    return {
+      summary: `${month} 一般收據只讀預覽：${result.recordCount} 筆，合計 ${formatCurrency(result.totalAmount)}，已有 PDF ${result.generatedCount} 份。`,
+      items: result.items.slice(0, 12),
+      nextAction: "確認產生一般收據（尚未開放）"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 一般收據只讀預覽讀取失敗。`,
+      items: ["請先檢查一般收據紀錄分頁。", "錯誤：" + e.toString()],
+      nextAction: "確認產生一般收據（尚未開放）"
+    };
+  }
+}
+
+function buildGeneralReceiptReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_GEN_RECORD);
+  if (!sheet) throw new Error("找不到一般收據紀錄。");
+  const data = sheet.getDataRange().getValues();
+  const items: string[] = [];
+  let totalAmount = 0;
+  let recordCount = 0;
+  let generatedCount = 0;
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][2] || data[i][3], timeZone);
+    if (rowMonth !== month) continue;
+    const name = String(data[i][1] || data[i][2] || "").trim();
+    const category = String(data[i][4] || data[i][3] || "").trim();
+    const amount = parseFloat(data[i][5]) || parseFloat(data[i][4]) || 0;
+    const docId = String(data[i][6] || data[i][5] || "").trim();
+    const pdfUrl = String(data[i][9] || data[i][8] || "").trim();
+    recordCount++;
+    totalAmount += amount;
+    if (pdfUrl) generatedCount++;
+    items.push(`${name || "未填姓名"}：${category || "類別未填"}，${formatCurrency(amount)}，編號 ${docId || "未填"}，${pdfUrl ? "已有 PDF" : "尚未產生 PDF"}`);
+  }
+  if (items.length === 0) items.push(`${month} 目前沒有一般收據紀錄。`);
+  return { items, totalAmount, recordCount, generatedCount };
 }
 
 function buildAdminPreviewMetrics(month: string, feature: string) {
