@@ -512,8 +512,8 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
     const total = item.total || item.courseAmountSum;
     grandTotal += total;
     studentCount++;
-    const courseText = item.courses.length > 0 ? "；" + item.courses.join("；") : "";
-    items.push(`${studentName}：${formatCurrency(total)}，${item.courses.length} 項課程，單號 ${item.docId || "未填"}${courseText}`);
+    const courseText = item.courses.length > 0 ? "\n課程：\n- " + item.courses.join("\n- ") : "";
+    items.push(`${studentName}\n金額：${formatCurrency(total)}\n課程數：${item.courses.length}\n單號：${item.docId || "未填"}${courseText}`);
   }
 
   if (studentCount === 0) {
@@ -538,7 +538,7 @@ function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spread
     const conf = configMap[studentName + "_" + courseName] || { fee: parseFloat(data[i][8]) || 0, mode: "後收", teacher: "" };
     if (!stats[studentName]) stats[studentName] = {};
     if (!stats[studentName][courseName]) {
-      stats[studentName][courseName] = { teacher: conf.teacher, fee: conf.fee, mode: conf.mode, recordBase: 0, planBase: 0, planNext: 0, detailsRec: [], detailsPlan: [], adjustments: [] };
+      stats[studentName][courseName] = { teacher: conf.teacher, fee: conf.fee, mode: conf.mode, recordBase: 0, planBase: 0, pendingPlanBase: 0, planNext: 0, detailsRec: [], detailsPending: [], detailsPlan: [], adjustments: [] };
     }
     stats[studentName][courseName].adjustments.push({
       amount,
@@ -660,10 +660,23 @@ function buildSalaryReadOnlyPreview(month: string) {
     grossTotal += item.total;
     netTotal += taxAndNhi.netAmount;
     teacherCount++;
-    const warnings = item.missingRateCount > 0 ? `，${item.missingRateCount} 筆缺少鐘點比例/單價` : "";
-    const adjustmentText = item.adjustmentCount > 0 ? `，含帳務補救補發 ${item.adjustmentCount} 筆` : "";
-    const detailText = item.details.length > 0 ? `；明細：${item.details.join("｜")}` : "";
-    items.push(`${teacherName}（${taxConfig.formatCode}）：總時數 ${item.hours}hr，應付 ${formatCurrency(item.total)}，扣繳 ${formatCurrency(taxAndNhi.taxAmount)}，補充保費 ${formatCurrency(taxAndNhi.nhiAmount)}，實發 ${formatCurrency(taxAndNhi.netAmount)}${adjustmentText}${warnings}${detailText}`);
+    const lines: string[] = [
+      `${teacherName}（${taxConfig.formatCode}）`,
+      `總時數：${item.hours}hr`,
+      `應付：${formatCurrency(item.total)}`,
+      `扣繳：${formatCurrency(taxAndNhi.taxAmount)}`,
+      `補充保費：${formatCurrency(taxAndNhi.nhiAmount)}`,
+      `實發：${formatCurrency(taxAndNhi.netAmount)}`
+    ];
+    if (item.adjustmentCount > 0) lines.push(`帳務補救補發：${item.adjustmentCount} 筆`);
+    if (item.missingRateCount > 0) lines.push(`提醒：${item.missingRateCount} 筆缺少鐘點比例/單價`);
+    if (item.details.length > 0) {
+      lines.push("明細：");
+      for (let d = 0; d < item.details.length; d++) {
+        lines.push("- " + item.details[d]);
+      }
+    }
+    items.push(lines.join("\n"));
   }
 
   if (items.length === 0) items.push(`${month} 目前沒有待試算鐘點資料。`);
@@ -689,7 +702,7 @@ function appendSalaryPreviewItem(
   salaryStats[teacherName].hours += hours;
   if (!payRate) salaryStats[teacherName].missingRateCount++;
   if (sourceLabel !== "授課") salaryStats[teacherName].adjustmentCount++;
-  salaryStats[teacherName].details.push(`${sourceLabel}：${studentName} / ${courseName}，${dateText} ${startTime}-${endTime}，${hours}hr，${formatCurrency(payAmount)}`);
+  salaryStats[teacherName].details.push(`${sourceLabel}\n  學生：${studentName}\n  課程：${courseName}\n  時間：${dateText} ${startTime}-${endTime}\n  時數：${hours}hr\n  金額：${formatCurrency(payAmount)}`);
 }
 
 function appendSalaryAdjustmentsToStats(
@@ -831,7 +844,7 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
     if (!item.total) warnings.push("缺總金額");
     if (item.pdfUrl || item.status.indexOf("已產") > -1) warnings.push("已產生");
     const warningText = warnings.length > 0 ? "；提醒：" + warnings.join("、") : "";
-    items.push(`${studentName}：${formatCurrency(item.total)}，${item.courses.length} 項課程，單號 ${item.docId || "未填"}，${statusText}${warningText}`);
+    items.push(`${studentName}\n金額：${formatCurrency(item.total)}\n課程：${item.courses.length} 項\n單號：${item.docId || "未填"}\n狀態：${statusText}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
     const selectable = !!item.docId && !!item.total && !(item.pdfUrl || item.status.indexOf("已產") > -1);
     rows.push({
       id: "student:" + studentName,
@@ -932,7 +945,7 @@ function buildReceiptReadOnlyPreview(month: string) {
     if (!item.date) warnings.push("缺收款日期");
     if (!item.total) warnings.push("缺收據金額");
     const receiptState = item.receiptUrl ? (item.status || "已有收據 PDF") : "尚未產生收據 PDF";
-    items.push(`${studentName}：${formatCurrency(item.total)}，${item.courseCount} 項課程，單號 ${item.docId || "未填"}，${item.method || "方式未填"} / ${item.category || "類別未填"} / ${item.date || "日期未填"}，${receiptState}${warnings.length ? "；提醒：" + warnings.join("、") : ""}`);
+    items.push(`${studentName}\n金額：${formatCurrency(item.total)}\n課程：${item.courseCount} 項\n單號：${item.docId || "未填"}\n收款：${item.method || "方式未填"} / ${item.category || "類別未填"} / ${item.date || "日期未填"}\n狀態：${receiptState}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
   }
 
   if (items.length === 0) items.push(`${month} 學費結算表沒有可開收據的資料；請先完成學費試算與繳費單流程。`);
@@ -998,7 +1011,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
     if (!gross) warnings.push("缺應付金額");
     if (pdfUrl) warnings.push("已產生");
     const stateText = pdfUrl ? (status || "已有領據 PDF") : "尚未產生領據 PDF";
-    items.push(`${teacherName}：應付 ${formatCurrency(gross)}，扣繳 ${formatCurrency(taxAmount)}，補充保費 ${formatCurrency(nhiAmount)}，實發 ${formatCurrency(net)}，領據 ${docId || "未填"}，${stateText}${detail ? "；明細：" + detail : ""}${warnings.length ? "；提醒：" + warnings.join("、") : ""}`);
+    items.push(`${teacherName}\n應付：${formatCurrency(gross)}\n扣繳：${formatCurrency(taxAmount)}\n補充保費：${formatCurrency(nhiAmount)}\n實發：${formatCurrency(net)}\n領據：${docId || "未填"}\n狀態：${stateText}${detail ? "\n明細：\n- " + detail.split("；").join("\n- ") : ""}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
     rows.push({
       id: "teacher:" + teacherName,
       type: "teacher",
@@ -1056,7 +1069,7 @@ function buildGeneralReceiptReadOnlyPreview(month: string) {
     recordCount++;
     totalAmount += amount;
     if (pdfUrl) generatedCount++;
-    items.push(`${name || "未填姓名"}：${category || "類別未填"}，${formatCurrency(amount)}，編號 ${docId || "未填"}，${pdfUrl ? "已有 PDF" : "尚未產生 PDF"}`);
+    items.push(`${name || "未填姓名"}\n類別：${category || "類別未填"}\n金額：${formatCurrency(amount)}\n編號：${docId || "未填"}\n狀態：${pdfUrl ? "已有 PDF" : "尚未產生 PDF"}`);
   }
   if (items.length === 0) items.push(`${month} 目前沒有一般收據紀錄。`);
   return { items, totalAmount, recordCount, generatedCount };

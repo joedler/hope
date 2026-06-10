@@ -844,15 +844,16 @@ function buildAdjustmentPaymentPreview(month: string) {
   students.forEach(function(student: any) {
     student.rows.forEach(function(row: any) {
       items.push(
-        student.name + "｜補收 NT$ " + formatMoney(row.amount) +
-        "｜原月份 " + (row.originalMonth || "未填") +
-        "｜" + row.lessonDate + " " + row.startTime + "-" + row.endTime +
-        "｜" + row.course +
-        "｜" + row.hours + "hr x NT$ " + formatMoney(row.unitFee) +
-        "｜原單 " + (row.relatedDocId || "未填") +
-        "｜狀態 " + (row.status || "未填") +
-        (row.paymentDocId ? "｜通知單 " + row.paymentDocId : "") +
-        "｜原因：" + (row.reason || "未填")
+        student.name +
+        "\n補收金額：NT$ " + formatMoney(row.amount) +
+        "\n原月份：" + (row.originalMonth || "未填") +
+        "\n上課時間：" + row.lessonDate + " " + row.startTime + "-" + row.endTime +
+        "\n課程：" + row.course +
+        "\n時數/單價：" + row.hours + "hr x NT$ " + formatMoney(row.unitFee) +
+        "\n原單：" + (row.relatedDocId || "未填") +
+        "\n狀態：" + (row.status || "未填") +
+        (row.paymentDocId ? "\n通知單：" + row.paymentDocId : "") +
+        "\n原因：" + (row.reason || "未填")
       );
     });
   });
