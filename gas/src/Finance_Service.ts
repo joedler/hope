@@ -134,6 +134,7 @@ function handleLiffAdminPreview(params: any) {
       month,
       summary: preview.summary,
       items: preview.items,
+      rows: preview.rows || [],
       metrics,
       status: "後端只讀預覽，尚未寫入或寄送",
       nextAction: preview.nextAction,
@@ -158,6 +159,12 @@ function handleLiffAdminConfirmSettlement(params: any) {
 
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const targetSheetName = feature === "學費試算" ? SHEET_NAME_FIN_FEE : SHEET_NAME_FIN_PAY;
+  if (feature === "學費試算") {
+    const tuitionPreview = buildTuitionReadOnlyPreview(month);
+    if ((tuitionPreview as any).pendingCount > 0) {
+      return { ok: false, message: `${month} 尚有未核銷預排課程，請先完成預排核銷後再寫入學費結算。` };
+    }
+  }
   const beforeCount = countSheetRowsByMonthOnly(ss, targetSheetName, 0, month);
   const mockEvent = {
     replyToken: "LIFF_API_CALL",
@@ -221,7 +228,20 @@ function handleLiffAdminConfirmDocument(params: any) {
     return { ok: false, message: `${month} 繳費單已全部產生，未重複產生 PDF。` };
   }
 
-  const resultMessage = createPaymentNoticesBatch(month, "");
+  const selectedIds = parseAdminSelectedIds(params.selectedIds);
+  const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
+  const selectedRows = selectedIds.length > 0
+    ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+    : selectableRows;
+  if (selectedRows.length === 0) {
+    return { ok: false, message: `${month} 沒有選取可產生繳費單的學生。` };
+  }
+
+  const resultMessages: string[] = [];
+  for (let i = 0; i < selectedRows.length; i++) {
+    resultMessages.push(createPaymentNoticesBatch(month, selectedRows[i].name));
+  }
+  const resultMessage = resultMessages.join("\n\n");
   const afterPreview = buildPaymentNoticeAdminPreview(month);
   if (resultMessage.indexOf("❌") === 0 || resultMessage.indexOf("⚠️") === 0) {
     return { ok: false, message: resultMessage, preview: afterPreview };
@@ -229,9 +249,23 @@ function handleLiffAdminConfirmDocument(params: any) {
 
   return {
     ok: true,
-    message: `${month} 繳費單已確認產生。\n${resultMessage}`,
+    message: `${month} 繳費單已確認產生，共 ${selectedRows.length} 位學生。\n${resultMessage}`,
     preview: afterPreview
   };
+}
+
+function parseAdminSelectedIds(value: any): string[] {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Object.prototype.toString.call(parsed) === "[object Array]") {
+      return parsed.map(function(item: any) { return String(item || "").trim(); }).filter(function(item: string) { return item !== ""; });
+    }
+  } catch (e) {
+    // Fall back to comma separated values.
+  }
+  return raw.split(",").map(function(item) { return String(item || "").trim(); }).filter(function(item) { return item !== ""; });
 }
 
 function normalizeAdminPreviewMonth(value: any) {
@@ -257,11 +291,12 @@ function buildTuitionAdminPreview(month: string) {
         canConfirm: false
       };
     }
+    const pendingCount = (result as any).pendingCount || 0;
     return {
-      summary: `${month} 學費試算只讀預覽：${result.studentCount} 位學生，預估總額 ${formatCurrency(result.grandTotal)}。`,
+      summary: `${month} 學費試算只讀預覽：${result.studentCount} 位學生，預估總額 ${formatCurrency(result.grandTotal)}。${pendingCount > 0 ? " 尚有待核銷預排，需先核銷後才能正式寫入。" : ""}`,
       items,
-      nextAction: "確認寫入試算結果",
-      canConfirm: result.studentCount > 0,
+      nextAction: pendingCount > 0 ? "請先完成預排核銷" : "確認寫入試算結果",
+      canConfirm: result.studentCount > 0 && pendingCount === 0,
       confirmAction: "adminConfirmSettlement"
     };
   } catch (e) {
@@ -313,8 +348,10 @@ function buildTuitionReadOnlyPreview(month: string) {
         mode,
         recordBase: 0,
         planBase: 0,
+        pendingPlanBase: 0,
         planNext: 0,
         detailsRec: [],
+        detailsPending: [],
         detailsPlan: [],
         adjustments: []
       };
@@ -352,7 +389,13 @@ function buildTuitionReadOnlyPreview(month: string) {
     initStats(studentName, courseName, conf.teacher, conf.fee, conf.mode);
 
     if (targetMonthForPlanBase === month) {
-      stats[studentName][courseName].planBase += hours;
+      if (status === "未核銷") {
+        stats[studentName][courseName].pendingPlanBase += hours;
+        const perLessonAmt = Math.round(hours * conf.fee);
+        stats[studentName][courseName].detailsPending.push("[待核銷預排] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4] + " (" + formatCurrency(perLessonAmt) + ")");
+      } else {
+        stats[studentName][courseName].planBase += hours;
+      }
       if (status === "取消") {
         stats[studentName][courseName].detailsRec.push("[歷史取消退費] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4]);
       }
@@ -369,6 +412,7 @@ function buildTuitionReadOnlyPreview(month: string) {
 
   let grandTotal = 0;
   let studentCount = 0;
+  let pendingCount = 0;
   for (const studentName in stats) {
     let studentTotal = 0;
     const courseSummaries: string[] = [];
@@ -378,18 +422,21 @@ function buildTuitionReadOnlyPreview(month: string) {
       let courseTotal = 0;
       let formula = "";
       if (item.mode === "預收") {
-        const diff = Math.round((item.recordBase - item.planBase) * 10) / 10;
+        const diff = item.pendingPlanBase > 0 ? 0 : Math.round((item.recordBase - item.planBase) * 10) / 10;
         const totalHours = Math.round((item.planNext + diff) * 10) / 10;
         courseTotal = Math.round(totalHours * item.fee) + adjustmentTotal;
-        formula = `預收 ${item.planNext}hr，核對差異 ${diff}hr，調整 ${formatCurrency(adjustmentTotal)}`;
+        formula = item.pendingPlanBase > 0
+          ? `預收 ${item.planNext}hr，尚有待核銷 ${item.pendingPlanBase}hr，暫不計入退費，調整 ${formatCurrency(adjustmentTotal)}`
+          : `預收 ${item.planNext}hr，核對差異 ${diff}hr，調整 ${formatCurrency(adjustmentTotal)}`;
       } else {
         courseTotal = Math.round(item.recordBase * item.fee) + adjustmentTotal;
         formula = `後收實上 ${item.recordBase}hr，調整 ${formatCurrency(adjustmentTotal)}`;
       }
-      if (courseTotal !== 0 || item.recordBase > 0 || item.planNext > 0 || adjustmentTotal !== 0) {
+      if (courseTotal !== 0 || item.recordBase > 0 || item.planNext > 0 || item.pendingPlanBase > 0 || adjustmentTotal !== 0) {
         studentTotal += courseTotal;
         const detailParts: string[] = [];
         for (let d = 0; d < item.detailsRec.length; d++) detailParts.push(item.detailsRec[d]);
+        for (let d = 0; d < item.detailsPending.length; d++) detailParts.push(item.detailsPending[d]);
         for (let d = 0; d < item.detailsPlan.length; d++) detailParts.push(item.detailsPlan[d]);
         for (let a = 0; a < item.adjustments.length; a++) {
           const adj = item.adjustments[a];
@@ -400,19 +447,20 @@ function buildTuitionReadOnlyPreview(month: string) {
             `原單 ${adj.relatedDocId || "未填"}，狀態 ${adj.status || "未填"}，原因：${adj.reason || "未填"}`
           );
         }
-        const detailText = detailParts.length > 0 ? `；明細：${detailParts.join("｜")}` : "";
-        courseSummaries.push(`${courseName}（${item.mode}）：${formula}，小計 ${formatCurrency(courseTotal)}${detailText}`);
+        const detailText = detailParts.length > 0 ? `\n  明細：\n  - ${detailParts.join("\n  - ")}` : "";
+        courseSummaries.push(`${courseName}（${item.mode}）\n  ${formula}\n  小計 ${formatCurrency(courseTotal)}${detailText}`);
+        if (item.pendingPlanBase > 0) pendingCount++;
       }
     }
     if (courseSummaries.length > 0) {
       studentCount++;
       grandTotal += studentTotal;
-      items.push(`${studentName}：${formatCurrency(studentTotal)}；` + courseSummaries.join("；"));
+      items.push(`${studentName}\n本期預估：${formatCurrency(studentTotal)}\n` + courseSummaries.join("\n"));
     }
   }
 
   if (items.length === 0) items.push(`${month} 目前沒有待試算學費資料。`);
-  return { items, grandTotal, studentCount };
+  return { items, grandTotal, studentCount, pendingCount };
 }
 
 function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string, existingSettlementCount: number) {
@@ -713,6 +761,7 @@ function buildPaymentNoticeAdminPreview(month: string) {
     return {
       summary: `${month} 繳費單只讀預覽：${result.studentCount} 位學生，總金額 ${formatCurrency(result.grandTotal)}，已產生 PDF ${result.generatedCount} 份。`,
       items,
+      rows: result.rows,
       nextAction: result.generatedCount >= result.studentCount && result.studentCount > 0 ? "繳費單已全部產生" : "確認產生繳費單",
       canConfirm: result.studentCount > 0 && result.generatedCount < result.studentCount,
       confirmAction: "adminConfirmDocument"
@@ -767,6 +816,7 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
   }
 
   const items: string[] = [];
+  const rows: any[] = [];
   let grandTotal = 0;
   let studentCount = 0;
   let generatedCount = 0;
@@ -779,14 +829,31 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
     const warnings: string[] = [];
     if (!item.docId) warnings.push("缺單據編號");
     if (!item.total) warnings.push("缺總金額");
+    if (item.pdfUrl || item.status.indexOf("已產") > -1) warnings.push("已產生");
     const warningText = warnings.length > 0 ? "；提醒：" + warnings.join("、") : "";
     items.push(`${studentName}：${formatCurrency(item.total)}，${item.courses.length} 項課程，單號 ${item.docId || "未填"}，${statusText}${warningText}`);
+    const selectable = !!item.docId && !!item.total && !(item.pdfUrl || item.status.indexOf("已產") > -1);
+    rows.push({
+      id: "student:" + studentName,
+      type: "student",
+      name: studentName,
+      amount: item.total,
+      amountText: formatCurrency(item.total),
+      docId: item.docId,
+      status: statusText,
+      selectable,
+      selectedDefault: selectable,
+      warnings,
+      details: item.courses.map(function(course: any) {
+        return `${course.title || "未填課程"}${course.mode ? "（" + course.mode + "）" : ""}`;
+      })
+    });
   }
 
   if (items.length === 0) {
     items.push(`${month} 學費結算表沒有可產生繳費單的資料；請先完成學費試算確認寫入。`);
   }
-  return { items, grandTotal, studentCount, generatedCount };
+  return { items, rows, grandTotal, studentCount, generatedCount };
 }
 
 function buildReceiptAdminPreview(month: string) {
@@ -882,6 +949,7 @@ function buildAllowanceAdminPreview(month: string) {
     return {
       summary: `${month} 領據只讀預覽：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}，已有領據 PDF ${result.generatedCount} 份，待寄送 ${result.pendingSendCount} 份。`,
       items,
+      rows: result.rows,
       nextAction: "確認產生領據（尚未開放）"
     };
   } catch (e) {
@@ -900,6 +968,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
   if (!sheet) throw new Error("找不到鐘點結算表。");
   const data = sheet.getDataRange().getValues();
   const items: string[] = [];
+  const rows: any[] = [];
   let grossTotal = 0;
   let netTotal = 0;
   let teacherCount = 0;
@@ -927,12 +996,26 @@ function buildAllowanceReadOnlyPreview(month: string) {
     const warnings: string[] = [];
     if (!docId) warnings.push("缺領據編號");
     if (!gross) warnings.push("缺應付金額");
+    if (pdfUrl) warnings.push("已產生");
     const stateText = pdfUrl ? (status || "已有領據 PDF") : "尚未產生領據 PDF";
     items.push(`${teacherName}：應付 ${formatCurrency(gross)}，扣繳 ${formatCurrency(taxAmount)}，補充保費 ${formatCurrency(nhiAmount)}，實發 ${formatCurrency(net)}，領據 ${docId || "未填"}，${stateText}${detail ? "；明細：" + detail : ""}${warnings.length ? "；提醒：" + warnings.join("、") : ""}`);
+    rows.push({
+      id: "teacher:" + teacherName,
+      type: "teacher",
+      name: teacherName,
+      amount: net,
+      amountText: formatCurrency(net),
+      docId,
+      status: stateText,
+      selectable: false,
+      selectedDefault: false,
+      warnings,
+      details: detail ? detail.split("；") : []
+    });
   }
 
   if (items.length === 0) items.push(`${month} 鐘點結算表沒有可開領據的資料；請先完成鐘點試算確認寫入。`);
-  return { items, grossTotal, netTotal, teacherCount, generatedCount, pendingSendCount };
+  return { items, rows, grossTotal, netTotal, teacherCount, generatedCount, pendingSendCount };
 }
 
 function buildGeneralReceiptAdminPreview(month: string) {
@@ -1559,7 +1642,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
   const stats: any = {};
   function initStats(s: string, c: string, t: string, fee: number, mode: string) {
     if (!stats[s]) stats[s] = {};
-    if (!stats[s][c]) { stats[s][c] = { teacher: t, fee: fee, mode: mode, recordBase: 0, planBase: 0, planNext: 0, detailsRec: [], detailsPlan: [], adjustments: [] }; }
+    if (!stats[s][c]) { stats[s][c] = { teacher: t, fee: fee, mode: mode, recordBase: 0, planBase: 0, pendingPlanBase: 0, planNext: 0, detailsRec: [], detailsPending: [], detailsPlan: [], adjustments: [] }; }
   }
 
   const rData = recordSheet.getDataRange().getValues();
@@ -1597,9 +1680,15 @@ function handleTuitionCalculation(event: any, userMsg: string) {
         initStats(sName, cName, conf.teacher, conf.fee, conf.mode);
         
         if (targetMonthForPlanBase == baseMonthStr) { 
-          stats[sName][cName].planBase += hr; 
+          const dText = (pData[i][2] instanceof Date) ? Utilities.formatDate(pData[i][2], timeZone, "MM/dd") : pData[i][2];
+          if (String(status || "").trim() === "未核銷") {
+            stats[sName][cName].pendingPlanBase += hr;
+            const perLessonAmt = Math.round(hr * conf.fee);
+            stats[sName][cName].detailsPending.push("[待核銷預排] " + dText + " " + pData[i][3] + "-" + pData[i][4] + " ($" + perLessonAmt + ")");
+          } else {
+            stats[sName][cName].planBase += hr;
+          }
           if (status === "取消") {
-            const dText = (pData[i][2] instanceof Date) ? Utilities.formatDate(pData[i][2], timeZone, "MM/dd") : pData[i][2];
             stats[sName][cName].detailsRec.push("[歷史補救] " + dText + " " + pData[i][3] + "-" + pData[i][4] + " (取消退費)");
           }
         } else if (lessonDateMonth == nextMonthStr && status !== "取消") {
@@ -1612,22 +1701,24 @@ function handleTuitionCalculation(event: any, userMsg: string) {
 
   appendTuitionAdjustmentsToStats(ss, stats, configMap, baseMonthStr);
 
-  let report = "💰 學費試算單 (" + baseMonthStr + ")\n\n"; let saveData: any[] = []; let grandTotal = 0; let hasData = false;
+  let report = "💰 學費試算單 (" + baseMonthStr + ")\n\n"; let saveData: any[] = []; let grandTotal = 0; let hasData = false; let hasPendingPlan = false;
   for (const sName in stats) {
     let sTotal = 0; let sDetailText = ""; const courseRows = [];
     for (const cName in stats[sName]) {
       const item = stats[sName][cName]; let finalAmount = 0; let formulaStr = ""; let fullDetails: string[] = [];
       const adjustmentTotal = item.adjustments.reduce(function(sum: number, adj: any) { return sum + adj.amount; }, 0);
       if (item.mode === "預收") {
-        const diff = Math.round((item.recordBase - item.planBase) * 10) / 10;
+        if (item.pendingPlanBase > 0) hasPendingPlan = true;
+        const diff = item.pendingPlanBase > 0 ? 0 : Math.round((item.recordBase - item.planBase) * 10) / 10;
         const totalHr = item.planNext + diff; finalAmount = Math.round(totalHr * item.fee) + adjustmentTotal;
         const diffStr = (diff > 0) ? (" +補" + diff + "hr") : (diff < 0 ? (" -退" + Math.abs(diff) + "hr") : "");
         const adjustmentStr = adjustmentTotal !== 0 ? "，帳務補救 " + formatCurrency(adjustmentTotal) : "";
-        formulaStr = "預收" + item.planNext + "hr" + diffStr + " = " + totalHr + "hr" + adjustmentStr;
+        formulaStr = item.pendingPlanBase > 0 ? ("預收" + item.planNext + "hr，待核銷" + item.pendingPlanBase + "hr 暫不退費" + adjustmentStr) : ("預收" + item.planNext + "hr" + diffStr + " = " + totalHr + "hr" + adjustmentStr);
         if (item.detailsRec.length > 0 || item.planBase > 0) {
             fullDetails.push("📋 [上月核對] 實上" + item.recordBase + " / 預繳" + item.planBase); fullDetails = fullDetails.concat(item.detailsRec); 
             if (diff !== 0) fullDetails.push("⚠️ 差異金額: " + (diff > 0 ? "補收 $":"退費 $") + Math.abs(Math.round(diff * item.fee))); else fullDetails.push("✅ 差異: 無 (已結清)"); fullDetails.push(""); 
         }
+        if (item.detailsPending.length > 0) { fullDetails.push("⏳ [待核銷預排] 尚未列入退費"); fullDetails = fullDetails.concat(item.detailsPending); fullDetails.push(""); }
         if (item.detailsPlan.length > 0) { fullDetails.push("📅 [下月預收] " + nextMonthStr); fullDetails = fullDetails.concat(item.detailsPlan); }
       } else {
         finalAmount = Math.round(item.recordBase * item.fee) + adjustmentTotal; formulaStr = "實上 " + item.recordBase + " hr × $" + item.fee + (adjustmentTotal !== 0 ? "，帳務補救 " + formatCurrency(adjustmentTotal) : ""); fullDetails = item.detailsRec;
@@ -1640,7 +1731,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
         fullDetails.push("🧾 [本月帳務補救]");
         fullDetails = fullDetails.concat(adjustmentLines);
       }
-      if (finalAmount !== 0 || item.recordBase > 0 || item.planNext > 0 || adjustmentTotal !== 0) {
+      if (finalAmount !== 0 || item.recordBase > 0 || item.planNext > 0 || item.pendingPlanBase > 0 || adjustmentTotal !== 0) {
         sTotal += finalAmount; const detailBlock = fullDetails.join("\n"); if (sDetailText !== "") sDetailText += "\n--------------------\n";
         sDetailText += "   📘 " + cName + " (" + item.mode + ")\n" + detailBlock.replace(/^/gm, "      ") + "\n      ➤ 本科總計：$" + finalAmount;
         courseRows.push([ baseMonthStr, sName, cName, item.mode, detailBlock, formulaStr, item.fee, finalAmount, "", "", "" ]);
@@ -1652,7 +1743,9 @@ function handleTuitionCalculation(event: any, userMsg: string) {
     }
   }
 
-  if (!hasData) { replyLineMessage(replyToken, "💰 學費試算 (" + baseMonthStr + ")\n無須結算資料。"); } else {
+  if (hasPendingPlan) {
+    replyLineMessage(replyToken, "⚠️ " + baseMonthStr + " 尚有未核銷預排課程，請先完成預排核銷後再寫入學費結算。");
+  } else if (!hasData) { replyLineMessage(replyToken, "💰 學費試算 (" + baseMonthStr + ")\n無須結算資料。"); } else {
     report += "════════════════\n總金額： $" + grandTotal + "\n\n請確認是否寫入？";
     const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_FEE, save: saveData, updateTargetMonth: baseMonthStr, category: "學費", prefix: "R" };
     CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheData), 600); replyConfirmationCard(replyToken, "學費試算確認", report, cacheKey);
