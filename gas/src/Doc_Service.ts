@@ -1173,10 +1173,10 @@ function handleSingleAllowanceCommand(event: any, userMsg: string) {
      }
   }
 
-  const fullContent = rowData[2] + "\n" + rowData[3];
+  const fullContent = [rowData[2], rowData[3], rowData[4], rowData[5]].filter(function(part: any) { return String(part || "").trim() !== ""; }).join("\n");
   const state: any = {
      name: targetName, amount: rowData[6], taxAmount: rowData[12] || 0, nhiAmount: rowData[13] || 0, netAmount: rowData[14] || rowData[6],
-     docId: rowData[7], date: dateStr, detail: fullContent, totalHours: rowData[2], rowIndex: rowIndex,
+     docId: rowData[7], date: dateStr, detail: fullContent, totalHours: rowData[5] || rowData[2], rowIndex: rowIndex,
      email: tInfo.email, pid: tInfo.pid, addr: tInfo.addr, phone: tInfo.phone, method: tInfo.method, bank: tInfo.bank, account: tInfo.account
   };
 

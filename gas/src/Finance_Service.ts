@@ -864,14 +864,14 @@ function buildAllowanceReadOnlyPreview(month: string) {
     if (rowMonth !== month) continue;
     const teacherName = String(data[i][1] || "").trim();
     if (!teacherName) continue;
-    const gross = parseFloat(data[i][5]) || 0;
-    const net = parseFloat(data[i][14]) || parseFloat(data[i][6]) || gross;
+    const gross = parseFloat(data[i][6]) || parseFloat(data[i][5]) || 0;
+    const net = parseFloat(data[i][14]) || gross;
     const docId = String(data[i][7] || "").trim();
     const pdfUrl = String(data[i][10] || "").trim();
     const status = String(data[i][11] || "").trim();
     const taxAmount = parseFloat(data[i][12]) || 0;
     const nhiAmount = parseFloat(data[i][13]) || 0;
-    const detail = String(data[i][4] || "").trim();
+    const detail = [data[i][2], data[i][3], data[i][4], data[i][5]].filter(function(part: any) { return String(part || "").trim() !== ""; }).join("；");
     teacherCount++;
     grossTotal += gross;
     netTotal += net;
@@ -1655,13 +1655,18 @@ function handleSalaryCalculation(event: any, userMsg: string) {
     report += "👨‍🏫 " + tName + " (" + taxConfig.formatCode + ")\n"; const detailStr = item.details.join("\n"); report += detailStr.replace(/^/gm, "   ") + "\n";
     report += "   💵 應付總額：$" + total + "\n"; if (taxAmount > 0) report += "   ➖ 扣繳稅額：$" + taxAmount + "\n"; if (nhiAmount > 0) report += "   ➖ 補充保費：$" + nhiAmount + "\n"; report += "   💰 實發金額：$" + netAmount + "\n--------------------\n";
     
-    saveData.push([ queryMonth, tName, taxConfig.formatCode, taxConfig.nationality, detailStr, total, netAmount, "", "", "", "", "", taxAmount, nhiAmount, netAmount ]);
+    const lessonCount = item.details.length;
+    const hasAdjustment = detailStr.indexOf("帳務補救補發") > -1;
+    const summaryLabel = hasAdjustment ? "帳務補救" : (lessonCount > 1 ? "多筆彙整" : "單筆");
+    const detailType = hasAdjustment ? "補發" : "";
+    const countText = "共" + lessonCount + "筆";
+    saveData.push([ queryMonth, tName, summaryLabel, detailType, detailStr, countText, total, "", "", "", "", "", taxAmount, nhiAmount, netAmount ]);
     hasData = true;
   }
 
   if (!hasData) { replyLineMessage(replyToken, "💰 鐘點費試算 (" + queryMonth + ")\n無須結算資料。"); } else {
     report += "請確認是否寫入結算工作表？";
-    const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_PAY, save: saveData, updateTargetMonth: queryMonth, updateRows: updateRows, category: "鐘點費", prefix: "P" };
+    const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_PAY, save: saveData, updateTargetMonth: queryMonth, updateRows: updateRows, category: "鐘點費", prefix: "A" };
     CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheData), 600); replyConfirmationCard(replyToken, "鐘點費試算確認", report, cacheKey);
   }
 }
@@ -1710,10 +1715,8 @@ function executeFinancialSave(event: any, postbackData: string) {
     const timeZone = Session.getScriptTimeZone();
     const now = new Date();
     
-    // (A) 產生主檔的給付編號首碼字軌，例如 "R2605_"
-    const rocYearShort = (now.getFullYear() - 1911).toString().substring(1, 3);
-    const mm = (now.getMonth() + 1 < 10 ? "0" : "") + (now.getMonth() + 1);
-    const invoicePrefix = cacheObj.prefix + rocYearShort + mm + "_";
+    // (A) 產生主檔的單據編號字軌，例如 R_2026_06_001 / A_2026_06_001
+    const invoicePrefix = buildFinancialInvoicePrefix(cacheObj.category, cacheObj.updateTargetMonth, cacheObj.prefix);
     
     const sheetData = targetSheet.getDataRange().getValues();
     const invoiceColumnIndex = getFinancialInvoiceColumnIndex(cacheObj.category);
@@ -1731,7 +1734,7 @@ function executeFinancialSave(event: any, postbackData: string) {
     for (let j = 1; j < sheetData.length; j++) {
       const rowInvoice = String(sheetData[j][invoiceColumnIndex] || "");
       if (rowInvoice.indexOf(invoicePrefix) === 0) {
-        const serial = parseInt(rowInvoice.split("_")[1]);
+        const serial = parseFinancialInvoiceSerial(rowInvoice, invoicePrefix);
         if (serial > maxSerial) maxSerial = serial;
       }
     }
@@ -1803,6 +1806,21 @@ function getFinancialInvoiceColumnIndex(category: string): number {
   if (category === "學費") return 9; // J欄：收據/單據編號
   if (category === "鐘點費") return 7; // H欄：領據編號
   return 1;
+}
+
+function buildFinancialInvoicePrefix(category: string, month: string, fallbackPrefix: string): string {
+  const normalizedMonth = normalizeFinancialMonth(month, Session.getScriptTimeZone());
+  const parts = normalizedMonth.split("/");
+  const year = parts[0] || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy");
+  const monthPart = (parts[1] || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "MM")).padStart(2, "0");
+  const prefix = category === "學費" ? "R" : (category === "鐘點費" ? "A" : (fallbackPrefix || ""));
+  return prefix + "_" + year + "_" + monthPart + "_";
+}
+
+function parseFinancialInvoiceSerial(invoiceId: string, invoicePrefix: string): number {
+  const serialText = invoiceId.substring(invoicePrefix.length);
+  const serial = parseInt(serialText, 10);
+  return isNaN(serial) ? 0 : serial;
 }
 
 function getFinancialDuplicateKeys(rows: any[], category: string): string[] {
