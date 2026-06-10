@@ -76,6 +76,14 @@ function doGet(e: any) {
         // 讀取帳務補救表單選項與原單號
         result = handleLiffTuitionAdjustmentOptions(e.parameter);
         break;
+      case "adjustmentPaymentPreview":
+        // 預覽待處理補收繳費單，不寫入、不產生 PDF
+        result = handleLiffAdjustmentPaymentPreview(e.parameter);
+        break;
+      case "generateAdjustmentPayment":
+        // 確認產生補收繳費單，寫回帳務補救紀錄
+        result = handleLiffGenerateAdjustmentPayment(e.parameter);
+        break;
       case "unbind":
         // 解除 LINE 綁定
         result = handleLiffUnbind(lineUserId);
@@ -393,6 +401,8 @@ declare function handleLiffAdminTask(params: any): any;
 declare function handleLiffAdminPreview(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;
 declare function handleLiffTuitionAdjustmentOptions(params: any): any;
+declare function handleLiffAdjustmentPaymentPreview(params: any): any;
+declare function handleLiffGenerateAdjustmentPayment(params: any): any;
 declare function handleLiffUnbind(userId: string): any;
 declare function handleLiffVerifyAndBind(name: string, userId: string): any;
 

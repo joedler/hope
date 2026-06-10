@@ -695,13 +695,179 @@ function ensureTuitionAdjustmentSheet() {
       "狀態",
       "操作人",
       "備註",
-      "原錯誤月份"
+      "原錯誤月份",
+      "補收單號",
+      "補收PDF",
+      "補收單狀態"
     ]);
     sheet.setFrozenRows(1);
-  } else if (sheet.getLastColumn() < 17) {
-    sheet.getRange(1, 17).setValue("原錯誤月份");
+  } else if (sheet.getLastColumn() < 20) {
+    const headers = ["原錯誤月份", "補收單號", "補收PDF", "補收單狀態"];
+    for (let i = 0; i < headers.length; i++) {
+      sheet.getRange(1, 17 + i).setValue(headers[i]);
+    }
   }
   return sheet;
+}
+
+function handleLiffAdjustmentPaymentPreview(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) return { ok: false, message: "權限不足：限行政人員使用。" };
+
+  const month = String(params.month || params.processingMonth || "").replace("-", "/").trim();
+  if (!month.match(/^\d{4}\/\d{2}$/)) return { ok: false, message: "處理月份格式需為 YYYY/MM。" };
+
+  const preview = buildAdjustmentPaymentPreview(month);
+  return { ok: true, preview };
+}
+
+function handleLiffGenerateAdjustmentPayment(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) return { ok: false, message: "權限不足：限行政人員使用。" };
+
+  const month = String(params.month || params.processingMonth || "").replace("-", "/").trim();
+  if (!month.match(/^\d{4}\/\d{2}$/)) return { ok: false, message: "處理月份格式需為 YYYY/MM。" };
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = ensureTuitionAdjustmentSheet();
+    const preview = buildAdjustmentPaymentPreview(month);
+    if (!preview.hasPending) return { ok: false, message: "沒有可產生補收繳費單的待處理補收資料。" };
+
+    const folder = DriveApp.getFolderById(PDF_FOLDER_CONFIG.PAYMENT_NOTICE);
+    const data = sheet.getDataRange().getValues();
+    const nextSerial = getNextAdjustmentPaymentSerial(data, month);
+    let serial = nextSerial;
+    const results: string[] = [];
+
+    for (let i = 0; i < preview.students.length; i++) {
+      const student = preview.students[i];
+      const docId = "ADJ_" + month.replace("/", "_") + "_" + padSerial(serial);
+      serial++;
+      const stuData = {
+        name: student.name,
+        docId,
+        saveTime: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd"),
+        total: student.total,
+        courses: student.rows.map(function(row: any) {
+          return {
+            title: "補收：" + row.course,
+            detail:
+              "原單號：" + row.relatedDocId + "\n" +
+              "原上課：" + row.lessonDate + " " + row.startTime + "-" + row.endTime + "\n" +
+              "時數/單價：" + row.hours + "hr x $" + row.unitFee + "\n" +
+              "原因：" + row.reason + "\n" +
+              "補收金額：NT$ " + formatMoney(row.amount)
+          };
+        })
+      };
+      const fileUrl = generateSinglePaymentPDF(stuData, folder, month);
+      for (let r = 0; r < student.rows.length; r++) {
+        const rowNumber = student.rows[r].rowNumber;
+        sheet.getRange(rowNumber, 14).setValue("已產生補收單");
+        sheet.getRange(rowNumber, 18).setValue(docId);
+        sheet.getRange(rowNumber, 19).setValue(fileUrl);
+        sheet.getRange(rowNumber, 20).setValue("補收單已產");
+      }
+      results.push(student.name + "：" + docId + " / NT$ " + formatMoney(student.total));
+    }
+
+    return {
+      ok: true,
+      message: "已產生補收繳費單：\n" + results.join("\n"),
+      preview: buildAdjustmentPaymentPreview(month)
+    };
+  } catch (e) {
+    return { ok: false, message: "產生補收繳費單失敗：" + e.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function buildAdjustmentPaymentPreview(month: string) {
+  const sheet = ensureTuitionAdjustmentSheet();
+  const data = sheet.getDataRange().getValues();
+  const studentsMap: any = {};
+  let totalAmount = 0;
+  let rowCount = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeSheetMonth(data[i][1]);
+    const type = String(data[i][10] || "").trim();
+    const status = String(data[i][13] || "").trim();
+    const paymentDocId = String(data[i][17] || "").trim();
+    const amount = parseFloat(data[i][9]) || 0;
+    if (rowMonth !== month || type !== "補收" || status !== "待處理" || paymentDocId || amount <= 0) continue;
+
+    const studentName = String(data[i][2] || "").trim();
+    if (!studentsMap[studentName]) studentsMap[studentName] = { name: studentName, total: 0, rows: [] };
+    const row = {
+      rowNumber: i + 1,
+      course: String(data[i][3] || "").trim(),
+      lessonDate: String(data[i][4] || "").trim(),
+      startTime: String(data[i][5] || "").trim(),
+      endTime: String(data[i][6] || "").trim(),
+      hours: parseFloat(data[i][7]) || 0,
+      unitFee: parseFloat(data[i][8]) || 0,
+      amount,
+      relatedDocId: String(data[i][11] || "").trim(),
+      reason: String(data[i][12] || "").trim()
+    };
+    studentsMap[studentName].rows.push(row);
+    studentsMap[studentName].total += amount;
+    totalAmount += amount;
+    rowCount++;
+  }
+
+  const students = Object.keys(studentsMap).sort().map(function(name) { return studentsMap[name]; });
+  const items = students.map(function(student: any) {
+    return student.name + "：NT$ " + formatMoney(student.total) + "，" + student.rows.length + " 筆補收，原單號：" + uniqueValues(student.rows.map(function(row: any) { return row.relatedDocId; })).join("、");
+  });
+  if (items.length === 0) items.push(month + " 目前沒有待產生補收繳費單的補收資料。");
+
+  return {
+    title: "補收繳費單預覽",
+    month,
+    summary: month + " 補收繳費單只讀預覽：" + students.length + " 位學生，" + rowCount + " 筆補收，總金額 NT$ " + formatMoney(totalAmount) + "。",
+    items,
+    students,
+    totalAmount,
+    rowCount,
+    hasPending: rowCount > 0
+  };
+}
+
+function getNextAdjustmentPaymentSerial(data: any[][], month: string) {
+  const prefix = "ADJ_" + month.replace("/", "_") + "_";
+  let maxSerial = 0;
+  for (let i = 1; i < data.length; i++) {
+    const docId = String(data[i][17] || "").trim();
+    if (docId.indexOf(prefix) !== 0) continue;
+    const serial = parseInt(docId.substring(prefix.length), 10);
+    if (serial > maxSerial) maxSerial = serial;
+  }
+  return maxSerial + 1;
+}
+
+function padSerial(value: number) {
+  if (value < 10) return "00" + value;
+  if (value < 100) return "0" + value;
+  return String(value);
+}
+
+function uniqueValues(values: string[]) {
+  const seen: any = {};
+  const result: string[] = [];
+  for (let i = 0; i < values.length; i++) {
+    const value = String(values[i] || "").trim();
+    if (!value || seen[value]) continue;
+    seen[value] = true;
+    result.push(value);
+  }
+  return result;
 }
 
 function findTuitionDocIds(targetMonth: string, studentName: string) {
