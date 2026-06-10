@@ -419,8 +419,9 @@ function buildSalaryReadOnlyPreview(month: string) {
     const courseName = String(courseData[i][3] || "").trim();
     const fee = parseFloat(courseData[i][4]) || 0;
     const ratio = parseFloat(courseData[i][5]) || 0;
+    const teacher = String(courseData[i][1] || "").trim();
     if (studentName && courseName && fee && ratio) {
-      profitMap[studentName + "_" + courseName] = { fee, ratio };
+      profitMap[studentName + "_" + courseName] = { fee, ratio, teacher };
     }
   }
 
@@ -450,12 +451,22 @@ function buildSalaryReadOnlyPreview(month: string) {
     const conf = profitMap[studentName + "_" + courseName] || { fee: 0, ratio: 0 };
     const payRate = conf.fee * conf.ratio;
     const payAmount = Math.round(hours * payRate);
-    if (!salaryStats[teacherName]) salaryStats[teacherName] = { total: 0, hours: 0, details: [], missingRateCount: 0 };
-    salaryStats[teacherName].total += payAmount;
-    salaryStats[teacherName].hours += hours;
-    if (!payRate) salaryStats[teacherName].missingRateCount++;
-    salaryStats[teacherName].details.push(`${studentName} / ${courseName} ${formatSheetMonthDay(recordData[i][2], timeZone)} ${recordData[i][3]}-${recordData[i][4]}：${hours}hr，${formatCurrency(payAmount)}`);
+    appendSalaryPreviewItem(
+      salaryStats,
+      teacherName,
+      studentName,
+      courseName,
+      formatSheetMonthDay(recordData[i][2], timeZone),
+      recordData[i][3],
+      recordData[i][4],
+      hours,
+      payAmount,
+      payRate,
+      "授課"
+    );
   }
+
+  appendSalaryAdjustmentsToStats(ss, salaryStats, profitMap, month, timeZone);
 
   const items: string[] = [];
   const existingSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_PAY, 0, month);
@@ -474,11 +485,77 @@ function buildSalaryReadOnlyPreview(month: string) {
     netTotal += taxAndNhi.netAmount;
     teacherCount++;
     const warnings = item.missingRateCount > 0 ? `，${item.missingRateCount} 筆缺少鐘點比例/單價` : "";
-    items.push(`${teacherName}（${taxConfig.formatCode}）：${item.hours}hr，應付 ${formatCurrency(item.total)}，扣繳 ${formatCurrency(taxAndNhi.taxAmount)}，補充保費 ${formatCurrency(taxAndNhi.nhiAmount)}，實發 ${formatCurrency(taxAndNhi.netAmount)}${warnings}`);
+    const adjustmentText = item.adjustmentCount > 0 ? `，含補發 ${item.adjustmentCount} 筆` : "";
+    items.push(`${teacherName}（${taxConfig.formatCode}）：${item.hours}hr，應付 ${formatCurrency(item.total)}，扣繳 ${formatCurrency(taxAndNhi.taxAmount)}，補充保費 ${formatCurrency(taxAndNhi.nhiAmount)}，實發 ${formatCurrency(taxAndNhi.netAmount)}${adjustmentText}${warnings}`);
   }
 
   if (items.length === 0) items.push(`${month} 目前沒有待試算鐘點資料。`);
   return { items, grossTotal, netTotal, teacherCount };
+}
+
+function appendSalaryPreviewItem(
+  salaryStats: any,
+  teacherName: string,
+  studentName: string,
+  courseName: string,
+  dateText: string,
+  startTime: any,
+  endTime: any,
+  hours: number,
+  payAmount: number,
+  payRate: number,
+  sourceLabel: string
+) {
+  if (!teacherName) teacherName = "未設定講師";
+  if (!salaryStats[teacherName]) salaryStats[teacherName] = { total: 0, hours: 0, details: [], missingRateCount: 0, adjustmentCount: 0 };
+  salaryStats[teacherName].total += payAmount;
+  salaryStats[teacherName].hours += hours;
+  if (!payRate) salaryStats[teacherName].missingRateCount++;
+  if (sourceLabel !== "授課") salaryStats[teacherName].adjustmentCount++;
+  salaryStats[teacherName].details.push(`${sourceLabel}：${studentName} / ${courseName} ${dateText} ${startTime}-${endTime}：${hours}hr，${formatCurrency(payAmount)}`);
+}
+
+function appendSalaryAdjustmentsToStats(
+  ss: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  salaryStats: any,
+  profitMap: any,
+  month: string,
+  timeZone: string
+) {
+  const sheet = ss.getSheetByName(SHEET_NAME_TUITION_ADJUSTMENT);
+  if (!sheet) return;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const targetMonth = normalizeFinancialMonth(data[i][1], timeZone);
+    if (targetMonth !== month) continue;
+    const type = String(data[i][10] || "").trim();
+    if (type !== "補收") continue;
+    const status = String(data[i][13] || "").trim();
+    if (status === "作廢" || status === "已取消") continue;
+    const hours = parseFloat(data[i][7]) || 0;
+    if (hours <= 0) continue;
+
+    const studentName = String(data[i][2] || "").trim();
+    const courseName = String(data[i][3] || "").trim();
+    const conf = profitMap[studentName + "_" + courseName];
+    if (!conf || !conf.teacher) continue;
+
+    const payRate = (parseFloat(conf.fee) || 0) * (parseFloat(conf.ratio) || 0);
+    const payAmount = Math.round(hours * payRate);
+    appendSalaryPreviewItem(
+      salaryStats,
+      conf.teacher,
+      studentName,
+      courseName,
+      formatSheetMonthDay(data[i][4], timeZone),
+      data[i][5],
+      data[i][6],
+      hours,
+      payAmount,
+      payRate,
+      "帳務補救補發"
+    );
+  }
 }
 
 function calculateSalaryDeductions(total: number, taxConfig: any) {
@@ -596,6 +673,7 @@ function buildAdminPreviewMetrics(month: string, feature: string) {
     metrics.push(buildSheetMonthMetric(ss, "授課紀錄", SHEET_NAME_RECORD, 2, month, "指定月份已登記授課筆數"));
     metrics.push(buildSheetMonthMetric(ss, "預排紀錄", SHEET_NAME_PLAN, 2, month, "指定月份預排資料筆數"));
     metrics.push(buildSheetMonthMetric(ss, "鐘點結算", SHEET_NAME_FIN_PAY, 0, month, "既有鐘點結算表筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "帳務補救", SHEET_NAME_TUITION_ADJUSTMENT, 1, month, "處理月份符合的補收/退費筆數"));
     return metrics;
   }
 
@@ -1247,7 +1325,7 @@ function handleSalaryCalculation(event: any, userMsg: string) {
   if (!recordSheet || !courseSheet || !teacherSheet) { replyLineMessage(replyToken, "❌ 找不到必要的資料表。"); return; }
 
   const courseData = courseSheet.getDataRange().getValues(); const profitMap: any = {};
-  for (let i = 1; i < courseData.length; i++) { const key = courseData[i][2] + "_" + courseData[i][3]; const fee = courseData[i][4]; const ratio = courseData[i][5]; if (fee && ratio) { profitMap[key] = { fee: fee, ratio: ratio }; } }
+  for (let i = 1; i < courseData.length; i++) { const key = courseData[i][2] + "_" + courseData[i][3]; const fee = courseData[i][4]; const ratio = courseData[i][5]; const teacher = String(courseData[i][1] || "").trim(); if (fee && ratio) { profitMap[key] = { fee: fee, ratio: ratio, teacher: teacher }; } }
 
   const tData = teacherSheet.getDataRange().getValues(); const taxConfigMap: any = {};
   for (let i = 1; i < tData.length; i++) { const tName = tData[i][0]; if (tName) { taxConfigMap[tName] = { formatCode: tData[i][11] || "9B", nationality: tData[i][12] || "本國人", nhiExempt: tData[i][13] || "否" }; } }
@@ -1265,6 +1343,7 @@ function handleSalaryCalculation(event: any, userMsg: string) {
       salaryStats[tName].total += payAmount; updateRows.push(i + 1);
     }
   }
+  appendSalaryAdjustmentsToSaveStats(ss, salaryStats, profitMap, queryMonth, timeZone);
 
   let report = "💰 鐘點費試算 (" + queryMonth + ")\n\n"; const saveData: any[] = []; let hasData = false;
   for (const tName in salaryStats) {
@@ -1285,6 +1364,33 @@ function handleSalaryCalculation(event: any, userMsg: string) {
     report += "請確認是否寫入結算工作表？";
     const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_PAY, save: saveData, updateTargetMonth: queryMonth, updateRows: updateRows, category: "鐘點費", prefix: "P" };
     CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheData), 600); replyConfirmationCard(replyToken, "鐘點費試算確認", report, cacheKey);
+  }
+}
+
+function appendSalaryAdjustmentsToSaveStats(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, salaryStats: any, profitMap: any, month: string, timeZone: string) {
+  const sheet = ss.getSheetByName(SHEET_NAME_TUITION_ADJUSTMENT);
+  if (!sheet) return;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const targetMonth = normalizeFinancialMonth(data[i][1], timeZone);
+    if (targetMonth !== month) continue;
+    const type = String(data[i][10] || "").trim();
+    if (type !== "補收") continue;
+    const status = String(data[i][13] || "").trim();
+    if (status === "作廢" || status === "已取消") continue;
+    const hr = parseFloat(data[i][7]) || 0;
+    if (hr <= 0) continue;
+    const sName = String(data[i][2] || "").trim();
+    const courseName = String(data[i][3] || "").trim();
+    const conf = profitMap[sName + "_" + courseName];
+    if (!conf || !conf.teacher) continue;
+    const tName = conf.teacher;
+    const payRate = (parseFloat(conf.fee) || 0) * (parseFloat(conf.ratio) || 0);
+    const payAmount = Math.round(hr * payRate);
+    if (!salaryStats[tName]) salaryStats[tName] = { total: 0, details: [] };
+    const dText = formatSheetMonthDay(data[i][4], timeZone);
+    salaryStats[tName].details.push("帳務補救補發：" + sName + "(" + courseName + ") " + dText + " " + data[i][5] + "-" + data[i][6] + " ($" + payAmount + ")");
+    salaryStats[tName].total += payAmount;
   }
 }
 
