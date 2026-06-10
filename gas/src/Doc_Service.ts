@@ -807,9 +807,9 @@ function buildAdjustmentPaymentPreview(month: string) {
     const row = {
       rowNumber: i + 1,
       course: String(data[i][3] || "").trim(),
-      lessonDate: String(data[i][4] || "").trim(),
-      startTime: String(data[i][5] || "").trim(),
-      endTime: String(data[i][6] || "").trim(),
+      lessonDate: formatSheetDate(data[i][4]),
+      startTime: formatSheetTime(data[i][5]),
+      endTime: formatSheetTime(data[i][6]),
       hours: parseFloat(data[i][7]) || 0,
       unitFee: parseFloat(data[i][8]) || 0,
       amount,
@@ -925,6 +925,23 @@ function normalizeSheetMonth(value: any) {
   const text = String(value || "").trim();
   if (text.match(/^\d{4}[\/-]\d{2}/)) return text.substring(0, 7).replace("-", "/");
   return text;
+}
+
+function formatSheetDate(value: any) {
+  if (value instanceof Date) return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy/MM/dd");
+  const text = String(value || "").trim().replace(/-/g, "/");
+  if (text.match(/^\d{4}\/\d{1,2}\/\d{1,2}/)) {
+    const parts = text.split("/");
+    return parts[0] + "/" + parts[1].padStart(2, "0") + "/" + parts[2].padStart(2, "0");
+  }
+  return text;
+}
+
+function formatSheetTime(value: any) {
+  if (value instanceof Date) return Utilities.formatDate(value, Session.getScriptTimeZone(), "HH:mm");
+  const digits = String(value || "").trim().replace(":", "").padStart(4, "0");
+  if (!digits.match(/^\d{4}$/)) return String(value || "").trim();
+  return digits.substring(0, 2) + ":" + digits.substring(2, 4);
 }
 
 function getOperatorNameByUserId(userId: string) {
