@@ -141,6 +141,62 @@ function handleLiffAdminPreview(params: any) {
   };
 }
 
+function handleLiffAdminConfirmSettlement(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const feature = String(params.feature || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+  if (feature !== "學費試算" && feature !== "鐘點試算") {
+    return { ok: false, message: "目前只開放學費試算與鐘點試算確認寫入。" };
+  }
+
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const targetSheetName = feature === "學費試算" ? SHEET_NAME_FIN_FEE : SHEET_NAME_FIN_PAY;
+  const beforeCount = countSheetRowsByMonthOnly(ss, targetSheetName, 0, month);
+  const mockEvent = {
+    replyToken: "LIFF_API_CALL",
+    source: { userId: lineUserId }
+  };
+  const cacheKey = "FIN_" + lineUserId;
+  CacheService.getScriptCache().remove(cacheKey);
+
+  if (feature === "學費試算") {
+    handleTuitionCalculation(mockEvent, "學費試算 " + month);
+  } else {
+    handleSalaryCalculation(mockEvent, "鐘點試算 " + month);
+  }
+
+  const cacheDataStr = CacheService.getScriptCache().get(cacheKey);
+  if (!cacheDataStr) {
+    return { ok: false, message: `${month} 目前沒有可寫入的${feature}資料，或試算資料未能建立。` };
+  }
+  const cacheObj = JSON.parse(cacheDataStr);
+  const saveCount = cacheObj.save ? cacheObj.save.length : 0;
+  executeFinancialSave(mockEvent, "");
+  const afterCount = countSheetRowsByMonthOnly(ss, targetSheetName, 0, month);
+  const writtenCount = Math.max(0, afterCount - beforeCount);
+  if (writtenCount <= 0) {
+    CacheService.getScriptCache().remove(cacheKey);
+    return {
+      ok: false,
+      message: `${month} ${feature}未寫入新資料。可能已有結算紀錄，或被重複寫入防呆擋下；請檢查結算表。`
+    };
+  }
+
+  const preview = feature === "學費試算" ? buildPaymentNoticeAdminPreview(month) : buildAllowanceAdminPreview(month);
+  return {
+    ok: true,
+    message: `${month} ${feature}已確認寫入，共新增 ${writtenCount} 筆結算資料。`,
+    writtenCount,
+    plannedCount: saveCount,
+    preview
+  };
+}
+
 function normalizeAdminPreviewMonth(value: any) {
   const raw = String(value || "").trim();
   if (/^\d{4}\/\d{2}$/.test(raw)) return raw;

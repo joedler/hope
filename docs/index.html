@@ -847,6 +847,17 @@
                 </div>
                 <button
                   type="button"
+                  x-show="canConfirmAdminPreview()"
+                  class="mt-3 w-full rounded-xl border border-teal-700 bg-teal-600 px-4 py-3 text-sm font-semibold text-white disabled:bg-slate-200 disabled:text-slate-400"
+                  :disabled="submitting"
+                  @click="confirmAdminPreview()"
+                >
+                  <span x-show="!submitting" x-text="adminPreview ? adminPreview.nextAction : '確認寫入'"></span>
+                  <span x-show="submitting">正在確認寫入...</span>
+                </button>
+                <button
+                  type="button"
+                  x-show="!canConfirmAdminPreview()"
                   class="mt-3 w-full rounded-xl border border-slate-800 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-500 opacity-70"
                   disabled
                   x-text="adminPreview ? adminPreview.nextAction : '確認執行尚未開放'"
@@ -1834,6 +1845,56 @@
               `${featureName} 已納入行政工作台規劃。\n\n` +
               "此功能必須先完成預覽、收件人確認與二次確認流程，尚未開放實際寫入或寄送。"
             );
+          },
+
+          canConfirmAdminPreview() {
+            return this.adminPreview && ["學費試算", "鐘點試算"].includes(this.adminPreview.title);
+          },
+
+          async confirmAdminPreview() {
+            if (!this.canConfirmAdminPreview()) return;
+            const featureName = this.adminPreview.title;
+            const formattedMonth = this.adminMonth.replace("-", "/");
+            const confirmed = confirm(
+              `${formattedMonth} ${featureName}\n\n` +
+              "確認後會重新試算並寫入結算表，且會執行重複寫入防呆。\n是否確認寫入？"
+            );
+            if (!confirmed) return;
+            if (!this.config.gasWebAppUrl) {
+              alert("模擬確認寫入。");
+              return;
+            }
+            this.submitting = true;
+            this.operationMessage = `正在確認寫入${featureName}...`;
+            try {
+              const result = await this.callApi({
+                action: "adminConfirmSettlement",
+                lineUserId: this.lineUserId,
+                feature: featureName,
+                month: formattedMonth,
+              });
+              if (!result.ok) throw new Error(result.message || "確認寫入失敗。");
+              alert(result.message || "確認寫入完成。");
+              if (result.preview) {
+                this.adminPreview = {
+                  title: featureName === "學費試算" ? "繳費單" : "領據",
+                  month: formattedMonth,
+                  summary: result.preview.summary,
+                  items: result.preview.items || [],
+                  metrics: [],
+                  status: "確認寫入完成，請檢查下一階段預覽",
+                  nextAction: result.preview.nextAction || "下一步尚未開放",
+                };
+              } else {
+                await this.showAdminPreview(featureName);
+              }
+            } catch (error) {
+              this.message = error.message;
+              alert(error.message);
+            } finally {
+              this.submitting = false;
+              this.operationMessage = "";
+            }
           },
 
           async showAdminPreview(featureName) {

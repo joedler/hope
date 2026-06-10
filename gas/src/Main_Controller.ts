@@ -68,6 +68,10 @@ function doGet(e: any) {
         // 讀取行政作業預覽，不寫入、不產生、不寄送
         result = handleLiffAdminPreview(e.parameter);
         break;
+      case "adminConfirmSettlement":
+        // 確認寫入學費或鐘點結算
+        result = handleLiffAdminConfirmSettlement(e.parameter);
+        break;
       case "tuitionAdjustment":
         // 建立學費補收/退費調整紀錄
         result = handleLiffTuitionAdjustment(e.parameter);
@@ -399,6 +403,7 @@ declare function handleLiffVerifySchedule(params: any): any;
 declare function handleLiffLeave(params: any): any;
 declare function handleLiffAdminTask(params: any): any;
 declare function handleLiffAdminPreview(params: any): any;
+declare function handleLiffAdminConfirmSettlement(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;
 declare function handleLiffTuitionAdjustmentOptions(params: any): any;
 declare function handleLiffAdjustmentPaymentPreview(params: any): any;
