@@ -136,7 +136,9 @@ function handleLiffAdminPreview(params: any) {
       items: preview.items,
       metrics,
       status: "後端只讀預覽，尚未寫入或寄送",
-      nextAction: preview.nextAction
+      nextAction: preview.nextAction,
+      canConfirm: preview.canConfirm === true,
+      confirmAction: preview.confirmAction || ""
     }
   };
 }
@@ -197,6 +199,41 @@ function handleLiffAdminConfirmSettlement(params: any) {
   };
 }
 
+function handleLiffAdminConfirmDocument(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const feature = String(params.feature || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+
+  if (feature !== "繳費單") {
+    return { ok: false, message: "目前只開放繳費單確認產生；收據、領據與寄送流程仍需各自預覽確認後再開放。" };
+  }
+
+  const beforePreview = buildPaymentNoticeReadOnlyPreview(month);
+  if (beforePreview.studentCount <= 0) {
+    return { ok: false, message: `${month} 沒有可產生繳費單的學費結算資料，請先完成學費試算確認寫入。` };
+  }
+  if (beforePreview.generatedCount >= beforePreview.studentCount) {
+    return { ok: false, message: `${month} 繳費單已全部產生，未重複產生 PDF。` };
+  }
+
+  const resultMessage = createPaymentNoticesBatch(month, "");
+  const afterPreview = buildPaymentNoticeAdminPreview(month);
+  if (resultMessage.indexOf("❌") === 0 || resultMessage.indexOf("⚠️") === 0) {
+    return { ok: false, message: resultMessage, preview: afterPreview };
+  }
+
+  return {
+    ok: true,
+    message: `${month} 繳費單已確認產生。\n${resultMessage}`,
+    preview: afterPreview
+  };
+}
+
 function normalizeAdminPreviewMonth(value: any) {
   const raw = String(value || "").trim();
   if (/^\d{4}\/\d{2}$/.test(raw)) return raw;
@@ -216,19 +253,23 @@ function buildTuitionAdminPreview(month: string) {
       return {
         summary: `${month} 學費既有結算摘要：${result.studentCount} 位學生，既有結算總額 ${formatCurrency(result.grandTotal)}。`,
         items,
-        nextAction: "查看繳費單 / 已產生單據"
+        nextAction: "查看繳費單 / 已產生單據",
+        canConfirm: false
       };
     }
     return {
       summary: `${month} 學費試算只讀預覽：${result.studentCount} 位學生，預估總額 ${formatCurrency(result.grandTotal)}。`,
       items,
-      nextAction: "確認寫入試算結果（尚未開放）"
+      nextAction: "確認寫入試算結果",
+      canConfirm: result.studentCount > 0,
+      confirmAction: "adminConfirmSettlement"
     };
   } catch (e) {
     return {
       summary: `${month} 學費試算只讀預覽讀取失敗。`,
       items: ["請先檢查 Google Sheets 分頁、欄位與 GAS 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認寫入試算結果（尚未開放）"
+      nextAction: "確認寫入試算結果（尚未開放）",
+      canConfirm: false
     };
   }
 }
@@ -477,13 +518,16 @@ function buildSalaryAdminPreview(month: string) {
     return {
       summary: `${month} 鐘點試算只讀預覽：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}。`,
       items,
-      nextAction: "確認寫入鐘點試算（尚未開放）"
+      nextAction: "確認寫入鐘點試算",
+      canConfirm: result.teacherCount > 0,
+      confirmAction: "adminConfirmSettlement"
     };
   } catch (e) {
     return {
       summary: `${month} 鐘點試算只讀預覽讀取失敗。`,
       items: ["請先檢查授課紀錄、課程設定表、講師名單與 GAS 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認寫入鐘點試算（尚未開放）"
+      nextAction: "確認寫入鐘點試算（尚未開放）",
+      canConfirm: false
     };
   }
 }
@@ -669,13 +713,16 @@ function buildPaymentNoticeAdminPreview(month: string) {
     return {
       summary: `${month} 繳費單只讀預覽：${result.studentCount} 位學生，總金額 ${formatCurrency(result.grandTotal)}，已產生 PDF ${result.generatedCount} 份。`,
       items,
-      nextAction: "確認產生繳費單（尚未開放）"
+      nextAction: result.generatedCount >= result.studentCount && result.studentCount > 0 ? "繳費單已全部產生" : "確認產生繳費單",
+      canConfirm: result.studentCount > 0 && result.generatedCount < result.studentCount,
+      confirmAction: "adminConfirmDocument"
     };
   } catch (e) {
     return {
       summary: `${month} 繳費單只讀預覽讀取失敗。`,
       items: ["請先檢查學費結算表欄位、單據編號與 GAS 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認產生繳費單（尚未開放）"
+      nextAction: "確認產生繳費單（尚未開放）",
+      canConfirm: false
     };
   }
 }
@@ -1851,6 +1898,7 @@ declare function handleFinancialReportCommand(event: any, userMsg: string, type:
 declare function handleManualJournalEntryCommand(event: any, userMsg: string): void;
 declare function executeManualJournalSave(event: any, data: string): void;
 declare function handlePaymentDocCommand(event: any, userMsg: string): void;
+declare function createPaymentNoticesBatch(targetMonth: string, targetName: string): string;
 declare function replyLineMessage(token: string, msg: string): void;
 declare function replyConfirmationCard(token: string, title: string, report: string, key: string): void;
 

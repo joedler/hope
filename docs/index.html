@@ -1848,42 +1848,48 @@
           },
 
           canConfirmAdminPreview() {
-            return this.adminPreview && ["學費試算", "鐘點試算"].includes(this.adminPreview.title);
+            return this.adminPreview && this.adminPreview.canConfirm === true;
           },
 
           async confirmAdminPreview() {
             if (!this.canConfirmAdminPreview()) return;
             const featureName = this.adminPreview.title;
             const formattedMonth = this.adminMonth.replace("-", "/");
+            const confirmAction = this.adminPreview.confirmAction || "";
+            const isSettlement = confirmAction === "adminConfirmSettlement";
             const confirmed = confirm(
               `${formattedMonth} ${featureName}\n\n` +
-              "確認後會重新試算並寫入結算表，且會執行重複寫入防呆。\n是否確認寫入？"
+              (isSettlement
+                ? "確認後會重新試算並寫入結算表，且會執行重複寫入防呆。\n是否確認寫入？"
+                : "確認後會產生 PDF 並回寫單據狀態；不會寄送 Email 或 LINE push。\n是否確認產生？")
             );
             if (!confirmed) return;
             if (!this.config.gasWebAppUrl) {
-              alert("模擬確認寫入。");
+              alert("模擬確認執行。");
               return;
             }
             this.submitting = true;
-            this.operationMessage = `正在確認寫入${featureName}...`;
+            this.operationMessage = `正在確認執行${featureName}...`;
             try {
               const result = await this.callApi({
-                action: "adminConfirmSettlement",
+                action: confirmAction,
                 lineUserId: this.lineUserId,
                 feature: featureName,
                 month: formattedMonth,
               });
               if (!result.ok) throw new Error(result.message || "確認寫入失敗。");
-              alert(result.message || "確認寫入完成。");
+              alert(result.message || "確認執行完成。");
               if (result.preview) {
                 this.adminPreview = {
-                  title: featureName === "學費試算" ? "繳費單" : "領據",
+                  title: isSettlement ? (featureName === "學費試算" ? "繳費單" : "領據") : featureName,
                   month: formattedMonth,
                   summary: result.preview.summary,
                   items: result.preview.items || [],
-                  metrics: [],
-                  status: "確認寫入完成，請檢查下一階段預覽",
+                  metrics: result.preview.metrics || [],
+                  status: "確認執行完成，請檢查最新預覽",
                   nextAction: result.preview.nextAction || "下一步尚未開放",
+                  canConfirm: result.preview.canConfirm === true,
+                  confirmAction: result.preview.confirmAction || "",
                 };
               } else {
                 await this.showAdminPreview(featureName);

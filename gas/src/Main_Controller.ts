@@ -72,6 +72,10 @@ function doGet(e: any) {
         // 確認寫入學費或鐘點結算
         result = handleLiffAdminConfirmSettlement(e.parameter);
         break;
+      case "adminConfirmDocument":
+        // 確認產生單據 PDF，不寄送 Email 或 LINE push
+        result = handleLiffAdminConfirmDocument(e.parameter);
+        break;
       case "tuitionAdjustment":
         // 建立學費補收/退費調整紀錄
         result = handleLiffTuitionAdjustment(e.parameter);
@@ -404,6 +408,7 @@ declare function handleLiffLeave(params: any): any;
 declare function handleLiffAdminTask(params: any): any;
 declare function handleLiffAdminPreview(params: any): any;
 declare function handleLiffAdminConfirmSettlement(params: any): any;
+declare function handleLiffAdminConfirmDocument(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;
 declare function handleLiffTuitionAdjustmentOptions(params: any): any;
 declare function handleLiffAdjustmentPaymentPreview(params: any): any;
