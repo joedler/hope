@@ -791,16 +791,20 @@ function buildAdjustmentPaymentPreview(month: string) {
   const sheet = ensureTuitionAdjustmentSheet();
   const data = sheet.getDataRange().getValues();
   const studentsMap: any = {};
+  const pendingStudentsMap: any = {};
   let totalAmount = 0;
   let rowCount = 0;
+  let pendingAmount = 0;
+  let pendingCount = 0;
 
   for (let i = 1; i < data.length; i++) {
     const rowMonth = normalizeSheetMonth(data[i][1]);
     const type = String(data[i][10] || "").trim();
     const status = String(data[i][13] || "").trim();
     const paymentDocId = String(data[i][17] || "").trim();
+    const paymentPdf = String(data[i][18] || "").trim();
     const amount = parseFloat(data[i][9]) || 0;
-    if (rowMonth !== month || type !== "補收" || status !== "待處理" || paymentDocId || amount <= 0) continue;
+    if (rowMonth !== month || type !== "補收" || amount <= 0) continue;
 
     const studentName = String(data[i][2] || "").trim();
     if (!studentsMap[studentName]) studentsMap[studentName] = { name: studentName, total: 0, rows: [] };
@@ -814,29 +818,57 @@ function buildAdjustmentPaymentPreview(month: string) {
       unitFee: parseFloat(data[i][8]) || 0,
       amount,
       relatedDocId: String(data[i][11] || "").trim(),
-      reason: String(data[i][12] || "").trim()
+      reason: String(data[i][12] || "").trim(),
+      originalMonth: normalizeSheetMonth(data[i][16]),
+      status,
+      paymentDocId,
+      paymentPdf
     };
     studentsMap[studentName].rows.push(row);
     studentsMap[studentName].total += amount;
     totalAmount += amount;
     rowCount++;
+
+    if (status === "待處理" && !paymentDocId) {
+      if (!pendingStudentsMap[studentName]) pendingStudentsMap[studentName] = { name: studentName, total: 0, rows: [] };
+      pendingStudentsMap[studentName].rows.push(row);
+      pendingStudentsMap[studentName].total += amount;
+      pendingAmount += amount;
+      pendingCount++;
+    }
   }
 
   const students = Object.keys(studentsMap).sort().map(function(name) { return studentsMap[name]; });
-  const items = students.map(function(student: any) {
-    return student.name + "：NT$ " + formatMoney(student.total) + "，" + student.rows.length + " 筆補收，原單號：" + uniqueValues(student.rows.map(function(row: any) { return row.relatedDocId; })).join("、");
+  const pendingStudents = Object.keys(pendingStudentsMap).sort().map(function(name) { return pendingStudentsMap[name]; });
+  const items: string[] = [];
+  students.forEach(function(student: any) {
+    student.rows.forEach(function(row: any) {
+      items.push(
+        student.name + "｜補收 NT$ " + formatMoney(row.amount) +
+        "｜原月份 " + (row.originalMonth || "未填") +
+        "｜" + row.lessonDate + " " + row.startTime + "-" + row.endTime +
+        "｜" + row.course +
+        "｜" + row.hours + "hr x NT$ " + formatMoney(row.unitFee) +
+        "｜原單 " + (row.relatedDocId || "未填") +
+        "｜狀態 " + (row.status || "未填") +
+        (row.paymentDocId ? "｜通知單 " + row.paymentDocId : "") +
+        "｜原因：" + (row.reason || "未填")
+      );
+    });
   });
-  if (items.length === 0) items.push(month + " 目前沒有待產生補救明細/補收通知的補收資料。");
+  if (items.length === 0) items.push(month + " 目前沒有補救明細/補收通知相關補收資料。");
 
   return {
     title: "補救明細/補收通知預覽",
     month,
-    summary: month + " 補救明細/補收通知只讀預覽：" + students.length + " 位學生，" + rowCount + " 筆補收，總金額 NT$ " + formatMoney(totalAmount) + "。",
+    summary: month + " 補救明細/補收通知只讀預覽：" + students.length + " 位學生，" + rowCount + " 筆補收，總金額 NT$ " + formatMoney(totalAmount) + "；待產生 " + pendingCount + " 筆，待產生金額 NT$ " + formatMoney(pendingAmount) + "。",
     items,
-    students,
+    students: pendingStudents,
     totalAmount,
     rowCount,
-    hasPending: rowCount > 0
+    pendingAmount,
+    pendingCount,
+    hasPending: pendingCount > 0
   };
 }
 

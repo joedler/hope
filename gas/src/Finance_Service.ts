@@ -288,7 +288,20 @@ function buildTuitionReadOnlyPreview(month: string) {
       }
       if (courseTotal !== 0 || item.recordBase > 0 || item.planNext > 0 || adjustmentTotal !== 0) {
         studentTotal += courseTotal;
-        courseSummaries.push(`${courseName}（${item.mode}）：${formula}，小計 ${formatCurrency(courseTotal)}`);
+        const detailParts: string[] = [];
+        for (let d = 0; d < item.detailsRec.length; d++) detailParts.push(item.detailsRec[d]);
+        for (let d = 0; d < item.detailsPlan.length; d++) detailParts.push(item.detailsPlan[d]);
+        for (let a = 0; a < item.adjustments.length; a++) {
+          const adj = item.adjustments[a];
+          detailParts.push(
+            `[帳務補救-${adj.type}] 原月份 ${adj.originalMonth || "未填"}，` +
+            `${adj.lessonDate} ${adj.startTime}-${adj.endTime}，` +
+            `${adj.hours}hr x ${formatCurrency(adj.unitFee)}，金額 ${formatCurrency(adj.amount)}，` +
+            `原單 ${adj.relatedDocId || "未填"}，狀態 ${adj.status || "未填"}，原因：${adj.reason || "未填"}`
+          );
+        }
+        const detailText = detailParts.length > 0 ? `；明細：${detailParts.join("｜")}` : "";
+        courseSummaries.push(`${courseName}（${item.mode}）：${formula}，小計 ${formatCurrency(courseTotal)}${detailText}`);
       }
     }
     if (courseSummaries.length > 0) {
@@ -379,7 +392,19 @@ function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spread
     if (!stats[studentName][courseName]) {
       stats[studentName][courseName] = { teacher: conf.teacher, fee: conf.fee, mode: conf.mode, recordBase: 0, planBase: 0, planNext: 0, detailsRec: [], detailsPlan: [], adjustments: [] };
     }
-    stats[studentName][courseName].adjustments.push({ amount, type, status });
+    stats[studentName][courseName].adjustments.push({
+      amount,
+      type,
+      status,
+      originalMonth: normalizeFinancialMonth(data[i][16], Session.getScriptTimeZone()),
+      lessonDate: formatSheetMonthDay(data[i][4], Session.getScriptTimeZone()),
+      startTime: formatPreviewTime(data[i][5]),
+      endTime: formatPreviewTime(data[i][6]),
+      hours: parseFloat(data[i][7]) || 0,
+      unitFee: parseFloat(data[i][8]) || 0,
+      relatedDocId: String(data[i][11] || "").trim(),
+      reason: String(data[i][12] || "").trim()
+    });
   }
 }
 
@@ -485,8 +510,9 @@ function buildSalaryReadOnlyPreview(month: string) {
     netTotal += taxAndNhi.netAmount;
     teacherCount++;
     const warnings = item.missingRateCount > 0 ? `，${item.missingRateCount} 筆缺少鐘點比例/單價` : "";
-    const adjustmentText = item.adjustmentCount > 0 ? `，含補發 ${item.adjustmentCount} 筆` : "";
-    items.push(`${teacherName}（${taxConfig.formatCode}）：${item.hours}hr，應付 ${formatCurrency(item.total)}，扣繳 ${formatCurrency(taxAndNhi.taxAmount)}，補充保費 ${formatCurrency(taxAndNhi.nhiAmount)}，實發 ${formatCurrency(taxAndNhi.netAmount)}${adjustmentText}${warnings}`);
+    const adjustmentText = item.adjustmentCount > 0 ? `，含帳務補救補發 ${item.adjustmentCount} 筆` : "";
+    const detailText = item.details.length > 0 ? `；明細：${item.details.join("｜")}` : "";
+    items.push(`${teacherName}（${taxConfig.formatCode}）：總時數 ${item.hours}hr，應付 ${formatCurrency(item.total)}，扣繳 ${formatCurrency(taxAndNhi.taxAmount)}，補充保費 ${formatCurrency(taxAndNhi.nhiAmount)}，實發 ${formatCurrency(taxAndNhi.netAmount)}${adjustmentText}${warnings}${detailText}`);
   }
 
   if (items.length === 0) items.push(`${month} 目前沒有待試算鐘點資料。`);
@@ -512,7 +538,7 @@ function appendSalaryPreviewItem(
   salaryStats[teacherName].hours += hours;
   if (!payRate) salaryStats[teacherName].missingRateCount++;
   if (sourceLabel !== "授課") salaryStats[teacherName].adjustmentCount++;
-  salaryStats[teacherName].details.push(`${sourceLabel}：${studentName} / ${courseName} ${dateText} ${startTime}-${endTime}：${hours}hr，${formatCurrency(payAmount)}`);
+  salaryStats[teacherName].details.push(`${sourceLabel}：${studentName} / ${courseName}，${dateText} ${startTime}-${endTime}，${hours}hr，${formatCurrency(payAmount)}`);
 }
 
 function appendSalaryAdjustmentsToStats(
@@ -547,9 +573,9 @@ function appendSalaryAdjustmentsToStats(
       conf.teacher,
       studentName,
       courseName,
-      formatSheetMonthDay(data[i][4], timeZone),
-      data[i][5],
-      data[i][6],
+      "原月份 " + (normalizeFinancialMonth(data[i][16], timeZone) || "未填") + "，原上課 " + formatSheetMonthDay(data[i][4], timeZone),
+      formatPreviewTime(data[i][5]),
+      formatPreviewTime(data[i][6]),
       hours,
       payAmount,
       payRate,
@@ -745,6 +771,18 @@ function formatSheetMonthDay(value: any, timeZone: string) {
     const parts = text.split("/");
     return parts[1].padStart(2, "0") + "/" + parts[2].padStart(2, "0");
   }
+  return text;
+}
+
+function formatPreviewTime(value: any) {
+  if (value instanceof Date) return Utilities.formatDate(value, Session.getScriptTimeZone(), "HH:mm");
+  const text = String(value || "").trim();
+  if (/^\d{1,2}:\d{2}$/.test(text)) {
+    const parts = text.split(":");
+    return parts[0].padStart(2, "0") + ":" + parts[1];
+  }
+  const digits = text.replace(/\D/g, "").padStart(4, "0");
+  if (/^\d{4}$/.test(digits)) return digits.substring(0, 2) + ":" + digits.substring(2, 4);
   return text;
 }
 
@@ -1401,7 +1439,7 @@ function appendSalaryAdjustmentsToSaveStats(ss: GoogleAppsScript.Spreadsheet.Spr
     const payAmount = Math.round(hr * payRate);
     if (!salaryStats[tName]) salaryStats[tName] = { total: 0, details: [] };
     const dText = formatSheetMonthDay(data[i][4], timeZone);
-    salaryStats[tName].details.push("帳務補救補發：" + sName + "(" + courseName + ") " + dText + " " + data[i][5] + "-" + data[i][6] + " ($" + payAmount + ")");
+    salaryStats[tName].details.push("帳務補救補發：" + sName + "(" + courseName + ") " + dText + " " + formatPreviewTime(data[i][5]) + "-" + formatPreviewTime(data[i][6]) + " ($" + payAmount + ")");
     salaryStats[tName].total += payAmount;
   }
 }

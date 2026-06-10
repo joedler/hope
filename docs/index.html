@@ -806,6 +806,10 @@
                 </div>
               </div>
 
+              <div x-show="submitting && operationMessage" class="mt-4 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-semibold text-teal-800">
+                <span x-text="operationMessage"></span>
+              </div>
+
               <div x-show="adminPreview" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
                 <div class="flex items-start justify-between gap-3">
                   <div>
@@ -864,8 +868,9 @@
                   </div>
                 </div>
                 <div class="mt-3 grid grid-cols-2 gap-2">
-                  <button type="button" class="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-700" @click="previewAdjustmentPayment()">
-                    預覽補救明細
+                  <button type="button" class="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-700 disabled:bg-slate-100 disabled:text-slate-400" :disabled="submitting" @click="previewAdjustmentPayment()">
+                    <span x-show="!submitting">預覽補救明細</span>
+                    <span x-show="submitting">讀取中...</span>
                   </button>
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:bg-slate-200 disabled:text-slate-400" :disabled="submitting || !adjustmentPaymentPreview || !adjustmentPaymentPreview.hasPending" @click="generateAdjustmentPayment()">
                     確認產生
@@ -1106,6 +1111,7 @@
           state: "loading",
           message: "",
           submitting: false,
+          operationMessage: "",
           lineUserId: "",
           profile: null, // LINE Profile
           teacherProfile: null, // Google Sheets 講師資料
@@ -1832,6 +1838,9 @@
 
           async showAdminPreview(featureName) {
             const formattedMonth = this.adminMonth.replace("-", "/");
+            this.submitting = true;
+            this.operationMessage = `正在讀取${featureName}預覽...`;
+            this.adminPreview = null;
             if (this.config.gasWebAppUrl) {
               try {
                 const result = await this.callApi({
@@ -1842,6 +1851,8 @@
                 });
                 if (result.ok && result.preview) {
                   this.adminPreview = result.preview;
+                  this.submitting = false;
+                  this.operationMessage = "";
                   return;
                 }
                 if (result.message) {
@@ -1901,16 +1912,22 @@
               status: "僅顯示前端預覽，尚未寫入或寄送",
               nextAction: preview.nextAction,
             };
+            this.submitting = false;
+            this.operationMessage = "";
           },
 
           async previewAdjustmentPayment() {
             const month = this.adjustmentForm.processingMonth.replace("-", "/");
+            this.submitting = true;
+            this.operationMessage = "正在讀取補救明細/補收通知預覽...";
             if (!this.config.gasWebAppUrl) {
               this.adjustmentPaymentPreview = {
                 summary: `${month} 補救明細/補收通知只讀預覽：模擬資料。`,
                 items: ["模擬學生：NT$ 1,500，1 筆補收，原單號：R_2026_05_001"],
                 hasPending: true,
               };
+              this.submitting = false;
+              this.operationMessage = "";
               return;
             }
             try {
@@ -1924,6 +1941,9 @@
             } catch (error) {
               this.message = error.message;
               alert(error.message);
+            } finally {
+              this.submitting = false;
+              this.operationMessage = "";
             }
           },
 
@@ -1943,6 +1963,7 @@
               return;
             }
             this.submitting = true;
+            this.operationMessage = "正在產生補救明細/補收通知 PDF...";
             try {
               const result = await this.callApi({
                 action: "generateAdjustmentPayment",
@@ -1957,12 +1978,14 @@
               alert(error.message);
             } finally {
               this.submitting = false;
+              this.operationMessage = "";
             }
           },
 
           async submitTuitionAdjustment() {
             this.message = "";
             this.submitting = true;
+            this.operationMessage = "正在建立帳務補救紀錄...";
             try {
               if (this.adjustmentForm.endTime <= this.adjustmentForm.startTime) {
                 throw new Error("結束時間必須晚於開始時間。");
@@ -2022,6 +2045,7 @@
               alert(error.message);
             } finally {
               this.submitting = false;
+              this.operationMessage = "";
             }
           },
 
