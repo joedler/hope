@@ -69,6 +69,9 @@ function forceAuth() {
   UrlFetchApp.fetch("https://www.google.com");
   DriveApp.getRootFolder();
   SpreadsheetApp.openById(SHEET_ID).getSheets();
+  const authDocFile = DriveApp.getFileById(TEMPLATE_ID_GEN_RECEIPT).makeCopy("forceAuth_document_scope_check");
+  DocumentApp.openById(authDocFile.getId()).getBody().getText();
+  authDocFile.setTrashed(true);
   GmailApp.getAliases();
   Logger.log("所有外部資源授權完成");
 }
