@@ -153,6 +153,13 @@ function buildTuitionAdminPreview(month: string) {
     if (result.items.length > items.length) {
       items.push(`另有 ${result.items.length - items.length} 筆課程彙總未列出，正式預覽頁後續再提供完整清單。`);
     }
+    if ((result as any).isExistingSettlement) {
+      return {
+        summary: `${month} 學費既有結算摘要：${result.studentCount} 位學生，既有結算總額 ${formatCurrency(result.grandTotal)}。`,
+        items,
+        nextAction: "查看繳費單 / 已產生單據"
+      };
+    }
     return {
       summary: `${month} 學費試算只讀預覽：${result.studentCount} 位學生，預估總額 ${formatCurrency(result.grandTotal)}。`,
       items,
@@ -177,6 +184,11 @@ function buildTuitionReadOnlyPreview(month: string) {
   const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
   const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
   if (!recordSheet || !planSheet || !courseSheet) throw new Error("找不到授課紀錄、預排紀錄或課程設定表。");
+
+  const existingSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_FEE, 0, month);
+  if (existingSettlementCount > 0) {
+    return buildExistingTuitionSettlementPreview(ss, month, existingSettlementCount);
+  }
 
   const configMap: any = {};
   const courseData = courseSheet.getDataRange().getValues();
@@ -254,10 +266,6 @@ function buildTuitionReadOnlyPreview(month: string) {
   appendTuitionAdjustmentsToStats(ss, stats, configMap, month);
 
   const items: string[] = [];
-  const existingSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_FEE, 0, month);
-  if (existingSettlementCount > 0) {
-    items.push(`注意：${month} 已有 ${existingSettlementCount} 筆學費結算資料；若只是回看舊單，應改用「已產生單據」，不要重新試算。`);
-  }
 
   let grandTotal = 0;
   let studentCount = 0;
@@ -292,6 +300,65 @@ function buildTuitionReadOnlyPreview(month: string) {
 
   if (items.length === 0) items.push(`${month} 目前沒有待試算學費資料。`);
   return { items, grandTotal, studentCount };
+}
+
+function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string, existingSettlementCount: number) {
+  const timeZone = Session.getScriptTimeZone();
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  if (!sheet) {
+    return {
+      items: [`${month} 已有 ${existingSettlementCount} 筆學費結算資料，但找不到學費結算表。`],
+      grandTotal: 0,
+      studentCount: 0
+    };
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const studentsMap: any = {};
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    if (rowMonth !== month) continue;
+    const studentName = String(data[i][1] || "").trim();
+    if (!studentName) continue;
+    if (!studentsMap[studentName]) {
+      studentsMap[studentName] = {
+        name: studentName,
+        total: 0,
+        docId: "",
+        courseAmountSum: 0,
+        courses: []
+      };
+    }
+    const item = studentsMap[studentName];
+    const courseName = String(data[i][2] || "").trim();
+    const mode = String(data[i][3] || "").trim();
+    const courseAmount = parseFloat(data[i][7]) || 0;
+    if (courseName) {
+      item.courses.push(`${courseName}${mode ? "（" + mode + "）" : ""}：${formatCurrency(courseAmount)}`);
+    }
+    item.courseAmountSum += courseAmount;
+    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
+    if (data[i][9]) item.docId = String(data[i][9]).trim();
+  }
+
+  const items: string[] = [
+    `注意：${month} 已有 ${existingSettlementCount} 筆學費結算資料；此處顯示既有結算摘要，不重新試算授課、預排或補救差異。`
+  ];
+  let grandTotal = 0;
+  let studentCount = 0;
+  for (const studentName in studentsMap) {
+    const item = studentsMap[studentName];
+    const total = item.total || item.courseAmountSum;
+    grandTotal += total;
+    studentCount++;
+    const courseText = item.courses.length > 0 ? "；" + item.courses.join("；") : "";
+    items.push(`${studentName}：${formatCurrency(total)}，${item.courses.length} 項課程，單號 ${item.docId || "未填"}${courseText}`);
+  }
+
+  if (studentCount === 0) {
+    items.push(`${month} 找不到可顯示的既有學費結算摘要。`);
+  }
+  return { items, grandTotal, studentCount, isExistingSettlement: true };
 }
 
 function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, stats: any, configMap: any, month: string) {
