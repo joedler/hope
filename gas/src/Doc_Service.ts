@@ -735,7 +735,7 @@ function handleLiffGenerateAdjustmentPayment(params: any) {
   try {
     const sheet = ensureTuitionAdjustmentSheet();
     const preview = buildAdjustmentPaymentPreview(month);
-    if (!preview.hasPending) return { ok: false, message: "沒有可產生補收繳費單的待處理補收資料。" };
+    if (!preview.hasPending) return { ok: false, message: "沒有可產生補救明細/補收通知的待處理補收資料。" };
 
     const folder = DriveApp.getFolderById(PDF_FOLDER_CONFIG.PAYMENT_NOTICE);
     const data = sheet.getDataRange().getValues();
@@ -777,11 +777,11 @@ function handleLiffGenerateAdjustmentPayment(params: any) {
 
     return {
       ok: true,
-      message: "已產生補收繳費單：\n" + results.join("\n"),
+      message: "已產生補救明細/補收通知：\n" + results.join("\n"),
       preview: buildAdjustmentPaymentPreview(month)
     };
   } catch (e) {
-    return { ok: false, message: "產生補收繳費單失敗：" + e.toString() };
+    return { ok: false, message: "產生補救明細/補收通知失敗：" + e.toString() };
   } finally {
     lock.releaseLock();
   }
@@ -826,12 +826,12 @@ function buildAdjustmentPaymentPreview(month: string) {
   const items = students.map(function(student: any) {
     return student.name + "：NT$ " + formatMoney(student.total) + "，" + student.rows.length + " 筆補收，原單號：" + uniqueValues(student.rows.map(function(row: any) { return row.relatedDocId; })).join("、");
   });
-  if (items.length === 0) items.push(month + " 目前沒有待產生補收繳費單的補收資料。");
+  if (items.length === 0) items.push(month + " 目前沒有待產生補救明細/補收通知的補收資料。");
 
   return {
-    title: "補收繳費單預覽",
+    title: "補救明細/補收通知預覽",
     month,
-    summary: month + " 補收繳費單只讀預覽：" + students.length + " 位學生，" + rowCount + " 筆補收，總金額 NT$ " + formatMoney(totalAmount) + "。",
+    summary: month + " 補救明細/補收通知只讀預覽：" + students.length + " 位學生，" + rowCount + " 筆補收，總金額 NT$ " + formatMoney(totalAmount) + "。",
     items,
     students,
     totalAmount,

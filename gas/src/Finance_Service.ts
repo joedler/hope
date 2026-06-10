@@ -1225,7 +1225,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
   const stats: any = {};
   function initStats(s: string, c: string, t: string, fee: number, mode: string) {
     if (!stats[s]) stats[s] = {};
-    if (!stats[s][c]) { stats[s][c] = { teacher: t, fee: fee, mode: mode, recordBase: 0, planBase: 0, planNext: 0, detailsRec: [], detailsPlan: [] }; }
+    if (!stats[s][c]) { stats[s][c] = { teacher: t, fee: fee, mode: mode, recordBase: 0, planBase: 0, planNext: 0, detailsRec: [], detailsPlan: [], adjustments: [] }; }
   }
 
   const rData = recordSheet.getDataRange().getValues();
@@ -1276,25 +1276,37 @@ function handleTuitionCalculation(event: any, userMsg: string) {
     }
   }
 
+  appendTuitionAdjustmentsToStats(ss, stats, configMap, baseMonthStr);
+
   let report = "💰 學費試算單 (" + baseMonthStr + ")\n\n"; let saveData: any[] = []; let grandTotal = 0; let hasData = false;
   for (const sName in stats) {
     let sTotal = 0; let sDetailText = ""; const courseRows = [];
     for (const cName in stats[sName]) {
       const item = stats[sName][cName]; let finalAmount = 0; let formulaStr = ""; let fullDetails: string[] = [];
+      const adjustmentTotal = item.adjustments.reduce(function(sum: number, adj: any) { return sum + adj.amount; }, 0);
       if (item.mode === "預收") {
         const diff = Math.round((item.recordBase - item.planBase) * 10) / 10;
-        const totalHr = item.planNext + diff; finalAmount = Math.round(totalHr * item.fee);
+        const totalHr = item.planNext + diff; finalAmount = Math.round(totalHr * item.fee) + adjustmentTotal;
         const diffStr = (diff > 0) ? (" +補" + diff + "hr") : (diff < 0 ? (" -退" + Math.abs(diff) + "hr") : "");
-        formulaStr = "預收" + item.planNext + "hr" + diffStr + " = " + totalHr + "hr";
+        const adjustmentStr = adjustmentTotal !== 0 ? "，帳務補救 " + formatCurrency(adjustmentTotal) : "";
+        formulaStr = "預收" + item.planNext + "hr" + diffStr + " = " + totalHr + "hr" + adjustmentStr;
         if (item.detailsRec.length > 0 || item.planBase > 0) {
             fullDetails.push("📋 [上月核對] 實上" + item.recordBase + " / 預繳" + item.planBase); fullDetails = fullDetails.concat(item.detailsRec); 
             if (diff !== 0) fullDetails.push("⚠️ 差異金額: " + (diff > 0 ? "補收 $":"退費 $") + Math.abs(Math.round(diff * item.fee))); else fullDetails.push("✅ 差異: 無 (已結清)"); fullDetails.push(""); 
         }
         if (item.detailsPlan.length > 0) { fullDetails.push("📅 [下月預收] " + nextMonthStr); fullDetails = fullDetails.concat(item.detailsPlan); }
       } else {
-        finalAmount = Math.round(item.recordBase * item.fee); formulaStr = "實上 " + item.recordBase + " hr × $" + item.fee; fullDetails = item.detailsRec;
+        finalAmount = Math.round(item.recordBase * item.fee) + adjustmentTotal; formulaStr = "實上 " + item.recordBase + " hr × $" + item.fee + (adjustmentTotal !== 0 ? "，帳務補救 " + formatCurrency(adjustmentTotal) : ""); fullDetails = item.detailsRec;
       }
-      if (finalAmount !== 0 || item.recordBase > 0 || item.planNext > 0) {
+      if (adjustmentTotal !== 0) {
+        const adjustmentLines = item.adjustments.map(function(adj: any) {
+          return "[帳務補救] " + adj.type + " " + formatCurrency(adj.amount) + "（" + adj.status + "）";
+        });
+        if (fullDetails.length > 0) fullDetails.push("");
+        fullDetails.push("🧾 [本月帳務補救]");
+        fullDetails = fullDetails.concat(adjustmentLines);
+      }
+      if (finalAmount !== 0 || item.recordBase > 0 || item.planNext > 0 || adjustmentTotal !== 0) {
         sTotal += finalAmount; const detailBlock = fullDetails.join("\n"); if (sDetailText !== "") sDetailText += "\n--------------------\n";
         sDetailText += "   📘 " + cName + " (" + item.mode + ")\n" + detailBlock.replace(/^/gm, "      ") + "\n      ➤ 本科總計：$" + finalAmount;
         courseRows.push([ baseMonthStr, sName, cName, item.mode, detailBlock, formulaStr, item.fee, finalAmount, "", "", "" ]);

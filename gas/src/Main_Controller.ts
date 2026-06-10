@@ -77,11 +77,11 @@ function doGet(e: any) {
         result = handleLiffTuitionAdjustmentOptions(e.parameter);
         break;
       case "adjustmentPaymentPreview":
-        // 預覽待處理補收繳費單，不寫入、不產生 PDF
+        // 預覽待處理補救明細/補收通知，不寫入、不產生 PDF
         result = handleLiffAdjustmentPaymentPreview(e.parameter);
         break;
       case "generateAdjustmentPayment":
-        // 確認產生補收繳費單，寫回帳務補救紀錄
+        // 確認產生補救明細/補收通知，寫回帳務補救紀錄
         result = handleLiffGenerateAdjustmentPayment(e.parameter);
         break;
       case "unbind":
