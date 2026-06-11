@@ -1063,7 +1063,7 @@ function createPaymentNoticesBatch(targetMonth: string, targetName: string) {
       amount: stuData.total,
       pdfUrl: fileUrl,
       generateStatus: "已產生",
-      emailStatus: "未寄送",
+      emailStatus: "待寄送",
       lineStatus: "未推播",
       note: "繳費單"
     });

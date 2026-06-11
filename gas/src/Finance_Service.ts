@@ -124,6 +124,7 @@ function handleLiffAdminPreview(params: any) {
     feature === "繳費單" ? buildPaymentNoticeAdminPreview(month) :
     feature === "收據" ? buildReceiptAdminPreview(month) :
     feature === "領據" ? buildAllowanceAdminPreview(month) :
+    feature === "寄送繳費單 Email" ? buildPaymentNoticeEmailAdminPreview(month) :
     feature === "寄送收據 Email" ? buildReceiptEmailAdminPreview(month) :
     feature === "寄送領據 Email" ? buildAllowanceEmailAdminPreview(month) :
     feature === "一般收據" ? buildGeneralReceiptAdminPreview(month) :
@@ -553,6 +554,107 @@ function updateDocumentSendStatus(docType: string, docId: string, channel: strin
     }
     return;
   }
+}
+
+function getStudentEmailMap() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const baseSheet = ss.getSheetByName("學生基本資料表") || ss.getSheetByName(SHEET_NAME_COURSE);
+  const emailMap: any = {};
+  if (!baseSheet) return emailMap;
+  const data = baseSheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const name = String(data[i][0] || "").trim();
+    if (name) emailMap[name] = String(data[i][1] || "").trim();
+  }
+  return emailMap;
+}
+
+function getTeacherEmailMap() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  const emailMap: any = {};
+  if (!teacherSheet) return emailMap;
+  const data = teacherSheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const name = String(data[i][0] || "").trim();
+    if (name) emailMap[name] = String(data[i][2] || "").trim();
+  }
+  return emailMap;
+}
+
+function normalizeDocumentEmailStatus(docType: string, status: string) {
+  const cleanStatus = String(status || "").trim();
+  if (docType === "繳費單" && (!cleanStatus || cleanStatus === "未寄送")) return "待寄送";
+  return cleanStatus || "未寄送";
+}
+
+function buildDocumentEmailReadOnlyPreview(month: string, docType: string, emailMap: any, allowConfirm: boolean) {
+  const timeZone = Session.getScriptTimeZone();
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  const items: string[] = [];
+  const rows: any[] = [];
+  let pendingCount = 0;
+  let sendableCount = 0;
+  let sentCount = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][1], timeZone);
+    if (rowMonth !== month) continue;
+    if (String(data[i][2] || "").trim() !== docType) continue;
+
+    const targetType = String(data[i][3] || "").trim();
+    const targetName = String(data[i][4] || "").trim();
+    const docId = String(data[i][5] || "").trim();
+    const amount = parseFloat(data[i][8]) || 0;
+    const pdfUrl = String(data[i][9] || "").trim();
+    const status = normalizeDocumentEmailStatus(docType, String(data[i][11] || "").trim());
+    const lineStatus = String(data[i][12] || "").trim() || "未推播";
+    const note = String(data[i][15] || "").trim();
+    const email = emailMap[targetName] || "";
+
+    if (status === "待寄送") pendingCount++;
+    if (status.indexOf("已寄送") > -1) sentCount++;
+
+    const warnings: string[] = [];
+    if (!pdfUrl) warnings.push("缺 PDF");
+    if (!email || email.indexOf("@") < 0) warnings.push("缺 Email");
+    if (status !== "待寄送") warnings.push(status ? "狀態不是待寄送" : "缺寄送狀態");
+    const selectable = allowConfirm && status === "待寄送" && !!pdfUrl && email.indexOf("@") > -1;
+    if (selectable) sendableCount++;
+
+    items.push(
+      `${targetName || "未填對象"}\n` +
+      `收件人：${email || "未填"}\n` +
+      `金額：${formatCurrency(amount)}\n` +
+      `單號：${docId || "未填"}\n` +
+      `Email狀態：${status}\n` +
+      `LINE狀態：${lineStatus}` +
+      (note ? "\n備註：" + note : "") +
+      (warnings.length ? "\n提醒：" + warnings.join("、") : "")
+    );
+    rows.push({
+      id: (targetType === "講師" ? "teacher:" : "student:") + targetName,
+      type: targetType === "講師" ? "teacher" : "student",
+      name: targetName,
+      amount,
+      amountText: formatCurrency(amount),
+      docId,
+      status,
+      selectable,
+      selectedDefault: selectable,
+      warnings,
+      details: [
+        "Email：" + (email || "未填"),
+        "PDF：" + (pdfUrl || "未填"),
+        "LINE：" + lineStatus,
+        note ? "備註：" + note : ""
+      ].filter(function(part: string) { return part !== ""; })
+    });
+  }
+
+  if (items.length === 0) items.push(`${month} 目前沒有 ${docType} Email 資料。`);
+  return { items, rows, pendingCount, sendableCount, sentCount };
 }
 
 function parseAdminSelectedIds(value: any): string[] {
@@ -1491,6 +1593,26 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
   return "✅ 已產生 " + count + " 份收據 PDF，狀態更新為待寄送。\n" + results.join("\n");
 }
 
+function buildPaymentNoticeEmailAdminPreview(month: string) {
+  try {
+    const result = buildDocumentEmailReadOnlyPreview(month, "繳費單", getStudentEmailMap(), false);
+    return {
+      summary: `${month} 繳費單 Email 預覽：待寄送 ${result.pendingCount} 位學生，可寄送 0 位，已寄送 ${result.sentCount} 位。`,
+      items: result.items.slice(0, 12),
+      rows: result.rows,
+      nextAction: "繳費單 Email 寄送尚未開放，先確認待寄送清單",
+      canConfirm: false
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 繳費單 Email 預覽讀取失敗。`,
+      items: ["請先檢查單據紀錄表、繳費單 PDF、Email 與 GAS 權限。", "錯誤：" + e.toString()],
+      nextAction: "確認寄送繳費單 Email（尚未開放）",
+      canConfirm: false
+    };
+  }
+}
+
 function buildReceiptEmailAdminPreview(month: string) {
   try {
     const result = buildReceiptEmailReadOnlyPreview(month);
@@ -1513,69 +1635,7 @@ function buildReceiptEmailAdminPreview(month: string) {
 }
 
 function buildReceiptEmailReadOnlyPreview(month: string) {
-  const timeZone = Session.getScriptTimeZone();
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
-  const baseSheet = ss.getSheetByName("學生基本資料表") || ss.getSheetByName(SHEET_NAME_COURSE);
-  if (!sheet || !baseSheet) throw new Error("找不到學費結算表或學生資料表。");
-
-  const baseData = baseSheet.getDataRange().getValues();
-  const emailMap: any = {};
-  for (let i = 1; i < baseData.length; i++) {
-    const name = String(baseData[i][0] || "").trim();
-    if (name) emailMap[name] = String(baseData[i][1] || "").trim();
-  }
-
-  const data = sheet.getDataRange().getValues();
-  const studentsMap: any = {};
-  for (let i = 1; i < data.length; i++) {
-    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
-    const studentName = String(data[i][1] || "").trim();
-    if (rowMonth !== month || !studentName) continue;
-    if (!studentsMap[studentName]) {
-      studentsMap[studentName] = { name: studentName, total: 0, docId: "", pdfUrl: "", status: "", courseCount: 0 };
-    }
-    const item = studentsMap[studentName];
-    if (data[i][2]) item.courseCount++;
-    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
-    if (data[i][9]) item.docId = String(data[i][9]).trim();
-    if (data[i][15]) item.pdfUrl = String(data[i][15]).trim();
-    if (data[i][16]) item.status = String(data[i][16]).trim();
-  }
-
-  const items: string[] = [];
-  const rows: any[] = [];
-  let pendingCount = 0;
-  let sendableCount = 0;
-  let sentCount = 0;
-  for (const studentName in studentsMap) {
-    const item = studentsMap[studentName];
-    const email = emailMap[studentName] || "";
-    if (item.status === "待寄送") pendingCount++;
-    if (item.status.indexOf("已寄送") > -1) sentCount++;
-    const warnings: string[] = [];
-    if (!item.pdfUrl) warnings.push("缺 PDF");
-    if (!email || email.indexOf("@") < 0) warnings.push("缺 Email");
-    if (item.status !== "待寄送") warnings.push(item.status ? "狀態不是待寄送" : "缺寄送狀態");
-    const selectable = item.status === "待寄送" && !!item.pdfUrl && email.indexOf("@") > -1;
-    if (selectable) sendableCount++;
-    items.push(`${studentName}\n收件人：${email || "未填"}\n金額：${formatCurrency(item.total)}\n單號：${item.docId || "未填"}\n狀態：${item.status || "未填"}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
-    rows.push({
-      id: "student:" + studentName,
-      type: "student",
-      name: studentName,
-      amount: item.total,
-      amountText: formatCurrency(item.total),
-      docId: item.docId,
-      status: item.status || "未填狀態",
-      selectable,
-      selectedDefault: selectable,
-      warnings,
-      details: ["Email：" + (email || "未填"), "課程 " + item.courseCount + " 項"]
-    });
-  }
-  if (items.length === 0) items.push(`${month} 目前沒有可檢查的收據 Email 資料。`);
-  return { items, rows, pendingCount, sendableCount, sentCount };
+  return buildDocumentEmailReadOnlyPreview(month, "收據", getStudentEmailMap(), true);
 }
 
 function sendReceiptEmailForTarget(targetMonth: string, targetName: string) {
@@ -1825,61 +1885,7 @@ function buildAllowanceEmailAdminPreview(month: string) {
 }
 
 function buildAllowanceEmailReadOnlyPreview(month: string) {
-  const timeZone = Session.getScriptTimeZone();
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
-  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
-  if (!sheet || !teacherSheet) throw new Error("找不到鐘點結算表或講師名單。");
-
-  const teacherData = teacherSheet.getDataRange().getValues();
-  const emailMap: any = {};
-  for (let i = 1; i < teacherData.length; i++) {
-    const name = String(teacherData[i][0] || "").trim();
-    if (name) emailMap[name] = String(teacherData[i][2] || "").trim();
-  }
-
-  const data = sheet.getDataRange().getValues();
-  const items: string[] = [];
-  const rows: any[] = [];
-  let pendingCount = 0;
-  let sendableCount = 0;
-  let sentCount = 0;
-  for (let i = 1; i < data.length; i++) {
-    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
-    if (rowMonth !== month) continue;
-    const teacherName = String(data[i][1] || "").trim();
-    if (!teacherName) continue;
-    const gross = parseFloat(data[i][6]) || 0;
-    const net = parseFloat(data[i][14]) || gross;
-    const docId = String(data[i][7] || "").trim();
-    const pdfUrl = String(data[i][10] || "").trim();
-    const status = String(data[i][11] || "").trim();
-    const email = emailMap[teacherName] || "";
-    if (status === "待寄送") pendingCount++;
-    if (status.indexOf("已寄送") > -1) sentCount++;
-    const warnings: string[] = [];
-    if (!pdfUrl) warnings.push("缺 PDF");
-    if (!email || email.indexOf("@") < 0) warnings.push("缺 Email");
-    if (status !== "待寄送") warnings.push(status ? "狀態不是待寄送" : "缺寄送狀態");
-    const selectable = status === "待寄送" && !!pdfUrl && email.indexOf("@") > -1;
-    if (selectable) sendableCount++;
-    items.push(`${teacherName}\n收件人：${email || "未填"}\n實發：${formatCurrency(net)}\n領據：${docId || "未填"}\n狀態：${status || "未填"}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
-    rows.push({
-      id: "teacher:" + teacherName,
-      type: "teacher",
-      name: teacherName,
-      amount: net,
-      amountText: formatCurrency(net),
-      docId,
-      status: status || "未填狀態",
-      selectable,
-      selectedDefault: selectable,
-      warnings,
-      details: ["Email：" + (email || "未填")]
-    });
-  }
-  if (items.length === 0) items.push(`${month} 目前沒有可檢查的領據 Email 資料。`);
-  return { items, rows, pendingCount, sendableCount, sentCount };
+  return buildDocumentEmailReadOnlyPreview(month, "領據", getTeacherEmailMap(), true);
 }
 
 function sendAllowanceEmailForTarget(targetMonth: string, targetName: string) {
@@ -1999,7 +2005,7 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
     const amount = parseFloat(data[i][8]) || 0;
     const pdfUrl = String(data[i][9] || "").trim();
     const generateStatus = String(data[i][10] || "").trim() || "未填";
-    const emailStatus = String(data[i][11] || "").trim() || "未寄送";
+    const emailStatus = normalizeDocumentEmailStatus(docType, String(data[i][11] || "").trim());
     const lineStatus = String(data[i][12] || "").trim() || "未推播";
     const sentAt = data[i][13] instanceof Date ? Utilities.formatDate(data[i][13], timeZone, "yyyy/MM/dd HH:mm") : String(data[i][13] || "").trim();
     const voidStatus = String(data[i][14] || "").trim();
