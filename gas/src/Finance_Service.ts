@@ -216,8 +216,43 @@ function handleLiffAdminConfirmDocument(params: any) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
 
-  if (feature !== "繳費單" && feature !== "領據") {
-    return { ok: false, message: "目前只開放繳費單與領據確認產生；收據與寄送流程仍需各自預覽確認後再開放。" };
+  if (feature !== "繳費單" && feature !== "收據" && feature !== "領據") {
+    return { ok: false, message: "目前只開放繳費單、收據與領據確認產生；寄送流程仍需各自預覽確認後再開放。" };
+  }
+
+  if (feature === "收據") {
+    const beforePreview = buildReceiptReadOnlyPreview(month);
+    if (beforePreview.studentCount <= 0) {
+      return { ok: false, message: `${month} 沒有可產生收據的學費結算資料，請先完成學費試算與繳費單流程。` };
+    }
+    if (beforePreview.generatedCount >= beforePreview.studentCount) {
+      return { ok: false, message: `${month} 收據已全部產生，未重複產生 PDF。` };
+    }
+
+    const selectedIds = parseAdminSelectedIds(params.selectedIds);
+    const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
+    const selectedRows = selectedIds.length > 0
+      ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+      : selectableRows;
+    if (selectedRows.length === 0) {
+      return { ok: false, message: `${month} 沒有選取可產生收據的學生，請先確認收款方式、收據類別與收款日期。` };
+    }
+
+    const resultMessages: string[] = [];
+    for (let i = 0; i < selectedRows.length; i++) {
+      resultMessages.push(createReceiptDocumentsBatch(month, selectedRows[i].name));
+    }
+    const resultMessage = resultMessages.join("\n\n");
+    const afterPreview = buildReceiptAdminPreview(month);
+    if (resultMessage.indexOf("❌") === 0 || resultMessage.indexOf("⚠️") === 0) {
+      return { ok: false, message: resultMessage, preview: afterPreview };
+    }
+
+    return {
+      ok: true,
+      message: `${month} 收據已確認產生，共 ${selectedRows.length} 位學生。\n${resultMessage}`,
+      preview: afterPreview
+    };
   }
 
   if (feature === "領據") {
@@ -914,13 +949,17 @@ function buildReceiptAdminPreview(month: string) {
     return {
       summary: `${month} 收據只讀預覽：${result.studentCount} 位學生，應開收據總額 ${formatCurrency(result.grandTotal)}，已有收據 PDF ${result.generatedCount} 份，待寄送 ${result.pendingSendCount} 份。`,
       items,
-      nextAction: "確認產生收據（尚未開放）"
+      rows: result.rows,
+      nextAction: "確認產生收據",
+      canConfirm: result.rows.some(function(row: any) { return row.selectable; }),
+      confirmAction: "adminConfirmDocument"
     };
   } catch (e) {
     return {
       summary: `${month} 收據只讀預覽讀取失敗。`,
       items: ["請先檢查學費結算表、收款方式、收據類別、收款日期與 GAS 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認產生收據（尚未開放）"
+      nextAction: "確認產生收據（尚未開放）",
+      canConfirm: false
     };
   }
 }
@@ -963,6 +1002,7 @@ function buildReceiptReadOnlyPreview(month: string) {
   }
 
   const items: string[] = [];
+  const rows: any[] = [];
   let grandTotal = 0;
   let studentCount = 0;
   let generatedCount = 0;
@@ -981,10 +1021,107 @@ function buildReceiptReadOnlyPreview(month: string) {
     if (!item.total) warnings.push("缺收據金額");
     const receiptState = item.receiptUrl ? (item.status || "已有收據 PDF") : "尚未產生收據 PDF";
     items.push(`${studentName}\n金額：${formatCurrency(item.total)}\n課程：${item.courseCount} 項\n單號：${item.docId || "未填"}\n收款：${item.method || "方式未填"} / ${item.category || "類別未填"} / ${item.date || "日期未填"}\n狀態：${receiptState}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
+    const selectable = !item.receiptUrl && !!item.docId && !!item.method && !!item.category && !!item.date && item.total > 0;
+    rows.push({
+      id: "student:" + studentName,
+      type: "student",
+      name: studentName,
+      amount: item.total,
+      amountText: formatCurrency(item.total),
+      docId: item.docId,
+      status: receiptState,
+      selectable,
+      selectedDefault: selectable,
+      warnings,
+      details: [
+        "課程 " + item.courseCount + " 項",
+        "收款：" + (item.method || "未填") + " / " + (item.category || "未填") + " / " + (item.date || "未填")
+      ]
+    });
   }
 
   if (items.length === 0) items.push(`${month} 學費結算表沒有可開收據的資料；請先完成學費試算與繳費單流程。`);
-  return { items, grandTotal, studentCount, generatedCount, pendingSendCount };
+  return { items, rows, grandTotal, studentCount, generatedCount, pendingSendCount };
+}
+
+function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  const baseSheet = ss.getSheetByName("學生基本資料表") || ss.getSheetByName(SHEET_NAME_COURSE);
+  if (!sheet || !baseSheet) return "❌ 找不到學費結算表或學生資料表";
+
+  const timeZone = Session.getScriptTimeZone();
+  const data = sheet.getDataRange().getValues();
+  const baseData = baseSheet.getDataRange().getValues();
+  const infoMap: any = {};
+  for (let k = 1; k < baseData.length; k++) {
+    const name = String(baseData[k][0] || "").trim();
+    if (!name) continue;
+    infoMap[name] = { email: baseData[k][1], pid: baseData[k][2] };
+  }
+
+  const folder = DriveApp.getFolderById(PDF_FOLDER_CONFIG.RECEIPT);
+  const studentsMap: any = {};
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    const studentName = String(data[i][1] || "").trim();
+    if (rowMonth !== targetMonth || !studentName) continue;
+    if (targetName && studentName !== targetName) continue;
+    if (!studentsMap[studentName]) {
+      studentsMap[studentName] = {
+        name: studentName,
+        total: 0,
+        docId: "",
+        method: "",
+        category: "",
+        date: "",
+        receiptUrl: "",
+        status: "",
+        pid: "",
+        detailParts: [],
+        updateRow: -1
+      };
+    }
+    const item = studentsMap[studentName];
+    if (data[i][4]) item.detailParts.push(String(data[i][4]).trim());
+    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
+    if (data[i][9]) item.docId = String(data[i][9]).trim();
+    if (data[i][11]) item.pid = String(data[i][11]).trim();
+    if (data[i][12]) item.method = String(data[i][12]).trim();
+    if (data[i][13]) item.category = String(data[i][13]).trim();
+    if (data[i][14]) item.date = data[i][14] instanceof Date ? Utilities.formatDate(data[i][14], timeZone, "yyyy/MM/dd") : String(data[i][14]).trim();
+    if (data[i][15]) item.receiptUrl = String(data[i][15]).trim();
+    if (data[i][16]) item.status = String(data[i][16]).trim();
+    if (data[i][8] !== "" && data[i][8] != null) item.updateRow = i + 1;
+  }
+
+  const results: string[] = [];
+  let count = 0;
+  for (const studentName in studentsMap) {
+    const item = studentsMap[studentName];
+    if (item.receiptUrl || !item.total || !item.docId || !item.method || !item.category || !item.date || item.updateRow < 0) continue;
+    const info = infoMap[studentName] || {};
+    const state = {
+      name: studentName,
+      amount: item.total,
+      docId: item.docId,
+      month: targetMonth,
+      method: item.method,
+      category: item.category,
+      date: item.date,
+      email: info.email,
+      pid: item.pid || info.pid,
+      detail: item.detailParts.join("\n")
+    };
+    const result = generateReceiptPDF(state, folder);
+    sheet.getRange(item.updateRow, 16).setValue(result.url);
+    sheet.getRange(item.updateRow, 17).setValue("待寄送");
+    results.push(studentName + "：" + item.docId + " / " + formatCurrency(item.total));
+    count++;
+  }
+
+  if (count === 0) return "⚠️ " + targetMonth + (targetName ? " " + targetName : "") + " 沒有可產生的收據，請確認收款方式、收據類別與收款日期。";
+  return "✅ 已產生 " + count + " 份收據 PDF，狀態更新為待寄送。\n" + results.join("\n");
 }
 
 function buildAllowanceAdminPreview(month: string) {
