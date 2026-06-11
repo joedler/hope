@@ -429,8 +429,8 @@ function handleLiffAdminUpdateReceiptPayment(params: any) {
     const studentName = String(data[i][1] || "").trim();
     const total = parseFloat(data[i][8]) || 0;
     const docId = String(data[i][9] || "").trim();
-    const receiptUrl = String(data[i][15] || "").trim();
-    if (!studentName || !docId || !total || receiptUrl) continue;
+    if (!studentName || !docId || !total) continue;
+    if (hasDocumentRecord("收據", docId)) continue;
     sheet.getRange(i + 1, 13).setValue(method);
     sheet.getRange(i + 1, 14).setValue(category);
     sheet.getRange(i + 1, 15).setValue(paymentDate);
@@ -447,6 +447,89 @@ function handleLiffAdminUpdateReceiptPayment(params: any) {
     message: `${month} 已套用收款資料：${updatedStudents.length} 位學生、${updateCount} 筆。\n收款方式：${method}\n收據類別：${category}\n收款日期：${paymentDate}`,
     preview: buildReceiptAdminPreview(month)
   };
+}
+
+function hasDocumentRecord(docType: string, docId: string) {
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][2] || "").trim() === docType && String(data[i][5] || "").trim() === docId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function ensureDocumentRecordSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(SHEET_NAME_DOCUMENT_RECORD);
+  const headers = [
+    "建立時間",
+    "處理月份",
+    "單據類型",
+    "對象類型",
+    "對象姓名",
+    "單據編號",
+    "來源表",
+    "來源鍵值",
+    "金額",
+    "PDF連結",
+    "產生狀態",
+    "Email狀態",
+    "LINE狀態",
+    "寄送時間",
+    "作廢狀態",
+    "備註",
+    "操作人"
+  ];
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME_DOCUMENT_RECORD);
+    sheet.appendRow(headers);
+    sheet.setFrozenRows(1);
+  } else if (sheet.getLastColumn() < headers.length) {
+    for (let i = 0; i < headers.length; i++) {
+      sheet.getRange(1, i + 1).setValue(headers[i]);
+    }
+  }
+  return sheet;
+}
+
+function recordDocumentEntry(entry: any) {
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  const docType = String(entry.docType || "").trim();
+  const docId = String(entry.docId || "").trim();
+  if (!docType || !docId) return;
+
+  const rowValues = [
+    entry.createdAt || new Date(),
+    entry.month || "",
+    docType,
+    entry.targetType || "",
+    entry.targetName || "",
+    docId,
+    entry.sourceSheet || "",
+    entry.sourceKey || "",
+    entry.amount || 0,
+    entry.pdfUrl || "",
+    entry.generateStatus || "已產生",
+    entry.emailStatus || "未寄送",
+    entry.lineStatus || "未推播",
+    entry.sentAt || "",
+    entry.voidStatus || "",
+    entry.note || "",
+    entry.operator || "系統"
+  ];
+
+  for (let i = 1; i < data.length; i++) {
+    const existingType = String(data[i][2] || "").trim();
+    const existingDocId = String(data[i][5] || "").trim();
+    if (existingType === docType && existingDocId === docId) {
+      sheet.getRange(i + 1, 1, 1, rowValues.length).setValues([rowValues]);
+      return;
+    }
+  }
+  sheet.appendRow(rowValues);
 }
 
 function parseAdminSelectedIds(value: any): string[] {
@@ -1362,6 +1445,21 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
     const result = generateReceiptPDF(state, folder);
     sheet.getRange(item.updateRow, 16).setValue(result.url);
     sheet.getRange(item.updateRow, 17).setValue("待寄送");
+    recordDocumentEntry({
+      month: targetMonth,
+      docType: "收據",
+      targetType: "學生",
+      targetName: studentName,
+      docId: item.docId,
+      sourceSheet: SHEET_NAME_FIN_FEE,
+      sourceKey: targetMonth + "|" + studentName,
+      amount: item.total,
+      pdfUrl: result.url,
+      generateStatus: "已產生",
+      emailStatus: "待寄送",
+      lineStatus: "未推播",
+      note: item.category + " / " + item.method + " / " + item.date
+    });
     results.push(studentName + "：" + item.docId + " / " + formatCurrency(item.total));
     count++;
   }
@@ -1654,6 +1752,21 @@ function createAllowanceDocumentsBatch(targetMonth: string, targetName: string) 
     const pdfResult = generateAllowancePDF(state, folder);
     sheet.getRange(i + 1, 11).setValue(pdfResult.url);
     sheet.getRange(i + 1, 12).setValue("待寄送");
+    recordDocumentEntry({
+      month: targetMonth,
+      docType: "領據",
+      targetType: "講師",
+      targetName: teacherName,
+      docId,
+      sourceSheet: SHEET_NAME_FIN_PAY,
+      sourceKey: targetMonth + "|" + teacherName,
+      amount: state.netAmount,
+      pdfUrl: pdfResult.url,
+      generateStatus: "已產生",
+      emailStatus: "待寄送",
+      lineStatus: "未推播",
+      note: "應付 " + formatCurrency(gross)
+    });
     results.push(teacherName + "：" + docId + " / " + formatCurrency(state.netAmount));
     count++;
   }

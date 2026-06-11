@@ -1052,6 +1052,21 @@ function createPaymentNoticesBatch(targetMonth: string, targetName: string) {
       sheet.getRange(stuData.updateRow, 16).setValue(fileUrl);
       sheet.getRange(stuData.updateRow, 17).setValue("繳費單已產");
     }
+    recordDocumentEntry({
+      month: targetMonth,
+      docType: "繳費單",
+      targetType: "學生",
+      targetName: name,
+      docId: stuData.docId,
+      sourceSheet: SHEET_NAME_FIN_FEE,
+      sourceKey: targetMonth + "|" + name,
+      amount: stuData.total,
+      pdfUrl: fileUrl,
+      generateStatus: "已產生",
+      emailStatus: "未寄送",
+      lineStatus: "未推播",
+      note: "繳費單"
+    });
     count++;
   }
   if (count === 0) return "⚠️ " + targetMonth + " 無資料。";
