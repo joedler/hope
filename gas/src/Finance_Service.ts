@@ -164,6 +164,11 @@ function handleLiffAdminConfirmSettlement(params: any) {
     if ((tuitionPreview as any).pendingCount > 0) {
       return { ok: false, message: `${month} 尚有未核銷預排課程，請先完成預排核銷後再寫入學費結算。` };
     }
+  } else {
+    const existingSalaryCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_PAY, 0, month);
+    if (existingSalaryCount > 0) {
+      return { ok: false, message: `${month} 已有 ${existingSalaryCount} 筆鐘點結算資料，系統已阻擋重複寫入；若需更正請走作廢、重新產生或補發流程。` };
+    }
   }
   const beforeCount = countSheetRowsByMonthOnly(ss, targetSheetName, 0, month);
   const mockEvent = {
@@ -633,6 +638,14 @@ function buildSalaryAdminPreview(month: string) {
     if (result.items.length > items.length) {
       items.push(`另有 ${result.items.length - items.length} 位講師彙總未列出，正式預覽頁後續再提供完整清單。`);
     }
+    if ((result as any).isExistingSettlement) {
+      return {
+        summary: `${month} 鐘點既有結算摘要：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}。`,
+        items,
+        nextAction: "已寫入鐘點結算，請勿重複試算",
+        canConfirm: false
+      };
+    }
     return {
       summary: `${month} 鐘點試算只讀預覽：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}。`,
       items,
@@ -717,7 +730,7 @@ function buildSalaryReadOnlyPreview(month: string) {
   const items: string[] = [];
   const existingSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_PAY, 0, month);
   if (existingSettlementCount > 0) {
-    items.push(`注意：${month} 已有 ${existingSettlementCount} 筆鐘點結算資料；若只是回看舊領據或結算，應改用「已產生單據 / 領據紀錄」，不要重新試算。`);
+    return buildExistingSalarySettlementPreview(ss, month, existingSettlementCount);
   }
 
   let grossTotal = 0;
@@ -751,6 +764,69 @@ function buildSalaryReadOnlyPreview(month: string) {
 
   if (items.length === 0) items.push(`${month} 目前沒有待試算鐘點資料。`);
   return { items, grossTotal, netTotal, teacherCount };
+}
+
+function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string, existingSettlementCount: number) {
+  const timeZone = Session.getScriptTimeZone();
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
+  if (!sheet) {
+    return {
+      items: [`${month} 已有 ${existingSettlementCount} 筆鐘點結算資料，但找不到鐘點結算表。`],
+      grossTotal: 0,
+      netTotal: 0,
+      teacherCount: 0,
+      existingSettlementCount,
+      isExistingSettlement: true
+    };
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const items: string[] = [
+    `注意：${month} 已有 ${existingSettlementCount} 筆鐘點結算資料；此處顯示既有結算摘要，不重新試算授課或帳務補救補發。`
+  ];
+  let grossTotal = 0;
+  let netTotal = 0;
+  let teacherCount = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    if (rowMonth !== month) continue;
+    const teacherName = String(data[i][1] || "").trim();
+    if (!teacherName) continue;
+    const gross = parseFloat(data[i][6]) || 0;
+    const docId = String(data[i][7] || "").trim();
+    const note = String(data[i][9] || "").trim();
+    const pdfUrl = String(data[i][10] || "").trim();
+    const emailStatus = String(data[i][11] || "").trim();
+    const taxAmount = parseFloat(data[i][12]) || 0;
+    const nhiAmount = parseFloat(data[i][13]) || 0;
+    const netAmount = parseFloat(data[i][14]) || gross;
+    const detail = [
+      String(data[i][2] || "").trim(),
+      String(data[i][3] || "").trim(),
+      String(data[i][4] || "").trim(),
+      String(data[i][5] || "").trim()
+    ].filter(function(part: string) { return part !== ""; }).join("\n");
+
+    teacherCount++;
+    grossTotal += gross;
+    netTotal += netAmount;
+    items.push(
+      teacherName +
+      "\n狀態：已寫入鐘點結算，不可重複試算寫入" +
+      "\n應付：" + formatCurrency(gross) +
+      "\n扣繳：" + formatCurrency(taxAmount) +
+      "\n補充保費：" + formatCurrency(nhiAmount) +
+      "\n實發：" + formatCurrency(netAmount) +
+      "\n單據：" + (docId || "未填") +
+      "\nPDF：" + (pdfUrl ? "已產生" : "尚未產生") +
+      "\nEmail：" + (emailStatus || "未寄送") +
+      (note ? "\n備註：" + note : "") +
+      (detail ? "\n明細：\n- " + detail.split("\n").join("\n- ") : "")
+    );
+  }
+
+  return { items, grossTotal, netTotal, teacherCount, existingSettlementCount, isExistingSettlement: true };
 }
 
 function appendSalaryPreviewItem(
