@@ -111,6 +111,11 @@ function handleLiffAdminPreview(params: any) {
       summary: `預覽 ${month} 稅務資料整理。`,
       items: ["年度資料彙整", "收據與捐款資料檢核", "後續需定義稅務輸出格式"],
       nextAction: "確認產生稅務資料（尚未開放）"
+    },
+    "已產生單據": {
+      summary: `查看 ${month} 已產生單據。`,
+      items: ["彙整繳費單、收據、領據與一般收據狀態", "此頁只讀，不會作廢、重產或寄送", "後續作廢、重新產生、補發需另走預覽確認流程"],
+      nextAction: "只讀查看，暫不執行"
     }
   };
 
@@ -120,6 +125,7 @@ function handleLiffAdminPreview(params: any) {
     feature === "收據" ? buildReceiptAdminPreview(month) :
     feature === "領據" ? buildAllowanceAdminPreview(month) :
     feature === "一般收據" ? buildGeneralReceiptAdminPreview(month) :
+    feature === "已產生單據" ? buildGeneratedDocumentsAdminPreview(month) :
     previewMap[feature];
   if (!preview) {
     return { ok: false, message: `不支援的行政預覽功能: ${feature}` };
@@ -1471,6 +1477,124 @@ function buildGeneralReceiptReadOnlyPreview(month: string) {
   return { items, totalAmount, recordCount, generatedCount };
 }
 
+function buildGeneratedDocumentsAdminPreview(month: string) {
+  const items: string[] = [];
+  const rows: any[] = [];
+  const summaryParts: string[] = [];
+
+  appendGeneratedDocumentSection(
+    month,
+    "繳費單",
+    rows,
+    items,
+    summaryParts,
+    function() {
+      const result = buildPaymentNoticeReadOnlyPreview(month);
+      return {
+        count: result.studentCount,
+        generatedCount: result.generatedCount,
+        totalText: formatCurrency(result.grandTotal),
+        rows: result.rows
+      };
+    }
+  );
+
+  appendGeneratedDocumentSection(
+    month,
+    "收據",
+    rows,
+    items,
+    summaryParts,
+    function() {
+      const result = buildReceiptReadOnlyPreview(month);
+      return {
+        count: result.studentCount,
+        generatedCount: result.generatedCount,
+        totalText: formatCurrency(result.grandTotal),
+        rows: result.rows
+      };
+    }
+  );
+
+  appendGeneratedDocumentSection(
+    month,
+    "領據",
+    rows,
+    items,
+    summaryParts,
+    function() {
+      const result = buildAllowanceReadOnlyPreview(month);
+      return {
+        count: result.teacherCount,
+        generatedCount: result.generatedCount,
+        totalText: formatCurrency(result.netTotal),
+        rows: result.rows
+      };
+    }
+  );
+
+  appendGeneratedDocumentSection(
+    month,
+    "一般收據",
+    rows,
+    items,
+    summaryParts,
+    function() {
+      const result = buildGeneralReceiptReadOnlyPreview(month);
+      return {
+        count: result.recordCount,
+        generatedCount: result.generatedCount,
+        totalText: formatCurrency(result.totalAmount),
+        rows: []
+      };
+    }
+  );
+
+  if (items.length === 0) items.push(`${month} 目前沒有可查看的單據資料。`);
+
+  return {
+    summary: `${month} 已產生單據總覽：${summaryParts.join("；")}。`,
+    items,
+    rows,
+    nextAction: "只讀查看，作廢/重新產生/補發待流程確認後開放",
+    canConfirm: false
+  };
+}
+
+function appendGeneratedDocumentSection(month: string, label: string, rows: any[], items: string[], summaryParts: string[], loader: Function) {
+  try {
+    const result = loader();
+    summaryParts.push(`${label} ${result.generatedCount}/${result.count}`);
+    items.push(
+      `${label}\n` +
+      `狀態：只讀查看\n` +
+      `筆數：${result.count} 筆，已有 PDF ${result.generatedCount} 份\n` +
+      `金額：${result.totalText}`
+    );
+
+    const sourceRows = result.rows || [];
+    for (let i = 0; i < sourceRows.length; i++) {
+      const row = sourceRows[i];
+      rows.push({
+        id: "document:" + label + ":" + (row.id || i),
+        type: "document",
+        name: label + " / " + (row.name || "未填名稱"),
+        amount: row.amount || 0,
+        amountText: row.amountText || "",
+        docId: row.docId || "",
+        status: row.status || "未填狀態",
+        selectable: false,
+        selectedDefault: false,
+        warnings: row.warnings || [],
+        details: (row.details || []).concat(["目前只讀；作廢、重新產生、補發尚未開放"])
+      });
+    }
+  } catch (e) {
+    summaryParts.push(`${label} 讀取失敗`);
+    items.push(`${label}\n狀態：讀取失敗\n錯誤：${e.toString()}`);
+  }
+}
+
 function buildAdminPreviewMetrics(month: string, feature: string) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const metrics: any[] = [];
@@ -1493,6 +1617,14 @@ function buildAdminPreviewMetrics(month: string, feature: string) {
 
   if (feature === "一般收據") {
     metrics.push(buildSheetMonthMetric(ss, "一般收據紀錄", SHEET_NAME_GEN_RECORD, 2, month, "指定月份一般收據紀錄筆數"));
+    return metrics;
+  }
+
+  if (feature === "已產生單據") {
+    metrics.push(buildSheetMonthMetric(ss, "學費結算", SHEET_NAME_FIN_FEE, 0, month, "指定月份學費、繳費單與收據來源筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "鐘點結算", SHEET_NAME_FIN_PAY, 0, month, "指定月份鐘點與領據來源筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "一般收據", SHEET_NAME_GEN_RECORD, 2, month, "指定月份一般收據紀錄筆數"));
+    metrics.push(buildSheetMonthMetric(ss, "帳務補救", SHEET_NAME_TUITION_ADJUSTMENT, 1, month, "處理月份符合的補收/退費筆數"));
     return metrics;
   }
 
