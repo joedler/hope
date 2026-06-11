@@ -216,8 +216,43 @@ function handleLiffAdminConfirmDocument(params: any) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
 
-  if (feature !== "繳費單") {
-    return { ok: false, message: "目前只開放繳費單確認產生；收據、領據與寄送流程仍需各自預覽確認後再開放。" };
+  if (feature !== "繳費單" && feature !== "領據") {
+    return { ok: false, message: "目前只開放繳費單與領據確認產生；收據與寄送流程仍需各自預覽確認後再開放。" };
+  }
+
+  if (feature === "領據") {
+    const beforePreview = buildAllowanceReadOnlyPreview(month);
+    if (beforePreview.teacherCount <= 0) {
+      return { ok: false, message: `${month} 沒有可產生領據的鐘點結算資料，請先完成鐘點試算確認寫入。` };
+    }
+    if (beforePreview.generatedCount >= beforePreview.teacherCount) {
+      return { ok: false, message: `${month} 領據已全部產生，未重複產生 PDF。` };
+    }
+
+    const selectedIds = parseAdminSelectedIds(params.selectedIds);
+    const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
+    const selectedRows = selectedIds.length > 0
+      ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+      : selectableRows;
+    if (selectedRows.length === 0) {
+      return { ok: false, message: `${month} 沒有選取可產生領據的講師。` };
+    }
+
+    const resultMessages: string[] = [];
+    for (let i = 0; i < selectedRows.length; i++) {
+      resultMessages.push(createAllowanceDocumentsBatch(month, selectedRows[i].name));
+    }
+    const resultMessage = resultMessages.join("\n\n");
+    const afterPreview = buildAllowanceAdminPreview(month);
+    if (resultMessage.indexOf("❌") === 0 || resultMessage.indexOf("⚠️") === 0) {
+      return { ok: false, message: resultMessage, preview: afterPreview };
+    }
+
+    return {
+      ok: true,
+      message: `${month} 領據已確認產生，共 ${selectedRows.length} 位講師。\n${resultMessage}`,
+      preview: afterPreview
+    };
   }
 
   const beforePreview = buildPaymentNoticeReadOnlyPreview(month);
@@ -963,13 +998,16 @@ function buildAllowanceAdminPreview(month: string) {
       summary: `${month} 領據只讀預覽：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}，已有領據 PDF ${result.generatedCount} 份，待寄送 ${result.pendingSendCount} 份。`,
       items,
       rows: result.rows,
-      nextAction: "確認產生領據（尚未開放）"
+      nextAction: "確認產生領據",
+      canConfirm: result.rows.some(function(row: any) { return row.selectable; }),
+      confirmAction: "adminConfirmDocument"
     };
   } catch (e) {
     return {
       summary: `${month} 領據只讀預覽讀取失敗。`,
       items: ["請先檢查鐘點結算表、領據編號、PDF 與寄送狀態。", "錯誤：" + e.toString()],
-      nextAction: "確認產生領據（尚未開放）"
+      nextAction: "確認產生領據（尚未開放）",
+      canConfirm: false
     };
   }
 }
@@ -1020,8 +1058,8 @@ function buildAllowanceReadOnlyPreview(month: string) {
       amountText: formatCurrency(net),
       docId,
       status: stateText,
-      selectable: false,
-      selectedDefault: false,
+      selectable: !pdfUrl && !!docId && gross > 0,
+      selectedDefault: !pdfUrl && !!docId && gross > 0,
       warnings,
       details: detail ? detail.split("；") : []
     });
@@ -1029,6 +1067,82 @@ function buildAllowanceReadOnlyPreview(month: string) {
 
   if (items.length === 0) items.push(`${month} 鐘點結算表沒有可開領據的資料；請先完成鐘點試算確認寫入。`);
   return { items, rows, grossTotal, netTotal, teacherCount, generatedCount, pendingSendCount };
+}
+
+function createAllowanceDocumentsBatch(targetMonth: string, targetName: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
+  if (!sheet) return "❌ 找不到鐘點結算表";
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (!teacherSheet) return "❌ 找不到講師名單";
+
+  const timeZone = Session.getScriptTimeZone();
+  const data = sheet.getDataRange().getValues();
+  const teacherData = teacherSheet.getDataRange().getValues();
+  const teacherMap: any = {};
+  for (let i = 1; i < teacherData.length; i++) {
+    const name = String(teacherData[i][0] || "").trim();
+    if (!name) continue;
+    teacherMap[name] = {
+      email: teacherData[i][2],
+      pid: teacherData[i][3],
+      addr: teacherData[i][4],
+      phone: teacherData[i][5],
+      method: teacherData[i][6],
+      bank: teacherData[i][7],
+      account: teacherData[i][8]
+    };
+  }
+
+  const folder = DriveApp.getFolderById(PDF_FOLDER_CONFIG.ALLOWANCE);
+  const today = Utilities.formatDate(new Date(), timeZone, "yyyy/MM/dd");
+  const results: string[] = [];
+  let count = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    const teacherName = String(data[i][1] || "").trim();
+    if (rowMonth !== targetMonth || !teacherName) continue;
+    if (targetName && teacherName !== targetName) continue;
+
+    const gross = parseFloat(data[i][6]) || parseFloat(data[i][5]) || 0;
+    const docId = String(data[i][7] || "").trim();
+    const pdfUrl = String(data[i][10] || "").trim();
+    if (!gross || !docId || pdfUrl) continue;
+
+    const detail = [data[i][2], data[i][3], data[i][4], data[i][5]]
+      .filter(function(part: any) { return String(part || "").trim() !== ""; })
+      .join("\n");
+    const tInfo = teacherMap[teacherName] || {};
+    const state: any = {
+      name: teacherName,
+      amount: gross,
+      taxAmount: data[i][12] || 0,
+      nhiAmount: data[i][13] || 0,
+      netAmount: data[i][14] || gross,
+      docId,
+      date: today,
+      detail,
+      totalHours: data[i][5] || data[i][2],
+      rowIndex: i + 1,
+      email: tInfo.email,
+      pid: tInfo.pid,
+      addr: tInfo.addr,
+      phone: tInfo.phone,
+      method: tInfo.method,
+      bank: tInfo.bank,
+      account: tInfo.account
+    };
+
+    const pdfResult = generateAllowancePDF(state, folder);
+    sheet.getRange(i + 1, 11).setValue(pdfResult.url);
+    sheet.getRange(i + 1, 12).setValue("待寄送");
+    results.push(teacherName + "：" + docId + " / " + formatCurrency(state.netAmount));
+    count++;
+  }
+
+  if (count === 0) return "⚠️ " + targetMonth + (targetName ? " " + targetName : "") + " 沒有可產生的領據。";
+  return "✅ 已產生 " + count + " 份領據 PDF，狀態更新為待寄送。\n" + results.join("\n");
 }
 
 function buildGeneralReceiptAdminPreview(month: string) {
