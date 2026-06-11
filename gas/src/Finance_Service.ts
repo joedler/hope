@@ -160,9 +160,14 @@ function handleLiffAdminConfirmSettlement(params: any) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const targetSheetName = feature === "學費試算" ? SHEET_NAME_FIN_FEE : SHEET_NAME_FIN_PAY;
   if (feature === "學費試算") {
-    const tuitionPreview = buildTuitionReadOnlyPreview(month);
-    if ((tuitionPreview as any).pendingCount > 0) {
-      return { ok: false, message: `${month} 尚有未核銷預排課程，請先完成預排核銷後再寫入學費結算。` };
+    const tuitionPreview: any = buildTuitionReadOnlyPreview(month);
+    const selectedIds = parseAdminSelectedIds(params.selectedIds);
+    const selectableRows = (tuitionPreview.rows || []).filter(function(row: any) { return row.selectable; });
+    const selectedRows = selectedIds.length > 0
+      ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+      : selectableRows;
+    if (selectedRows.length === 0) {
+      return { ok: false, message: `${month} 沒有選取可寫入的學費試算項目；待核銷預排不可寫入。` };
     }
   } else {
     const existingSalaryCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_PAY, 0, month);
@@ -189,6 +194,20 @@ function handleLiffAdminConfirmSettlement(params: any) {
     return { ok: false, message: `${month} 目前沒有可寫入的${feature}資料，或試算資料未能建立。` };
   }
   const cacheObj = JSON.parse(cacheDataStr);
+  if (feature === "學費試算") {
+    const selectedIds = parseAdminSelectedIds(params.selectedIds);
+    if (selectedIds.length > 0) {
+      cacheObj.selectedTuitionKeys = selectedIds.map(function(id: string) { return id.replace(/^tuition:/, ""); });
+      cacheObj.save = (cacheObj.save || []).filter(function(row: any[]) {
+        return cacheObj.selectedTuitionKeys.indexOf(buildTuitionSelectionKey(row[1], row[2])) > -1;
+      });
+      if (!cacheObj.save || cacheObj.save.length === 0) {
+        CacheService.getScriptCache().remove(cacheKey);
+        return { ok: false, message: `${month} 勾選項目沒有可寫入的學費結算資料；待核銷預排不可寫入。` };
+      }
+      CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheObj), 600);
+    }
+  }
   const saveCount = cacheObj.save ? cacheObj.save.length : 0;
   executeFinancialSave(mockEvent, "");
   const afterCount = countSheetRowsByMonthOnly(ss, targetSheetName, 0, month);
@@ -367,11 +386,13 @@ function buildTuitionAdminPreview(month: string) {
       };
     }
     const pendingCount = (result as any).pendingCount || 0;
+    const rows = (result as any).rows || [];
     return {
       summary: `${month} 學費試算只讀預覽：${result.studentCount} 位學生，預估總額 ${formatCurrency(result.grandTotal)}。${pendingCount > 0 ? " 尚有待核銷預排，需先核銷後才能正式寫入。" : ""}`,
       items,
-      nextAction: pendingCount > 0 ? "請先完成預排核銷" : "確認寫入試算結果",
-      canConfirm: result.studentCount > 0 && pendingCount === 0,
+      rows,
+      nextAction: rows.some(function(row: any) { return row.selectable; }) ? "確認寫入已勾選項目" : "目前沒有可寫入項目",
+      canConfirm: rows.some(function(row: any) { return row.selectable; }),
       confirmAction: "adminConfirmSettlement"
     };
   } catch (e) {
@@ -484,6 +505,7 @@ function buildTuitionReadOnlyPreview(month: string) {
   appendTuitionAdjustmentsToStats(ss, stats, configMap, month);
 
   const items: string[] = [];
+  const rows: any[] = [];
 
   let grandTotal = 0;
   let studentCount = 0;
@@ -524,6 +546,20 @@ function buildTuitionReadOnlyPreview(month: string) {
         }
         const detailText = detailParts.length > 0 ? `\n  明細：\n  - ${detailParts.join("\n  - ")}` : "";
         courseSummaries.push(`${courseName}（${item.mode}）\n  ${formula}\n  小計 ${formatCurrency(courseTotal)}${detailText}`);
+        const selectable = item.pendingPlanBase <= 0 && courseTotal !== 0;
+        rows.push({
+          id: "tuition:" + buildTuitionSelectionKey(studentName, courseName),
+          type: "tuition",
+          name: studentName + " / " + courseName,
+          amount: courseTotal,
+          amountText: formatCurrency(courseTotal),
+          docId: "",
+          status: selectable ? "可寫入" : "待核銷預排不可寫入",
+          selectable,
+          selectedDefault: selectable,
+          warnings: item.pendingPlanBase > 0 ? ["尚有待核銷預排，暫不可寫入"] : [],
+          details: [item.mode, formula]
+        });
         if (item.pendingPlanBase > 0) pendingCount++;
       }
     }
@@ -535,7 +571,7 @@ function buildTuitionReadOnlyPreview(month: string) {
   }
 
   if (items.length === 0) items.push(`${month} 目前沒有待試算學費資料。`);
-  return { items, grandTotal, studentCount, pendingCount };
+  return { items, rows, grandTotal, studentCount, pendingCount };
 }
 
 function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string, existingSettlementCount: number) {
@@ -2072,9 +2108,10 @@ function handleTuitionCalculation(event: any, userMsg: string) {
         fullDetails = fullDetails.concat(adjustmentLines);
       }
       if (finalAmount !== 0 || item.recordBase > 0 || item.planNext > 0 || item.pendingPlanBase > 0 || adjustmentTotal !== 0) {
-        sTotal += finalAmount; const detailBlock = fullDetails.join("\n"); if (sDetailText !== "") sDetailText += "\n--------------------\n";
+        const canWriteCourse = item.pendingPlanBase <= 0;
+        sTotal += canWriteCourse ? finalAmount : 0; const detailBlock = fullDetails.join("\n"); if (sDetailText !== "") sDetailText += "\n--------------------\n";
         sDetailText += "   📘 " + cName + " (" + item.mode + ")\n" + detailBlock.replace(/^/gm, "      ") + "\n      ➤ 本科總計：$" + finalAmount;
-        courseRows.push([ baseMonthStr, sName, cName, item.mode, detailBlock, formulaStr, item.fee, finalAmount, "", "", "" ]);
+        if (canWriteCourse) courseRows.push([ baseMonthStr, sName, cName, item.mode, detailBlock, formulaStr, item.fee, finalAmount, "", "", "" ]);
       }
     }
     if (courseRows.length > 0) {
@@ -2083,9 +2120,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
     }
   }
 
-  if (hasPendingPlan) {
-    replyLineMessage(replyToken, "⚠️ " + baseMonthStr + " 尚有未核銷預排課程，請先完成預排核銷後再寫入學費結算。");
-  } else if (!hasData) { replyLineMessage(replyToken, "💰 學費試算 (" + baseMonthStr + ")\n無須結算資料。"); } else {
+  if (!hasData) { replyLineMessage(replyToken, "💰 學費試算 (" + baseMonthStr + ")\n無可寫入的結算資料；待核銷預排暫不可寫入。"); } else {
     report += "════════════════\n總金額： $" + grandTotal + "\n\n請確認是否寫入？";
     const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_FEE, save: saveData, updateTargetMonth: baseMonthStr, category: "學費", prefix: "R" };
     CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheData), 600); replyConfirmationCard(replyToken, "學費試算確認", report, cacheKey);
@@ -2280,14 +2315,16 @@ function executeFinancialSave(event: any, postbackData: string) {
         }
       }
     } else {
-      // 學費回溯標記：掃描並標記已結算的學費
+      // 學費回溯標記：只標記本次實際寫入的學生/課程，避免待核銷或未勾選項目被誤標記。
+      const tuitionKeys = getTuitionKeysFromSavedRows(cacheObj.save || []);
       const recordSheet = ss.getSheetByName(SHEET_NAME_RECORD);
       if (recordSheet) {
         const rData = recordSheet.getDataRange().getValues();
         for (let i = 1; i < rData.length; i++) {
           const rowMonth = (rData[i][2] instanceof Date) ? Utilities.formatDate(rData[i][2], timeZone, "yyyy/MM") : String(rData[i][2]).substring(0, 7);
           const settled = rData[i][9];
-          if (rowMonth == cacheObj.updateTargetMonth && (!settled || settled === "")) {
+          const rowKey = buildTuitionSelectionKey(rData[i][7], rData[i][8]);
+          if (rowMonth == cacheObj.updateTargetMonth && tuitionKeys.indexOf(rowKey) > -1 && (!settled || settled === "")) {
             recordSheet.getRange(i + 1, 10).setValue(cacheObj.updateTargetMonth); // J欄：學費結算日期
           }
         }
@@ -2301,8 +2338,9 @@ function executeFinancialSave(event: any, postbackData: string) {
           const lessonDateMonth = (pData[i][2] instanceof Date) ? Utilities.formatDate(pData[i][2], timeZone, "yyyy/MM") : String(pData[i][2]).substring(0, 7);
           const status = pData[i][9];
           const feeSettled = pData[i][10];
+          const rowKey = buildTuitionSelectionKey(pData[i][7], pData[i][8]);
           
-          if (status !== "取消" && lessonDateMonth == cacheObj.updateTargetMonth && (!feeSettled || feeSettled === "")) {
+          if (status !== "取消" && lessonDateMonth == cacheObj.updateTargetMonth && tuitionKeys.indexOf(rowKey) > -1 && (!feeSettled || feeSettled === "")) {
             planSheet.getRange(i + 1, 11).setValue(cacheObj.updateTargetMonth); // K欄：預排學費結算
           }
         }
@@ -2349,9 +2387,22 @@ function getFinancialDuplicateKeys(rows: any[], category: string): string[] {
 }
 
 function getFinancialRowKey(row: any[], category: string): string {
-  if (category === "學費") return String(row[1] || "").trim(); // B欄：學生姓名
+  if (category === "學費") return buildTuitionSelectionKey(row[1], row[2]); // B/C欄：學生姓名 + 課程名稱
   if (category === "鐘點費") return String(row[1] || "").trim(); // B欄：講師姓名
   return "";
+}
+
+function buildTuitionSelectionKey(studentName: any, courseName: any): string {
+  return String(studentName || "").trim() + "::" + String(courseName || "").trim();
+}
+
+function getTuitionKeysFromSavedRows(rows: any[][]): string[] {
+  const keys: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const key = buildTuitionSelectionKey(rows[i][1], rows[i][2]);
+    if (key !== "::" && keys.indexOf(key) === -1) keys.push(key);
+  }
+  return keys;
 }
 
 function normalizeFinancialMonth(value: any, timeZone: string): string {
