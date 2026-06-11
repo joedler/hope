@@ -379,9 +379,9 @@ function buildTuitionAdminPreview(month: string) {
     }
     if ((result as any).isExistingSettlement) {
       return {
-        summary: `${month} 學費既有結算摘要：${result.studentCount} 位學生，既有結算總額 ${formatCurrency(result.grandTotal)}。`,
+        summary: `${month} 已寫入學費結算：${result.studentCount} 位學生，總額 ${formatCurrency(result.grandTotal)}。`,
         items,
-        nextAction: "查看繳費單 / 已產生單據",
+        nextAction: "已寫入，請勿重複試算",
         canConfirm: false
       };
     }
@@ -614,7 +614,7 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
   }
 
   const items: string[] = [
-    `注意：${month} 已有 ${existingSettlementCount} 筆學費結算資料；此處顯示既有結算摘要，不重新試算授課、預排或補救差異。`
+    `狀態：已寫入學費結算，不可重複試算寫入。`
   ];
   let grandTotal = 0;
   let studentCount = 0;
@@ -623,14 +623,51 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
     const total = item.total || item.courseAmountSum;
     grandTotal += total;
     studentCount++;
-    const courseText = item.courses.length > 0 ? "\n課程：\n- " + item.courses.join("\n- ") : "";
-    items.push(`${studentName}\n金額：${formatCurrency(total)}\n課程數：${item.courses.length}\n單號：${item.docId || "未填"}${courseText}`);
+    items.push(`${studentName}\n狀態：已寫入\n金額：${formatCurrency(total)}\n單號：${item.docId || "未填"}\n課程數：${item.courses.length}`);
   }
 
   if (studentCount === 0) {
     items.push(`${month} 找不到可顯示的既有學費結算摘要。`);
   }
-  return { items, grandTotal, studentCount, isExistingSettlement: true };
+  const pendingItems = buildPendingTuitionPlanItems(ss, month);
+  for (let p = 0; p < pendingItems.length; p++) items.push(pendingItems[p]);
+  return { items, grandTotal, studentCount, pendingCount: pendingItems.length, isExistingSettlement: true };
+}
+
+function buildPendingTuitionPlanItems(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string): string[] {
+  const timeZone = Session.getScriptTimeZone();
+  const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
+  const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
+  if (!planSheet || !courseSheet) return [];
+
+  const courseData = courseSheet.getDataRange().getValues();
+  const feeMap: any = {};
+  for (let i = 1; i < courseData.length; i++) {
+    const studentName = String(courseData[i][2] || "").trim();
+    const courseName = String(courseData[i][3] || "").trim();
+    if (!studentName || !courseName) continue;
+    feeMap[studentName + "_" + courseName] = parseFloat(courseData[i][4]) || 0;
+  }
+
+  const data = planSheet.getDataRange().getValues();
+  const items: string[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const lessonMonth = normalizeFinancialMonth(data[i][2], timeZone);
+    const status = String(data[i][9] || "").trim();
+    const studentName = String(data[i][7] || "").trim();
+    const courseName = String(data[i][8] || "").trim();
+    if (lessonMonth !== month || status !== "未核銷" || !studentName || !courseName) continue;
+    const hours = parseFloat(data[i][5]) || 0;
+    const fee = feeMap[studentName + "_" + courseName] || 0;
+    items.push(
+      studentName + " / " + courseName +
+      "\n狀態：待核銷，未寫入" +
+      "\n時間：" + formatSheetMonthDay(data[i][2], timeZone) + " " + data[i][3] + "-" + data[i][4] +
+      "\n時數：" + hours + "hr" +
+      "\n預估：" + formatCurrency(Math.round(hours * fee))
+    );
+  }
+  return items;
 }
 
 function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, stats: any, configMap: any, month: string) {
@@ -676,7 +713,7 @@ function buildSalaryAdminPreview(month: string) {
     }
     if ((result as any).isExistingSettlement) {
       return {
-        summary: `${month} 鐘點既有結算摘要：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}。`,
+        summary: `${month} 已寫入鐘點結算：${result.teacherCount} 位講師，應付 ${formatCurrency(result.grossTotal)}，實發 ${formatCurrency(result.netTotal)}。`,
         items,
         nextAction: "已寫入鐘點結算，請勿重複試算",
         canConfirm: false
@@ -818,7 +855,7 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
 
   const data = sheet.getDataRange().getValues();
   const items: string[] = [
-    `注意：${month} 已有 ${existingSettlementCount} 筆鐘點結算資料；此處顯示既有結算摘要，不重新試算授課或帳務補救補發。`
+    `狀態：已寫入鐘點結算，不可重複試算寫入。`
   ];
   let grossTotal = 0;
   let netTotal = 0;
@@ -849,16 +886,12 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
     netTotal += netAmount;
     items.push(
       teacherName +
-      "\n狀態：已寫入鐘點結算，不可重複試算寫入" +
+      "\n狀態：已寫入" +
       "\n應付：" + formatCurrency(gross) +
-      "\n扣繳：" + formatCurrency(taxAmount) +
-      "\n補充保費：" + formatCurrency(nhiAmount) +
       "\n實發：" + formatCurrency(netAmount) +
       "\n單據：" + (docId || "未填") +
       "\nPDF：" + (pdfUrl ? "已產生" : "尚未產生") +
-      "\nEmail：" + (emailStatus || "未寄送") +
-      (note ? "\n備註：" + note : "") +
-      (detail ? "\n明細：\n- " + detail.split("\n").join("\n- ") : "")
+      (note ? "\n備註：" + note : "")
     );
   }
 
