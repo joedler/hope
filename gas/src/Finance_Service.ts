@@ -2040,10 +2040,9 @@ function handleSalaryCalculation(event: any, userMsg: string) {
     if (courseName.indexOf("取消") === -1 && rowMonth == queryMonth && (!settled || settled === "")) {
       const tName = rData[i][1]; const sName = rData[i][7]; const hr = parseFloat(rData[i][5]); const key = sName + "_" + courseName; const conf = profitMap[key] || { fee: 0, ratio: 0 };
       const payRate = conf.fee * conf.ratio; const payAmount = Math.round(hr * payRate); 
-      if (!salaryStats[tName]) salaryStats[tName] = { total: 0, details: [] };
       const dText = (rData[i][2] instanceof Date) ? Utilities.formatDate(rData[i][2], timeZone, "MM/dd") : rData[i][2];
-      salaryStats[tName].details.push(sName + "(" + courseName + ") " + dText + " " + rData[i][3] + "-" + rData[i][4] + " ($" + payAmount + ")");
-      salaryStats[tName].total += payAmount; updateRows.push(i + 1);
+      appendSalarySaveItem(salaryStats, tName, sName, courseName, dText, rData[i][3], rData[i][4], hr, payRate, payAmount, "");
+      updateRows.push(i + 1);
     }
   }
   appendSalaryAdjustmentsToSaveStats(ss, salaryStats, profitMap, queryMonth, timeZone);
@@ -2059,12 +2058,14 @@ function handleSalaryCalculation(event: any, userMsg: string) {
     report += "👨‍🏫 " + tName + " (" + taxConfig.formatCode + ")\n"; const detailStr = item.details.join("\n"); report += detailStr.replace(/^/gm, "   ") + "\n";
     report += "   💵 應付總額：$" + total + "\n"; if (taxAmount > 0) report += "   ➖ 扣繳稅額：$" + taxAmount + "\n"; if (nhiAmount > 0) report += "   ➖ 補充保費：$" + nhiAmount + "\n"; report += "   💰 實發金額：$" + netAmount + "\n--------------------\n";
     
-    const lessonCount = item.details.length;
+    const lessonCount = item.entries ? item.entries.length : item.details.length;
     const hasAdjustment = detailStr.indexOf("帳務補救補發") > -1;
-    const summaryLabel = hasAdjustment ? "帳務補救" : (lessonCount > 1 ? "多筆彙整" : "單筆");
-    const detailType = hasAdjustment ? "補發" : "";
-    const countText = "共" + lessonCount + "筆";
-    saveData.push([ queryMonth, tName, summaryLabel, detailType, detailStr, countText, total, "", "", "", "", "", taxAmount, nhiAmount, netAmount ]);
+    const courseStudent = (item.entries || []).map(function(entry: any) { return entry.courseStudent; }).join("\n") || detailStr;
+    const dateTimeAmount = (item.entries || []).map(function(entry: any) { return entry.dateTimeAmount; }).join("\n") || detailStr;
+    const hoursRate = (item.entries || []).map(function(entry: any) { return entry.hoursRate; }).join("\n");
+    const singleCalc = (item.entries || []).map(function(entry: any) { return entry.singleCalc; }).join("\n") || ("共" + lessonCount + "筆");
+    const note = hasAdjustment ? "帳務補救補發" : (lessonCount > 1 ? "多筆彙整" : "");
+    saveData.push([ queryMonth, tName, courseStudent, dateTimeAmount, hoursRate, singleCalc, total, "", "", note, "", "", taxAmount, nhiAmount, netAmount ]);
     hasData = true;
   }
 
@@ -2095,11 +2096,46 @@ function appendSalaryAdjustmentsToSaveStats(ss: GoogleAppsScript.Spreadsheet.Spr
     const tName = conf.teacher;
     const payRate = (parseFloat(conf.fee) || 0) * (parseFloat(conf.ratio) || 0);
     const payAmount = Math.round(hr * payRate);
-    if (!salaryStats[tName]) salaryStats[tName] = { total: 0, details: [] };
     const dText = formatSheetMonthDay(data[i][4], timeZone);
-    salaryStats[tName].details.push("帳務補救補發：" + sName + "(" + courseName + ") " + dText + " " + formatPreviewTime(data[i][5]) + "-" + formatPreviewTime(data[i][6]) + " ($" + payAmount + ")");
-    salaryStats[tName].total += payAmount;
+    appendSalarySaveItem(
+      salaryStats,
+      tName,
+      sName,
+      courseName,
+      dText,
+      formatPreviewTime(data[i][5]),
+      formatPreviewTime(data[i][6]),
+      hr,
+      payRate,
+      payAmount,
+      "帳務補救補發"
+    );
   }
+}
+
+function appendSalarySaveItem(
+  salaryStats: any,
+  teacherName: string,
+  studentName: string,
+  courseName: string,
+  dateText: string,
+  startTime: any,
+  endTime: any,
+  hours: number,
+  payRate: number,
+  payAmount: number,
+  note: string
+) {
+  if (!salaryStats[teacherName]) salaryStats[teacherName] = { total: 0, details: [], entries: [] };
+  const normalizedStart = formatPreviewTime(startTime);
+  const normalizedEnd = formatPreviewTime(endTime);
+  const courseStudent = (note ? note + "：" : "") + studentName + "(" + courseName + ")";
+  const dateTimeAmount = dateText + " " + normalizedStart + "-" + normalizedEnd + " ($" + payAmount + ")";
+  const hoursRate = hours + "hr x $" + Math.round(payRate);
+  const singleCalc = "$" + payAmount;
+  salaryStats[teacherName].details.push(courseStudent + " " + dateTimeAmount);
+  salaryStats[teacherName].entries.push({ courseStudent, dateTimeAmount, hoursRate, singleCalc, note });
+  salaryStats[teacherName].total += payAmount;
 }
 
 function executeFinancialSave(event: any, postbackData: string) {
