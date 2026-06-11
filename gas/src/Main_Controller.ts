@@ -80,6 +80,10 @@ function doGet(e: any) {
         // 確認寄送已產生的 PDF Email
         result = handleLiffAdminConfirmEmail(e.parameter);
         break;
+      case "adminUpdateReceiptPayment":
+        // 批次補填收據收款方式、類別與日期
+        result = handleLiffAdminUpdateReceiptPayment(e.parameter);
+        break;
       case "tuitionAdjustment":
         // 建立學費補收/退費調整紀錄
         result = handleLiffTuitionAdjustment(e.parameter);
@@ -414,6 +418,7 @@ declare function handleLiffAdminPreview(params: any): any;
 declare function handleLiffAdminConfirmSettlement(params: any): any;
 declare function handleLiffAdminConfirmDocument(params: any): any;
 declare function handleLiffAdminConfirmEmail(params: any): any;
+declare function handleLiffAdminUpdateReceiptPayment(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;
 declare function handleLiffTuitionAdjustmentOptions(params: any): any;
 declare function handleLiffAdjustmentPaymentPreview(params: any): any;

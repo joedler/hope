@@ -398,6 +398,57 @@ function handleLiffAdminConfirmEmail(params: any) {
   };
 }
 
+function handleLiffAdminUpdateReceiptPayment(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+  const method = String(params.method || "").trim();
+  const category = String(params.category || "").trim();
+  const paymentDate = String(params.paymentDate || "").replace(/-/g, "/").trim();
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+  if (!method) return { ok: false, message: "請填寫收款方式。" };
+  if (!category) return { ok: false, message: "請填寫收據類別。" };
+  if (!paymentDate.match(/^\d{4}\/\d{1,2}\/\d{1,2}$/)) {
+    return { ok: false, message: "收款日期格式需為 YYYY/MM/DD。" };
+  }
+
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  if (!sheet) return { ok: false, message: "找不到學費結算表。" };
+
+  const timeZone = Session.getScriptTimeZone();
+  const data = sheet.getDataRange().getValues();
+  let updateCount = 0;
+  const updatedStudents: string[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    if (rowMonth !== month) continue;
+    const studentName = String(data[i][1] || "").trim();
+    const total = parseFloat(data[i][8]) || 0;
+    const docId = String(data[i][9] || "").trim();
+    const receiptUrl = String(data[i][15] || "").trim();
+    if (!studentName || !docId || !total || receiptUrl) continue;
+    sheet.getRange(i + 1, 13).setValue(method);
+    sheet.getRange(i + 1, 14).setValue(category);
+    sheet.getRange(i + 1, 15).setValue(paymentDate);
+    updateCount++;
+    if (updatedStudents.indexOf(studentName) < 0) updatedStudents.push(studentName);
+  }
+
+  if (updateCount === 0) {
+    return { ok: false, message: `${month} 沒有可補填收款資料的收據項目；可能尚未寫入學費結算，或收據已產生。` };
+  }
+
+  return {
+    ok: true,
+    message: `${month} 已套用收款資料：${updatedStudents.length} 位學生、${updateCount} 筆。\n收款方式：${method}\n收據類別：${category}\n收款日期：${paymentDate}`,
+    preview: buildReceiptAdminPreview(month)
+  };
+}
+
 function parseAdminSelectedIds(value: any): string[] {
   const raw = String(value || "").trim();
   if (!raw) return [];
