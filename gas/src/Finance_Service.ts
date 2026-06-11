@@ -124,6 +124,8 @@ function handleLiffAdminPreview(params: any) {
     feature === "繳費單" ? buildPaymentNoticeAdminPreview(month) :
     feature === "收據" ? buildReceiptAdminPreview(month) :
     feature === "領據" ? buildAllowanceAdminPreview(month) :
+    feature === "寄送收據 Email" ? buildReceiptEmailAdminPreview(month) :
+    feature === "寄送領據 Email" ? buildAllowanceEmailAdminPreview(month) :
     feature === "一般收據" ? buildGeneralReceiptAdminPreview(month) :
     feature === "已產生單據" ? buildGeneratedDocumentsAdminPreview(month) :
     previewMap[feature];
@@ -350,6 +352,48 @@ function handleLiffAdminConfirmDocument(params: any) {
   return {
     ok: true,
     message: `${month} 繳費單已確認產生，共 ${selectedRows.length} 位學生。\n${resultMessage}`,
+    preview: afterPreview
+  };
+}
+
+function handleLiffAdminConfirmEmail(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const feature = String(params.feature || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+
+  if (feature !== "寄送收據 Email" && feature !== "寄送領據 Email") {
+    return { ok: false, message: "目前只開放收據與領據 Email 預覽確認寄送。" };
+  }
+
+  const beforePreview = feature === "寄送收據 Email" ? buildReceiptEmailReadOnlyPreview(month) : buildAllowanceEmailReadOnlyPreview(month);
+  const selectedIds = parseAdminSelectedIds(params.selectedIds);
+  const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
+  const selectedRows = selectedIds.length > 0
+    ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+    : selectableRows;
+  if (selectedRows.length === 0) {
+    return { ok: false, message: `${month} 沒有選取可寄送的項目；請確認 PDF、Email 與待寄送狀態。` };
+  }
+
+  const resultMessages: string[] = [];
+  for (let i = 0; i < selectedRows.length; i++) {
+    if (feature === "寄送收據 Email") {
+      resultMessages.push(sendReceiptEmailForTarget(month, selectedRows[i].name));
+    } else {
+      resultMessages.push(sendAllowanceEmailForTarget(month, selectedRows[i].name));
+    }
+  }
+
+  const afterPreview = feature === "寄送收據 Email" ? buildReceiptEmailAdminPreview(month) : buildAllowanceEmailAdminPreview(month);
+  const failCount = resultMessages.filter(function(msg: string) { return msg.indexOf("❌") === 0 || msg.indexOf("⚠️") === 0; }).length;
+  return {
+    ok: failCount < selectedRows.length,
+    message: `${month} ${feature}執行完成：成功 ${selectedRows.length - failCount} 筆，失敗/跳過 ${failCount} 筆。\n` + resultMessages.join("\n"),
     preview: afterPreview
   };
 }
@@ -1275,6 +1319,140 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
   return "✅ 已產生 " + count + " 份收據 PDF，狀態更新為待寄送。\n" + results.join("\n");
 }
 
+function buildReceiptEmailAdminPreview(month: string) {
+  try {
+    const result = buildReceiptEmailReadOnlyPreview(month);
+    return {
+      summary: `${month} 收據 Email 預覽：待寄送 ${result.pendingCount} 位學生，可寄送 ${result.sendableCount} 位，已寄送 ${result.sentCount} 位。`,
+      items: result.items.slice(0, 12),
+      rows: result.rows,
+      nextAction: "確認寄送收據 Email",
+      canConfirm: result.rows.some(function(row: any) { return row.selectable; }),
+      confirmAction: "adminConfirmEmail"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 收據 Email 預覽讀取失敗。`,
+      items: ["請先檢查學費結算表、收據 PDF、Email 與 GAS Gmail 權限。", "錯誤：" + e.toString()],
+      nextAction: "確認寄送收據 Email（尚未開放）",
+      canConfirm: false
+    };
+  }
+}
+
+function buildReceiptEmailReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  const baseSheet = ss.getSheetByName("學生基本資料表") || ss.getSheetByName(SHEET_NAME_COURSE);
+  if (!sheet || !baseSheet) throw new Error("找不到學費結算表或學生資料表。");
+
+  const baseData = baseSheet.getDataRange().getValues();
+  const emailMap: any = {};
+  for (let i = 1; i < baseData.length; i++) {
+    const name = String(baseData[i][0] || "").trim();
+    if (name) emailMap[name] = String(baseData[i][1] || "").trim();
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const studentsMap: any = {};
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    const studentName = String(data[i][1] || "").trim();
+    if (rowMonth !== month || !studentName) continue;
+    if (!studentsMap[studentName]) {
+      studentsMap[studentName] = { name: studentName, total: 0, docId: "", pdfUrl: "", status: "", courseCount: 0 };
+    }
+    const item = studentsMap[studentName];
+    if (data[i][2]) item.courseCount++;
+    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
+    if (data[i][9]) item.docId = String(data[i][9]).trim();
+    if (data[i][15]) item.pdfUrl = String(data[i][15]).trim();
+    if (data[i][16]) item.status = String(data[i][16]).trim();
+  }
+
+  const items: string[] = [];
+  const rows: any[] = [];
+  let pendingCount = 0;
+  let sendableCount = 0;
+  let sentCount = 0;
+  for (const studentName in studentsMap) {
+    const item = studentsMap[studentName];
+    const email = emailMap[studentName] || "";
+    if (item.status === "待寄送") pendingCount++;
+    if (item.status.indexOf("已寄送") > -1) sentCount++;
+    const warnings: string[] = [];
+    if (!item.pdfUrl) warnings.push("缺 PDF");
+    if (!email || email.indexOf("@") < 0) warnings.push("缺 Email");
+    if (item.status !== "待寄送") warnings.push(item.status ? "狀態不是待寄送" : "缺寄送狀態");
+    const selectable = item.status === "待寄送" && !!item.pdfUrl && email.indexOf("@") > -1;
+    if (selectable) sendableCount++;
+    items.push(`${studentName}\n收件人：${email || "未填"}\n金額：${formatCurrency(item.total)}\n單號：${item.docId || "未填"}\n狀態：${item.status || "未填"}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
+    rows.push({
+      id: "student:" + studentName,
+      type: "student",
+      name: studentName,
+      amount: item.total,
+      amountText: formatCurrency(item.total),
+      docId: item.docId,
+      status: item.status || "未填狀態",
+      selectable,
+      selectedDefault: selectable,
+      warnings,
+      details: ["Email：" + (email || "未填"), "課程 " + item.courseCount + " 項"]
+    });
+  }
+  if (items.length === 0) items.push(`${month} 目前沒有可檢查的收據 Email 資料。`);
+  return { items, rows, pendingCount, sendableCount, sentCount };
+}
+
+function sendReceiptEmailForTarget(targetMonth: string, targetName: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  const baseSheet = ss.getSheetByName("學生基本資料表") || ss.getSheetByName(SHEET_NAME_COURSE);
+  if (!sheet || !baseSheet) return "❌ " + targetName + "：找不到學費結算表或學生資料表";
+
+  const timeZone = Session.getScriptTimeZone();
+  const baseData = baseSheet.getDataRange().getValues();
+  const emailMap: any = {};
+  for (let k = 1; k < baseData.length; k++) {
+    const name = String(baseData[k][0] || "").trim();
+    if (name) emailMap[name] = String(baseData[k][1] || "").trim();
+  }
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    const studentName = String(data[i][1] || "").trim();
+    const status = String(data[i][16] || "").trim();
+    const pdfUrl = String(data[i][15] || "").trim();
+    if (rowMonth !== targetMonth || studentName !== targetName || status !== "待寄送" || !pdfUrl) continue;
+
+    const email = emailMap[studentName] || "";
+    if (!email || email.indexOf("@") < 0) {
+      sheet.getRange(i + 1, 17).setValue("失敗(無Email)");
+      return "❌ " + studentName + "：無 Email";
+    }
+    try {
+      const fileIdMatch = pdfUrl.match(/[-\w]{25,}/);
+      if (!fileIdMatch) {
+        sheet.getRange(i + 1, 17).setValue("失敗(連結錯)");
+        return "❌ " + studentName + "：PDF 連結錯誤";
+      }
+      const file = DriveApp.getFileById(fileIdMatch[0]);
+      const subject = EMAIL_CONFIG.STUDENT.SUBJECT.replace("{{Month}}", targetMonth).replace("{{Name}}", studentName);
+      const body = EMAIL_CONFIG.STUDENT.BODY.replace("{{Name}}", studentName);
+      GmailApp.sendEmail(email, subject, body, { attachments: [file.getAs(PDF_MIME_TYPE)] });
+      sheet.getRange(i + 1, 17).setValue("已寄送");
+      return "✅ " + studentName + "：" + email;
+    } catch (err: any) {
+      sheet.getRange(i + 1, 17).setValue("失敗(" + err.message + ")");
+      return "❌ " + studentName + "：" + err.message;
+    }
+  }
+  return "⚠️ " + targetName + "：沒有待寄送收據";
+}
+
 function buildAllowanceAdminPreview(month: string) {
   try {
     const result = buildAllowanceReadOnlyPreview(month);
@@ -1431,6 +1609,132 @@ function createAllowanceDocumentsBatch(targetMonth: string, targetName: string) 
 
   if (count === 0) return "⚠️ " + targetMonth + (targetName ? " " + targetName : "") + " 沒有可產生的領據。";
   return "✅ 已產生 " + count + " 份領據 PDF，狀態更新為待寄送。\n" + results.join("\n");
+}
+
+function buildAllowanceEmailAdminPreview(month: string) {
+  try {
+    const result = buildAllowanceEmailReadOnlyPreview(month);
+    return {
+      summary: `${month} 領據 Email 預覽：待寄送 ${result.pendingCount} 位講師，可寄送 ${result.sendableCount} 位，已寄送 ${result.sentCount} 位。`,
+      items: result.items.slice(0, 12),
+      rows: result.rows,
+      nextAction: "確認寄送領據 Email",
+      canConfirm: result.rows.some(function(row: any) { return row.selectable; }),
+      confirmAction: "adminConfirmEmail"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 領據 Email 預覽讀取失敗。`,
+      items: ["請先檢查鐘點結算表、領據 PDF、講師 Email 與 GAS Gmail 權限。", "錯誤：" + e.toString()],
+      nextAction: "確認寄送領據 Email（尚未開放）",
+      canConfirm: false
+    };
+  }
+}
+
+function buildAllowanceEmailReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (!sheet || !teacherSheet) throw new Error("找不到鐘點結算表或講師名單。");
+
+  const teacherData = teacherSheet.getDataRange().getValues();
+  const emailMap: any = {};
+  for (let i = 1; i < teacherData.length; i++) {
+    const name = String(teacherData[i][0] || "").trim();
+    if (name) emailMap[name] = String(teacherData[i][2] || "").trim();
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const items: string[] = [];
+  const rows: any[] = [];
+  let pendingCount = 0;
+  let sendableCount = 0;
+  let sentCount = 0;
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    if (rowMonth !== month) continue;
+    const teacherName = String(data[i][1] || "").trim();
+    if (!teacherName) continue;
+    const gross = parseFloat(data[i][6]) || 0;
+    const net = parseFloat(data[i][14]) || gross;
+    const docId = String(data[i][7] || "").trim();
+    const pdfUrl = String(data[i][10] || "").trim();
+    const status = String(data[i][11] || "").trim();
+    const email = emailMap[teacherName] || "";
+    if (status === "待寄送") pendingCount++;
+    if (status.indexOf("已寄送") > -1) sentCount++;
+    const warnings: string[] = [];
+    if (!pdfUrl) warnings.push("缺 PDF");
+    if (!email || email.indexOf("@") < 0) warnings.push("缺 Email");
+    if (status !== "待寄送") warnings.push(status ? "狀態不是待寄送" : "缺寄送狀態");
+    const selectable = status === "待寄送" && !!pdfUrl && email.indexOf("@") > -1;
+    if (selectable) sendableCount++;
+    items.push(`${teacherName}\n收件人：${email || "未填"}\n實發：${formatCurrency(net)}\n領據：${docId || "未填"}\n狀態：${status || "未填"}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
+    rows.push({
+      id: "teacher:" + teacherName,
+      type: "teacher",
+      name: teacherName,
+      amount: net,
+      amountText: formatCurrency(net),
+      docId,
+      status: status || "未填狀態",
+      selectable,
+      selectedDefault: selectable,
+      warnings,
+      details: ["Email：" + (email || "未填")]
+    });
+  }
+  if (items.length === 0) items.push(`${month} 目前沒有可檢查的領據 Email 資料。`);
+  return { items, rows, pendingCount, sendableCount, sentCount };
+}
+
+function sendAllowanceEmailForTarget(targetMonth: string, targetName: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (!sheet || !teacherSheet) return "❌ " + targetName + "：找不到鐘點結算表或講師名單";
+
+  const timeZone = Session.getScriptTimeZone();
+  const teacherData = teacherSheet.getDataRange().getValues();
+  const emailMap: any = {};
+  for (let k = 1; k < teacherData.length; k++) {
+    const name = String(teacherData[k][0] || "").trim();
+    if (name) emailMap[name] = String(teacherData[k][2] || "").trim();
+  }
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    const teacherName = String(data[i][1] || "").trim();
+    const status = String(data[i][11] || "").trim();
+    const pdfUrl = String(data[i][10] || "").trim();
+    if (rowMonth !== targetMonth || teacherName !== targetName || status !== "待寄送" || !pdfUrl) continue;
+
+    const email = emailMap[teacherName] || "";
+    if (!email || email.indexOf("@") < 0) {
+      sheet.getRange(i + 1, 12).setValue("失敗(無Email)");
+      return "❌ " + teacherName + "：無 Email";
+    }
+    try {
+      const fileIdMatch = pdfUrl.match(/[-\w]{25,}/);
+      if (!fileIdMatch) {
+        sheet.getRange(i + 1, 12).setValue("失敗(連結錯)");
+        return "❌ " + teacherName + "：PDF 連結錯誤";
+      }
+      const file = DriveApp.getFileById(fileIdMatch[0]);
+      const subject = EMAIL_CONFIG.TEACHER.SUBJECT.replace("{{Month}}", targetMonth).replace("{{Name}}", teacherName);
+      const body = EMAIL_CONFIG.TEACHER.BODY.replace("{{Name}}", teacherName);
+      GmailApp.sendEmail(email, subject, body, { attachments: [file.getAs(PDF_MIME_TYPE)] });
+      sheet.getRange(i + 1, 12).setValue("已寄送");
+      return "✅ " + teacherName + "：" + email;
+    } catch (err: any) {
+      sheet.getRange(i + 1, 12).setValue("失敗(" + err.message + ")");
+      return "❌ " + teacherName + "：" + err.message;
+    }
+  }
+  return "⚠️ " + targetName + "：沒有待寄送領據";
 }
 
 function buildGeneralReceiptAdminPreview(month: string) {

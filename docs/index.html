@@ -764,7 +764,7 @@
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">收據預覽</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">確認後產生收據</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="adminFeaturePending('寄送收據 Email')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送收據 Email')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">寄送收據</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">Email 給家長</p>
                   </button>
@@ -789,7 +789,7 @@
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">領據預覽</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">確認鐘點後產生</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="adminFeaturePending('寄送領據 Email')">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送領據 Email')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">寄送領據</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">Email 給講師</p>
                   </button>
@@ -1884,7 +1884,7 @@
 
           canConfirmAdminPreview() {
             if (!this.adminPreview || this.adminPreview.canConfirm !== true) return false;
-            if (this.adminPreview.confirmAction === "adminConfirmDocument") {
+            if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail") {
               return this.selectedAdminRowIds().length > 0;
             }
             return true;
