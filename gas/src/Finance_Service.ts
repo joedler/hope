@@ -532,6 +532,29 @@ function recordDocumentEntry(entry: any) {
   sheet.appendRow(rowValues);
 }
 
+function updateDocumentSendStatus(docType: string, docId: string, channel: string, status: string, sentAt: any, note: string) {
+  const cleanDocType = String(docType || "").trim();
+  const cleanDocId = String(docId || "").trim();
+  if (!cleanDocType || !cleanDocId) return;
+
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  const statusColumn = channel === "LINE" ? 13 : 12;
+  for (let i = 1; i < data.length; i++) {
+    const existingType = String(data[i][2] || "").trim();
+    const existingDocId = String(data[i][5] || "").trim();
+    if (existingType !== cleanDocType || existingDocId !== cleanDocId) continue;
+
+    sheet.getRange(i + 1, statusColumn).setValue(status || "");
+    if (sentAt) sheet.getRange(i + 1, 14).setValue(sentAt);
+    if (note) {
+      const oldNote = String(data[i][15] || "").trim();
+      sheet.getRange(i + 1, 16).setValue(oldNote ? oldNote + "\n" + note : note);
+    }
+    return;
+  }
+}
+
 function parseAdminSelectedIds(value: any): string[] {
   const raw = String(value || "").trim();
   if (!raw) return [];
@@ -1575,17 +1598,20 @@ function sendReceiptEmailForTarget(targetMonth: string, targetName: string) {
     const studentName = String(data[i][1] || "").trim();
     const status = String(data[i][16] || "").trim();
     const pdfUrl = String(data[i][15] || "").trim();
+    const docId = String(data[i][9] || "").trim();
     if (rowMonth !== targetMonth || studentName !== targetName || status !== "待寄送" || !pdfUrl) continue;
 
     const email = emailMap[studentName] || "";
     if (!email || email.indexOf("@") < 0) {
       sheet.getRange(i + 1, 17).setValue("失敗(無Email)");
+      updateDocumentSendStatus("收據", docId, "Email", "失敗(無Email)", "", "Email 寄送失敗：學生 Email 未填或格式錯誤");
       return "❌ " + studentName + "：無 Email";
     }
     try {
       const fileIdMatch = pdfUrl.match(/[-\w]{25,}/);
       if (!fileIdMatch) {
         sheet.getRange(i + 1, 17).setValue("失敗(連結錯)");
+        updateDocumentSendStatus("收據", docId, "Email", "失敗(連結錯)", "", "Email 寄送失敗：PDF 連結錯誤");
         return "❌ " + studentName + "：PDF 連結錯誤";
       }
       const file = DriveApp.getFileById(fileIdMatch[0]);
@@ -1593,9 +1619,11 @@ function sendReceiptEmailForTarget(targetMonth: string, targetName: string) {
       const body = EMAIL_CONFIG.STUDENT.BODY.replace("{{Name}}", studentName);
       GmailApp.sendEmail(email, subject, body, { attachments: [file.getAs(PDF_MIME_TYPE)] });
       sheet.getRange(i + 1, 17).setValue("已寄送");
+      updateDocumentSendStatus("收據", docId, "Email", "已寄送", new Date(), "Email 已寄送：" + email);
       return "✅ " + studentName + "：" + email;
     } catch (err: any) {
       sheet.getRange(i + 1, 17).setValue("失敗(" + err.message + ")");
+      updateDocumentSendStatus("收據", docId, "Email", "失敗(" + err.message + ")", "", "Email 寄送失敗：" + err.message);
       return "❌ " + studentName + "：" + err.message;
     }
   }
@@ -1874,17 +1902,20 @@ function sendAllowanceEmailForTarget(targetMonth: string, targetName: string) {
     const teacherName = String(data[i][1] || "").trim();
     const status = String(data[i][11] || "").trim();
     const pdfUrl = String(data[i][10] || "").trim();
+    const docId = String(data[i][7] || "").trim();
     if (rowMonth !== targetMonth || teacherName !== targetName || status !== "待寄送" || !pdfUrl) continue;
 
     const email = emailMap[teacherName] || "";
     if (!email || email.indexOf("@") < 0) {
       sheet.getRange(i + 1, 12).setValue("失敗(無Email)");
+      updateDocumentSendStatus("領據", docId, "Email", "失敗(無Email)", "", "Email 寄送失敗：講師 Email 未填或格式錯誤");
       return "❌ " + teacherName + "：無 Email";
     }
     try {
       const fileIdMatch = pdfUrl.match(/[-\w]{25,}/);
       if (!fileIdMatch) {
         sheet.getRange(i + 1, 12).setValue("失敗(連結錯)");
+        updateDocumentSendStatus("領據", docId, "Email", "失敗(連結錯)", "", "Email 寄送失敗：PDF 連結錯誤");
         return "❌ " + teacherName + "：PDF 連結錯誤";
       }
       const file = DriveApp.getFileById(fileIdMatch[0]);
@@ -1892,9 +1923,11 @@ function sendAllowanceEmailForTarget(targetMonth: string, targetName: string) {
       const body = EMAIL_CONFIG.TEACHER.BODY.replace("{{Name}}", teacherName);
       GmailApp.sendEmail(email, subject, body, { attachments: [file.getAs(PDF_MIME_TYPE)] });
       sheet.getRange(i + 1, 12).setValue("已寄送");
+      updateDocumentSendStatus("領據", docId, "Email", "已寄送", new Date(), "Email 已寄送：" + email);
       return "✅ " + teacherName + "：" + email;
     } catch (err: any) {
       sheet.getRange(i + 1, 12).setValue("失敗(" + err.message + ")");
+      updateDocumentSendStatus("領據", docId, "Email", "失敗(" + err.message + ")", "", "Email 寄送失敗：" + err.message);
       return "❌ " + teacherName + "：" + err.message;
     }
   }
@@ -1946,82 +1979,97 @@ function buildGeneralReceiptReadOnlyPreview(month: string) {
 }
 
 function buildGeneratedDocumentsAdminPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
   const items: string[] = [];
   const rows: any[] = [];
   const summaryParts: string[] = [];
+  const groups: any = {};
+  let recordCount = 0;
+  let totalAmount = 0;
 
-  appendGeneratedDocumentSection(
-    month,
-    "繳費單",
-    rows,
-    items,
-    summaryParts,
-    function() {
-      const result = buildPaymentNoticeReadOnlyPreview(month);
-      return {
-        count: result.studentCount,
-        generatedCount: result.generatedCount,
-        totalText: formatCurrency(result.grandTotal),
-        rows: result.rows
-      };
-    }
-  );
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][1], timeZone);
+    if (rowMonth !== month) continue;
+    const docType = String(data[i][2] || "未分類").trim() || "未分類";
+    const targetType = String(data[i][3] || "").trim();
+    const targetName = String(data[i][4] || "").trim();
+    const docId = String(data[i][5] || "").trim();
+    const amount = parseFloat(data[i][8]) || 0;
+    const pdfUrl = String(data[i][9] || "").trim();
+    const generateStatus = String(data[i][10] || "").trim() || "未填";
+    const emailStatus = String(data[i][11] || "").trim() || "未寄送";
+    const lineStatus = String(data[i][12] || "").trim() || "未推播";
+    const sentAt = data[i][13] instanceof Date ? Utilities.formatDate(data[i][13], timeZone, "yyyy/MM/dd HH:mm") : String(data[i][13] || "").trim();
+    const voidStatus = String(data[i][14] || "").trim();
+    const note = String(data[i][15] || "").trim();
 
-  appendGeneratedDocumentSection(
-    month,
-    "收據",
-    rows,
-    items,
-    summaryParts,
-    function() {
-      const result = buildReceiptReadOnlyPreview(month);
-      return {
-        count: result.studentCount,
-        generatedCount: result.generatedCount,
-        totalText: formatCurrency(result.grandTotal),
-        rows: result.rows
-      };
-    }
-  );
+    if (!groups[docType]) groups[docType] = { count: 0, generated: 0, emailSent: 0, lineSent: 0, amount: 0 };
+    groups[docType].count++;
+    groups[docType].amount += amount;
+    if (pdfUrl || generateStatus === "已產生") groups[docType].generated++;
+    if (emailStatus.indexOf("已寄送") > -1) groups[docType].emailSent++;
+    if (lineStatus.indexOf("已推播") > -1) groups[docType].lineSent++;
+    recordCount++;
+    totalAmount += amount;
 
-  appendGeneratedDocumentSection(
-    month,
-    "領據",
-    rows,
-    items,
-    summaryParts,
-    function() {
-      const result = buildAllowanceReadOnlyPreview(month);
-      return {
-        count: result.teacherCount,
-        generatedCount: result.generatedCount,
-        totalText: formatCurrency(result.netTotal),
-        rows: result.rows
-      };
-    }
-  );
+    rows.push({
+      id: "document-record:" + docType + ":" + docId,
+      type: "document",
+      name: docType + " / " + (targetName || "未填對象"),
+      amount,
+      amountText: formatCurrency(amount),
+      docId,
+      status: generateStatus,
+      selectable: false,
+      selectedDefault: false,
+      warnings: voidStatus ? [voidStatus] : [],
+      details: [
+        "對象：" + (targetType ? targetType + " / " : "") + (targetName || "未填"),
+        "金額：" + formatCurrency(amount),
+        "PDF：" + (pdfUrl || "未填"),
+        "Email：" + emailStatus,
+        "LINE：" + lineStatus,
+        "寄送時間：" + (sentAt || "未寄送"),
+        note ? "備註：" + note : ""
+      ].filter(function(part: string) { return part !== ""; })
+    });
+  }
 
-  appendGeneratedDocumentSection(
-    month,
-    "一般收據",
-    rows,
-    items,
-    summaryParts,
-    function() {
-      const result = buildGeneralReceiptReadOnlyPreview(month);
-      return {
-        count: result.recordCount,
-        generatedCount: result.generatedCount,
-        totalText: formatCurrency(result.totalAmount),
-        rows: []
-      };
-    }
-  );
+  const order = ["繳費單", "補收通知", "收據", "領據", "一般收據"];
+  for (let i = 0; i < order.length; i++) {
+    const label = order[i];
+    if (!groups[label]) continue;
+    const g = groups[label];
+    summaryParts.push(`${label} ${g.generated}/${g.count}`);
+    items.push(
+      `${label}\n` +
+      `狀態：只讀查看\n` +
+      `筆數：${g.count} 筆，已有 PDF ${g.generated} 份\n` +
+      `Email：已寄送 ${g.emailSent} 筆\n` +
+      `LINE：已推播 ${g.lineSent} 筆\n` +
+      `金額：${formatCurrency(g.amount)}`
+    );
+  }
+  for (const label in groups) {
+    if (order.indexOf(label) > -1) continue;
+    const g = groups[label];
+    summaryParts.push(`${label} ${g.generated}/${g.count}`);
+    items.push(
+      `${label}\n` +
+      `狀態：只讀查看\n` +
+      `筆數：${g.count} 筆，已有 PDF ${g.generated} 份\n` +
+      `Email：已寄送 ${g.emailSent} 筆\n` +
+      `LINE：已推播 ${g.lineSent} 筆\n` +
+      `金額：${formatCurrency(g.amount)}`
+    );
+  }
 
-  if (items.length === 0) items.push(`${month} 目前沒有可查看的單據資料。`);
+  if (items.length === 0) items.push(`${month} 單據紀錄表目前沒有可查看的單據資料。`);
 
   return {
-    summary: `${month} 已產生單據總覽：${summaryParts.join("；")}。`,
+    summary: `${month} 已產生單據總覽：${recordCount} 筆，總金額 ${formatCurrency(totalAmount)}。${summaryParts.length ? " " + summaryParts.join("；") + "。" : ""}`,
     items,
     rows,
     nextAction: "只讀查看，作廢/重新產生/補發待流程確認後開放",
@@ -2089,6 +2137,7 @@ function buildAdminPreviewMetrics(month: string, feature: string) {
   }
 
   if (feature === "已產生單據") {
+    metrics.push(buildSheetMonthMetric(ss, "單據紀錄", SHEET_NAME_DOCUMENT_RECORD, 1, month, "指定月份已產生單據中心紀錄筆數"));
     metrics.push(buildSheetMonthMetric(ss, "學費結算", SHEET_NAME_FIN_FEE, 0, month, "指定月份學費、繳費單與收據來源筆數"));
     metrics.push(buildSheetMonthMetric(ss, "鐘點結算", SHEET_NAME_FIN_PAY, 0, month, "指定月份鐘點與領據來源筆數"));
     metrics.push(buildSheetMonthMetric(ss, "一般收據", SHEET_NAME_GEN_RECORD, 2, month, "指定月份一般收據紀錄筆數"));
