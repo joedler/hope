@@ -27,11 +27,11 @@ function handleLiffAdminTask(params: any) {
 
   try {
     if (task === "學費試算" || task === "学费试算") {
-      return { ok: false, message: "學費試算的 LIFF 預覽/確認流程尚未開放；為避免直接寫入，目前已暫停此按鈕。" };
+      return { ok: false, message: "請從行政工作台的學費流程執行學費試算預覽與確認。" };
     } 
     
     if (task === "鐘點試算" || task === "钟点试算") {
-      return { ok: false, message: "鐘點試算的 LIFF 預覽/確認流程尚未開放；為避免直接寫入，目前已暫停此按鈕。" };
+      return { ok: false, message: "請從行政工作台的鐘點流程執行鐘點試算預覽與確認。" };
     } 
     
     if (task === "產生繳費單" || task === "产生缴费单") {
@@ -45,7 +45,7 @@ function handleLiffAdminTask(params: any) {
     }
 
     if (task === "產生收據" || task === "寄送收據") {
-      return { ok: false, message: `${task} 的 LIFF 流程尚未開放；請先維持原 LINE 對話流程，避免誤寄或重複開立。` };
+      return { ok: false, message: `${task} 請從行政工作台的對應流程執行。` };
     }
 
     if (task === "產生領據") {
@@ -80,42 +80,47 @@ function handleLiffAdminPreview(params: any) {
     "學費試算": {
       summary: `預覽 ${month} 學費試算。`,
       items: ["檢查學生姓名與課程", "檢查預收/後收", "檢查補收/退費", "確認後才可寫入試算結果"],
-      nextAction: "確認寫入試算結果（尚未開放）"
+      nextAction: "確認寫入試算結果"
     },
     "鐘點試算": {
       summary: `預覽 ${month} 講師鐘點試算。`,
       items: ["檢查授課紀錄", "檢查預排核銷", "檢查補充鐘點與保費", "確認後才可寫入試算結果"],
-      nextAction: "確認寫入鐘點試算（尚未開放）"
+      nextAction: "確認寫入鐘點試算"
     },
     "繳費單": {
       summary: `預覽 ${month} 繳費單。`,
       items: ["檢查學生、課程與金額", "檢查補收/退費是否併入", "確認後才產生單據", "寄送 Email 或 LINE push 前需再次確認收件人"],
-      nextAction: "確認產生繳費單（尚未開放）"
+      nextAction: "確認產生繳費單"
     },
     "收據": {
       summary: `預覽 ${month} 學費收據。`,
       items: ["檢查繳費狀態", "檢查收據金額與抬頭", "確認後才產生收據", "寄送前需確認家長收件資訊"],
-      nextAction: "確認產生收據（尚未開放）"
+      nextAction: "確認產生收據"
     },
     "一般收據": {
       summary: "預覽入會費、常年會費或捐款一般收據。",
       items: ["選擇收據類型", "檢查收款人與金額", "確認後才產生或寄送", "後續需接正式收件人資料"],
-      nextAction: "確認產生一般收據（尚未開放）"
+      nextAction: "確認產生一般收據"
     },
     "領據": {
       summary: `預覽 ${month} 講師領據。`,
       items: ["檢查講師與鐘點費", "檢查授課紀錄與補充項目", "確認後才產生領據", "LINE push 對象為講師本人"],
-      nextAction: "確認產生領據（尚未開放）"
+      nextAction: "確認產生領據"
     },
     "稅務專區": {
       summary: `預覽 ${month} 稅務資料整理。`,
       items: ["年度資料彙整", "收據與捐款資料檢核", "後續需定義稅務輸出格式"],
-      nextAction: "確認產生稅務資料（尚未開放）"
+      nextAction: "確認產生稅務資料"
     },
     "已產生單據": {
       summary: `查看 ${month} 已產生單據。`,
       items: ["彙整繳費單、收據、領據與一般收據狀態", "此頁只讀，不會作廢、重產或寄送", "後續作廢、重新產生、補發需另走預覽確認流程"],
       nextAction: "只讀查看，暫不執行"
+    },
+    "單據總覽": {
+      summary: `查看 ${month} 單據總覽。`,
+      items: ["彙整繳費單、收據、領據與一般收據狀態"],
+      nextAction: "查看單據狀態"
     },
     "作廢單據": buildVoidDocumentAdminPreview(month),
     "補發單據": buildReissueDocumentAdminPreview(month),
@@ -135,7 +140,7 @@ function handleLiffAdminPreview(params: any) {
     feature === "寄送收據 LINE" ? buildReceiptLineAdminPreview(month) :
     feature === "寄送領據 LINE" ? buildAllowanceLineAdminPreview(month) :
     feature === "一般收據" ? buildGeneralReceiptAdminPreview(month) :
-    feature === "已產生單據" ? buildGeneratedDocumentsAdminPreview(month) :
+    (feature === "已產生單據" || feature === "單據總覽") ? buildGeneratedDocumentsAdminPreview(month) :
     previewMap[feature];
   if (!preview) {
     return { ok: false, message: `不支援的行政預覽功能: ${feature}` };
@@ -152,7 +157,7 @@ function handleLiffAdminPreview(params: any) {
       items: preview.items,
       rows: preview.rows || [],
       metrics,
-      status: "後端只讀預覽，尚未寫入或寄送",
+      status: "",
       nextAction: preview.nextAction,
       canConfirm: preview.canConfirm === true,
       confirmAction: preview.confirmAction || ""
@@ -1969,7 +1974,7 @@ function buildTuitionAdminPreview(month: string) {
     const pendingCount = (result as any).pendingCount || 0;
     const rows = (result as any).rows || [];
     return {
-      summary: `${month} 學費試算只讀預覽：${result.studentCount} 位學生，預估總額 ${formatCurrency(result.grandTotal)}。${pendingCount > 0 ? " 尚有待核銷預排，需先核銷後才能正式寫入。" : ""}`,
+      summary: `${month} 學費試算：${result.studentCount} 位學生，預估總額 ${formatCurrency(result.grandTotal)}。${pendingCount > 0 ? " 尚有待核銷預排，需先核銷後才能正式寫入。" : ""}`,
       items,
       rows,
       nextAction: rows.some(function(row: any) { return row.selectable; }) ? "確認寫入已勾選項目" : "目前沒有可寫入項目",
@@ -1978,9 +1983,9 @@ function buildTuitionAdminPreview(month: string) {
     };
   } catch (e) {
     return {
-      summary: `${month} 學費試算只讀預覽讀取失敗。`,
+      summary: `${month} 學費試算讀取失敗。`,
       items: ["請先檢查 Google Sheets 分頁、欄位與 GAS 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認寫入試算結果（尚未開放）",
+      nextAction: "確認寫入試算結果",
       canConfirm: false
     };
   }
@@ -2301,7 +2306,7 @@ function buildSalaryAdminPreview(month: string) {
       };
     }
     return {
-      summary: `${month} 鐘點試算只讀預覽：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}。`,
+      summary: `${month} 鐘點試算：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}。`,
       items,
       nextAction: "確認寫入鐘點試算",
       canConfirm: result.teacherCount > 0,
@@ -2309,9 +2314,9 @@ function buildSalaryAdminPreview(month: string) {
     };
   } catch (e) {
     return {
-      summary: `${month} 鐘點試算只讀預覽讀取失敗。`,
+      summary: `${month} 鐘點試算讀取失敗。`,
       items: ["請先檢查授課紀錄、課程設定表、講師名單與 GAS 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認寫入鐘點試算（尚未開放）",
+      nextAction: "確認寫入鐘點試算",
       canConfirm: false
     };
   }
@@ -2568,7 +2573,7 @@ function buildPaymentNoticeAdminPreview(month: string) {
       items.push(`另有 ${result.items.length - items.length} 位學生單據未列出，正式預覽頁後續再提供完整清單。`);
     }
     return {
-      summary: `${month} 繳費單只讀預覽：${result.studentCount} 位學生，總金額 ${formatCurrency(result.grandTotal)}，已產生 PDF ${result.generatedCount} 份。`,
+      summary: `${month} 繳費單：${result.studentCount} 位學生，總金額 ${formatCurrency(result.grandTotal)}，已產生 PDF ${result.generatedCount} 份。`,
       items,
       rows: result.rows,
       nextAction: result.generatedCount >= result.studentCount && result.studentCount > 0 ? "繳費單已全部產生" : "確認產生繳費單",
@@ -2577,9 +2582,9 @@ function buildPaymentNoticeAdminPreview(month: string) {
     };
   } catch (e) {
     return {
-      summary: `${month} 繳費單只讀預覽讀取失敗。`,
+      summary: `${month} 繳費單讀取失敗。`,
       items: ["請先檢查學費結算表欄位、單據編號與 GAS 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認產生繳費單（尚未開放）",
+      nextAction: "確認產生繳費單",
       canConfirm: false
     };
   }
@@ -2674,7 +2679,7 @@ function buildReceiptAdminPreview(month: string) {
       items.push(`另有 ${result.items.length - items.length} 位學生收據資料未列出，正式預覽頁後續再提供完整清單。`);
     }
     return {
-      summary: `${month} 收據只讀預覽：${result.studentCount} 位學生，應開收據總額 ${formatCurrency(result.grandTotal)}，已有收據 PDF ${result.generatedCount} 份，待寄送 ${result.pendingSendCount} 份。`,
+      summary: `${month} 收據：${result.studentCount} 位學生，應開收據總額 ${formatCurrency(result.grandTotal)}，已有收據 PDF ${result.generatedCount} 份，待寄送 ${result.pendingSendCount} 份。`,
       items,
       rows: result.rows,
       nextAction: "確認產生收據",
@@ -2683,9 +2688,9 @@ function buildReceiptAdminPreview(month: string) {
     };
   } catch (e) {
     return {
-      summary: `${month} 收據只讀預覽讀取失敗。`,
+      summary: `${month} 收據讀取失敗。`,
       items: ["請先檢查學費結算表、收款方式、收據類別、收款日期與 GAS 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認產生收據（尚未開放）",
+      nextAction: "確認產生收據",
       canConfirm: false
     };
   }
@@ -2888,7 +2893,7 @@ function buildPaymentNoticeEmailAdminPreview(month: string) {
     return {
       summary: `${month} 繳費單 Email 預覽讀取失敗。`,
       items: ["請先檢查單據紀錄表、繳費單 PDF、Email 與 GAS 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認寄送繳費單 Email（尚未開放）",
+      nextAction: "確認寄送繳費單 Email",
       canConfirm: false
     };
   }
@@ -2994,7 +2999,7 @@ function buildReceiptEmailAdminPreview(month: string) {
     return {
       summary: `${month} 收據 Email 預覽讀取失敗。`,
       items: ["請先檢查學費結算表、收據 PDF、Email 與 GAS Gmail 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認寄送收據 Email（尚未開放）",
+      nextAction: "確認寄送收據 Email",
       canConfirm: false
     };
   }
@@ -3053,7 +3058,7 @@ function buildAllowanceAdminPreview(month: string) {
       items.push(`另有 ${result.items.length - items.length} 位講師領據資料未列出，正式預覽頁後續再提供完整清單。`);
     }
     return {
-      summary: `${month} 領據只讀預覽：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}，已有領據 PDF ${result.generatedCount} 份，待寄送 ${result.pendingSendCount} 份。`,
+      summary: `${month} 領據：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}，已有領據 PDF ${result.generatedCount} 份，待寄送 ${result.pendingSendCount} 份。`,
       items,
       rows: result.rows,
       nextAction: "確認產生領據",
@@ -3062,9 +3067,9 @@ function buildAllowanceAdminPreview(month: string) {
     };
   } catch (e) {
     return {
-      summary: `${month} 領據只讀預覽讀取失敗。`,
+      summary: `${month} 領據讀取失敗。`,
       items: ["請先檢查鐘點結算表、領據編號、PDF 與寄送狀態。", "錯誤：" + e.toString()],
-      nextAction: "確認產生領據（尚未開放）",
+      nextAction: "確認產生領據",
       canConfirm: false
     };
   }
@@ -3234,7 +3239,7 @@ function buildAllowanceEmailAdminPreview(month: string) {
     return {
       summary: `${month} 領據 Email 預覽讀取失敗。`,
       items: ["請先檢查鐘點結算表、領據 PDF、講師 Email 與 GAS Gmail 權限。", "錯誤：" + e.toString()],
-      nextAction: "確認寄送領據 Email（尚未開放）",
+      nextAction: "確認寄送領據 Email",
       canConfirm: false
     };
   }
@@ -3318,14 +3323,14 @@ function buildGeneralReceiptAdminPreview(month: string) {
   try {
     const result = buildGeneralReceiptReadOnlyPreview(month);
     return {
-      summary: `${month} 一般收據只讀預覽：${result.recordCount} 筆，合計 ${formatCurrency(result.totalAmount)}，已有 PDF ${result.generatedCount} 份。`,
+      summary: `${month} 一般收據：${result.recordCount} 筆，合計 ${formatCurrency(result.totalAmount)}，已有 PDF ${result.generatedCount} 份。`,
       items: result.items.slice(0, 12),
       rows: result.rows,
       nextAction: "填寫下方一般收據資料後產生 PDF"
     };
   } catch (e) {
     return {
-      summary: `${month} 一般收據只讀預覽讀取失敗。`,
+      summary: `${month} 一般收據讀取失敗。`,
       items: ["請先檢查一般收據紀錄分頁。", "錯誤：" + e.toString()],
       rows: [],
       nextAction: "請先排除一般收據紀錄分頁問題"
@@ -3601,7 +3606,7 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
   if (items.length === 0) items.push(`${month} 單據紀錄表目前沒有可查看的單據資料。`);
   items.push(
     `單據版本管理規則\n` +
-    `狀態：目前只讀，尚未開放直接執行\n` +
+    `狀態：可在單據管理流程處理\n` +
     `作廢：保留原紀錄與 PDF，不刪除；作廢後不可再寄送\n` +
     `補發：同一份 PDF 重新寄送，內容與金額不變\n` +
     `重新產生：未寄送可重產；已寄送需先作廢原單，再建立新版\n` +
@@ -3610,10 +3615,10 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
   );
 
   return {
-    summary: `${month} 已產生單據總覽：${recordCount} 筆，總金額 ${formatCurrency(totalAmount)}。${summaryParts.length ? " " + summaryParts.join("；") + "。" : ""}`,
+    summary: `${month} 單據總覽：${recordCount} 筆，總金額 ${formatCurrency(totalAmount)}。${summaryParts.length ? " " + summaryParts.join("；") + "。" : ""}`,
     items,
     rows,
-    nextAction: "只讀查看；作廢、補發、重新產生需另走預覽確認流程，尚未開放執行",
+    nextAction: "查看單據狀態",
     canConfirm: false
   };
 }
@@ -3643,7 +3648,7 @@ function appendGeneratedDocumentSection(month: string, label: string, rows: any[
         selectable: false,
         selectedDefault: false,
         warnings: row.warnings || [],
-        details: (row.details || []).concat(["目前只讀；作廢、重新產生、補發尚未開放"])
+        details: row.details || []
       });
     }
   } catch (e) {

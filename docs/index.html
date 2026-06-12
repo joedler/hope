@@ -714,18 +714,8 @@
               <span class="inline-flex items-center rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400 ring-1 ring-inset ring-amber-500/30">Admin Mode</span>
             </div>
 
-            <!-- 月份選擇器 -->
-            <label class="block">
-              <span class="text-xs font-semibold text-slate-400">試算與單據月份</span>
-              <input
-                type="month"
-                class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500"
-                x-model="adminMonth"
-              >
-            </label>
-
             <!-- 行政功能分頁 -->
-            <div class="grid grid-cols-2 gap-2 pt-2 sm:grid-cols-5">
+            <div class="grid grid-cols-2 gap-2 pt-2 sm:grid-cols-4">
               <button
                 type="button"
                 class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
@@ -753,23 +743,23 @@
               <button
                 type="button"
                 class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
-                :class="activeAdminTab === 'adjustment' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
-                @click="setAdminTab('adjustment')"
-              >
-                帳務補救
-              </button>
-              <button
-                type="button"
-                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
                 :class="activeAdminTab === 'tools' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
                 @click="setAdminTab('tools')"
               >
-                工具
+                帳務工具
               </button>
             </div>
 
             <!-- 分頁工作區 -->
             <div x-show="activeAdminTab !== 'adjustment'" class="admin-workspace rounded-2xl bg-white p-4">
+              <label class="mb-4 block">
+                <span class="text-xs font-semibold text-slate-400">處理月份</span>
+                <input
+                  type="month"
+                  class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-500"
+                  x-model="adminMonth"
+                >
+              </label>
               <div x-show="activeAdminTab === 'calc'" class="space-y-3">
                 <div>
                   <h4 class="text-sm font-bold text-white">學費流程</h4>
@@ -852,10 +842,14 @@
 
               <div x-show="activeAdminTab === 'tools'" class="space-y-3">
                 <div>
-                  <h4 class="text-sm font-bold text-white">工具</h4>
-                  <p class="mt-1 text-[10px] leading-4 text-slate-500">權限、綁定與稅務資料整理。</p>
+                  <h4 class="text-sm font-bold text-white">帳務工具</h4>
+                  <p class="mt-1 text-[10px] leading-4 text-slate-500">帳務補救、單據管理、稅務與權限工具。</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('單據總覽')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">單據總覽</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">查看 PDF 與寄送狀態</p>
+                  </button>
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('稅務專區')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">稅務專區</span>
                     <p class="mt-1 text-[10px] text-slate-500 leading-4">年度資料與稅務檢核</p>
@@ -886,12 +880,11 @@
               <div x-show="adminPreview" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
                 <div class="flex items-start justify-between gap-3">
                   <div>
-                    <p class="text-xs font-semibold text-amber-600">預覽模式</p>
                     <h4 class="mt-1 text-base font-bold" x-text="adminPreview ? adminPreview.title : ''"></h4>
                   </div>
                   <button type="button" class="rounded-lg border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-700" @click="adminPreview = null">關閉</button>
                 </div>
-                <div class="mt-3 space-y-2">
+                <div class="mt-3 space-y-2" x-show="adminPreview && ((!adminPreview.rows || !adminPreview.rows.length) || adminPreview.title === '單據總覽')">
                   <p x-text="adminPreview ? adminPreview.summary : ''"></p>
                   <ul class="admin-preview-list space-y-1">
                     <template x-for="item in (adminPreview ? adminPreview.items : [])" :key="item">
@@ -1001,7 +994,7 @@
                           x-show="row.selectable" x-model="row.selected" :disabled="!row.selectable">
                         <div class="min-w-0 flex-1">
                           <div class="flex flex-wrap items-center justify-between gap-2">
-                            <p class="font-bold text-slate-900" x-text="row.name"></p>
+                            <p class="font-bold text-slate-900" x-text="'● ' + row.name"></p>
                             <p class="font-bold text-teal-700" x-text="row.amountText || ''"></p>
                           </div>
                           <p class="mt-1 text-xs leading-5 text-slate-600">
@@ -1009,7 +1002,11 @@
                             <span>｜</span>
                             <span x-text="row.status || ''"></span>
                           </p>
-                          <p class="admin-row-detail mt-1 text-[11px] leading-4 text-slate-500" x-show="row.details && row.details.length" x-text="formatAdminDetails(row.details)"></p>
+                          <div class="admin-row-detail mt-1 space-y-1 text-[11px] leading-4 text-slate-500" x-show="row.details && row.details.length">
+                            <template x-for="line in formatAdminDetailLines(row.details)" :key="line">
+                              <p x-text="line"></p>
+                            </template>
+                          </div>
                           <a
                             class="mt-1 inline-flex text-[11px] font-semibold text-teal-700 underline underline-offset-2"
                             x-show="row.pdfUrl"
@@ -1025,26 +1022,7 @@
                       </div>
                     </label>
                   </template>
-                  <p class="text-[11px] leading-4 text-amber-700" x-text="selectedAdminRowsSummary()"></p>
-                </div>
-                <div class="mt-3 grid grid-cols-2 gap-2" x-show="adminPreview && adminPreview.metrics && adminPreview.metrics.length">
-                  <template x-for="metric in (adminPreview ? adminPreview.metrics : [])" :key="metric.label">
-                    <div class="rounded-lg border bg-white px-3 py-2"
-                      :class="metric.state === 'missing' || metric.state === 'error' ? 'border-red-200' : metric.state === 'empty' ? 'border-amber-200' : 'border-teal-200'">
-                      <p class="text-[10px] font-semibold"
-                        :class="metric.state === 'missing' || metric.state === 'error' ? 'text-red-600' : metric.state === 'empty' ? 'text-amber-700' : 'text-teal-700'"
-                        x-text="metric.label"></p>
-                      <p class="mt-1 text-lg font-bold text-slate-900" x-text="metric.value"></p>
-                      <p class="mt-1 text-[10px] font-semibold"
-                        :class="metric.state === 'missing' || metric.state === 'error' ? 'text-red-600' : metric.state === 'empty' ? 'text-amber-600' : 'text-teal-600'"
-                        x-text="metric.stateText || ''"></p>
-                      <p class="mt-1 text-[10px] leading-4 text-slate-500" x-text="metric.note"></p>
-                    </div>
-                  </template>
-                </div>
-                <div class="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs text-amber-700">
-                  <p class="font-semibold">目前狀態：<span x-text="adminPreview ? adminPreview.status : ''"></span></p>
-                  <p class="mt-1" x-text="adminPreviewStatusHint()"></p>
+                  <p class="text-[11px] leading-4 text-amber-700" x-show="selectedAdminRowsSummary()" x-text="selectedAdminRowsSummary()"></p>
                 </div>
                 <button
                   type="button"
@@ -1056,17 +1034,10 @@
                   <span x-show="!submitting" x-text="adminPreview ? adminPreview.nextAction : '確認寫入'"></span>
                   <span x-show="submitting">正在確認寫入...</span>
                 </button>
-                <button
-                  type="button"
-                  x-show="!canConfirmAdminPreview()"
-                  class="mt-3 w-full rounded-xl border border-slate-800 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-500 opacity-70"
-                  disabled
-                  x-text="adminPreview ? adminPreview.nextAction : '目前僅供預覽'"
-                ></button>
               </div>
             </div>
 
-            <div x-show="activeAdminTab === 'adjustment'" class="admin-workspace space-y-4 rounded-2xl bg-white p-4">
+            <div x-show="activeAdminTab === 'tools'" class="admin-workspace space-y-4 rounded-2xl bg-white p-4">
               <div>
                 <h4 class="text-sm font-bold text-white">帳務補救</h4>
                 <p class="mt-1 text-[10px] leading-4 text-slate-500">建立補收/退費紀錄，不會直接更改舊繳費單。</p>
@@ -1466,7 +1437,7 @@
               // 本地模擬
               this.lineUserId = "U_MOCK_USER_ID";
               this.profile = {
-                displayName: "開發模擬講師",
+                displayName: "未登入使用者",
                 pictureUrl: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
               };
             }
@@ -1946,7 +1917,7 @@
               if (!confirmed) return;
 
               if (!this.config.gasWebAppUrl) {
-                alert(`模擬送出：${actionName}\n\n${this.lessonSummary()}`);
+                alert(`缺少 GAS Web App URL，無法送出：${actionName}\n\n${this.lessonSummary()}`);
                 return;
               }
 
@@ -1991,7 +1962,7 @@
             if (!this.config.gasWebAppUrl) {
               this.unverifiedSchedules = this.unverifiedSchedules.filter(item => item.rowId !== rowId);
               await this.loadRecentRegisteredLessons();
-              alert(`模擬核銷：第 ${rowId} 筆，狀態：${isVerified === "yes" ? "已實際上課" : "取消未上課"}`);
+              alert(`缺少 GAS Web App URL，無法核銷第 ${rowId} 筆。`);
               return;
             }
 
@@ -2021,7 +1992,7 @@
           async runAdminTask(taskName) {
             const formattedMonth = this.adminMonth.replace("-", "/"); // e.g., '2026/05'
             if (!this.config.gasWebAppUrl) {
-              alert(`模擬行政任務：${taskName}\n選擇月份：${formattedMonth}`);
+              alert(`缺少 GAS Web App URL，無法執行行政任務：${taskName}\n選擇月份：${formattedMonth}`);
               return;
             }
 
@@ -2060,7 +2031,7 @@
           adminFeaturePending(featureName) {
             alert(
               `${featureName} 已納入行政工作台規劃。\n\n` +
-              "此功能必須先完成預覽、收件人確認與二次確認流程，尚未開放實際寫入或寄送。"
+              "此功能必須先完成預覽、收件人確認與二次確認流程。"
             );
           },
 
@@ -2082,7 +2053,7 @@
               rows,
               metrics: preview.metrics || [],
               items: preview.items || [],
-              status: statusText || preview.status || "後端只讀預覽，尚未寫入或寄送",
+              status: statusText || preview.status || "",
               canConfirm: preview.canConfirm === true,
               confirmAction: preview.confirmAction || "",
             };
@@ -2098,10 +2069,19 @@
           },
 
           formatAdminDetails(details) {
+            return this.formatAdminDetailLines(details).join("；");
+          },
+
+          formatAdminDetailLines(details) {
+            const seen = new Set();
             return (details || [])
-              .map((part) => this.formatAdminDetail(part))
-              .filter(Boolean)
-              .join("；");
+              .flatMap((part) => this.formatAdminDetail(part).split("；"))
+              .map((part) => part.trim())
+              .filter((part) => {
+                if (!part || seen.has(part)) return false;
+                seen.add(part);
+                return true;
+              });
           },
 
           selectedAdminRowIds() {
@@ -2114,8 +2094,8 @@
           selectedAdminRowsSummary() {
             const count = this.selectedAdminRowIds().length;
             if (!this.adminPreview || !this.adminPreview.rows || !this.adminPreview.rows.length) return "";
-            if (!this.hasSelectableAdminRows()) return "此預覽目前僅供核對，尚未開放勾選執行。";
-            return count > 0 ? `已選取 ${count} 項。` : "尚未選取可處理項目。";
+            if (!this.hasSelectableAdminRows()) return "";
+            return count > 0 ? `已選取 ${count} 項。` : "";
           },
 
           hasSelectableAdminRows() {
@@ -2123,17 +2103,7 @@
           },
 
           adminPreviewStatusHint() {
-            if (!this.adminPreview) return "";
-            if (this.canConfirmAdminPreview()) {
-              return "此預覽已有可執行項目；勾選後按下方確認按鈕才會寫入、產生或寄送。";
-            }
-            if (this.hasSelectableAdminRows()) {
-              return "此預覽有可處理項目，但尚未勾選；請先勾選項目。";
-            }
-            if (this.adminPreview.confirmAction) {
-              return "此流程已接上確認 API，但目前沒有符合條件的可執行項目。";
-            }
-            return "此預覽目前只供核對，不會寫入、產生、寄送或 LINE push。";
+            return "";
           },
 
           selectAllAdminRows() {
@@ -2214,7 +2184,7 @@
               }
             }
             if (!this.config.gasWebAppUrl) {
-              alert("模擬確認執行。");
+              alert("缺少 GAS Web App URL，無法確認執行。");
               return;
             }
             this.submitting = true;
@@ -2239,7 +2209,7 @@
                   items: result.preview.items || [],
                   rows: result.preview.rows || [],
                   metrics: result.preview.metrics || [],
-                  nextAction: result.preview.nextAction || "下一步尚未開放",
+                  nextAction: result.preview.nextAction || "查看最新資料",
                   canConfirm: result.preview.canConfirm === true,
                   confirmAction: result.preview.confirmAction || "",
                 }, "確認執行完成，請檢查最新預覽");
@@ -2333,29 +2303,29 @@
                   this.message = result.message;
                 }
               } catch (error) {
-                this.message = `行政預覽 API 尚未可用，先顯示本機預覽：${error.message}`;
+                this.message = `行政預覽讀取失敗：${error.message}`;
               }
             }
             const previewMap = {
               "學費試算": {
                 summary: `預覽 ${formattedMonth} 學費試算。`,
                 items: ["檢查學生姓名與課程", "檢查預收/後收", "檢查補收/退費", "確認後才可寫入試算結果"],
-                nextAction: "確認寫入試算結果（尚未開放）",
+                nextAction: "確認寫入試算結果",
               },
               "鐘點試算": {
                 summary: `預覽 ${formattedMonth} 講師鐘點試算。`,
                 items: ["檢查授課紀錄", "檢查預排核銷", "檢查補充鐘點與保費", "確認後才可寫入試算結果"],
-                nextAction: "確認寫入鐘點試算（尚未開放）",
+                nextAction: "確認寫入鐘點試算",
               },
               "繳費單": {
                 summary: `預覽 ${formattedMonth} 繳費單。`,
                 items: ["檢查學生、課程與金額", "檢查補收/退費是否併入", "確認後才產生單據", "寄送 Email 或 LINE push 前需再次確認收件人"],
-                nextAction: "確認產生繳費單（尚未開放）",
+                nextAction: "確認產生繳費單",
               },
               "收據": {
                 summary: `預覽 ${formattedMonth} 學費收據。`,
                 items: ["檢查繳費狀態", "檢查收據金額與抬頭", "確認後才產生收據", "寄送前需確認家長收件資訊"],
-                nextAction: "確認產生收據（尚未開放）",
+                nextAction: "確認產生收據",
               },
               "一般收據": {
                 summary: "預覽入會費、常年會費或捐款一般收據。",
@@ -2365,23 +2335,23 @@
               "寄送一般收據 Email": {
                 summary: `預覽 ${formattedMonth} 一般收據 Email。`,
                 items: ["檢查一般收據 PDF", "檢查會員或捐款者 Email", "確認後才寄送"],
-                nextAction: "確認寄送一般收據 Email（尚未開放）",
+                nextAction: "確認寄送一般收據 Email",
               },
               "領據": {
                 summary: `預覽 ${formattedMonth} 講師領據。`,
                 items: ["檢查講師與鐘點費", "檢查授課紀錄與補充項目", "確認後才產生領據", "LINE push 對象為講師本人"],
-                nextAction: "確認產生領據（尚未開放）",
+                nextAction: "確認產生領據",
               },
               "稅務專區": {
                 summary: `預覽 ${formattedMonth} 稅務資料整理。`,
                 items: ["年度資料彙整", "收據與捐款資料檢核", "後續需定義稅務輸出格式"],
-                nextAction: "確認產生稅務資料（尚未開放）",
+                nextAction: "確認產生稅務資料",
               },
             };
             const preview = previewMap[featureName] || {
               summary: `${featureName} 預覽。`,
-              items: ["此功能尚待定義正式預覽內容。"],
-              nextAction: "確認執行（尚未開放）",
+              items: ["目前沒有可顯示的資料。"],
+              nextAction: "確認執行",
             };
             this.adminPreview = {
               title: featureName,
@@ -2463,8 +2433,8 @@
             this.operationMessage = "正在讀取補救明細/補收通知預覽...";
             if (!this.config.gasWebAppUrl) {
               this.adjustmentPaymentPreview = {
-                summary: `${month} 補救明細/補收通知只讀預覽：模擬資料。`,
-                items: ["模擬學生：NT$ 1,500，1 筆補收，原單號：R_2026_05_001"],
+                summary: `${month} 補救明細/補收通知。`,
+                items: ["缺少 GAS Web App URL，無法讀取正式資料。"],
                 hasPending: true,
               };
               this.submitting = false;
@@ -2500,7 +2470,7 @@
             );
             if (!confirmed) return;
             if (!this.config.gasWebAppUrl) {
-              alert("模擬產生補救明細/補收通知。");
+              alert("缺少 GAS Web App URL，無法產生補救明細/補收通知。");
               return;
             }
             this.submitting = true;
@@ -2548,7 +2518,7 @@
               if (!confirmed) return;
 
               if (!this.config.gasWebAppUrl) {
-                alert("模擬建立帳務補救紀錄。");
+                alert("缺少 GAS Web App URL，無法建立帳務補救紀錄。");
                 return;
               }
 
