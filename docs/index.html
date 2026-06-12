@@ -843,32 +843,51 @@
               <div x-show="activeAdminTab === 'tools'" class="space-y-3">
                 <div>
                   <h4 class="text-sm font-bold text-white">帳務工具</h4>
-                  <p class="mt-1 text-[10px] leading-4 text-slate-500">帳務補救、單據管理、稅務與權限工具。</p>
+                  <p class="mt-1 text-[10px] leading-4 text-slate-500">查單據、補救帳務、管理單據與系統工具。</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('單據總覽')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">單據總覽</span>
-                    <p class="mt-1 text-[10px] text-slate-500 leading-4">查看 PDF 與寄送狀態</p>
+                  <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
+                    :class="activeToolTab === 'overview' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
+                    @click="setToolTab('overview'); showAdminPreview('單據總覽')">
+                    <span class="text-xs font-bold" :class="activeToolTab === 'overview' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">單據總覽</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">PDF 與寄送狀態</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('稅務專區')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">稅務專區</span>
-                    <p class="mt-1 text-[10px] text-slate-500 leading-4">年度資料與稅務檢核</p>
+                  <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
+                    :class="activeToolTab === 'adjustment' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
+                    @click="setToolTab('adjustment')">
+                    <span class="text-xs font-bold" :class="activeToolTab === 'adjustment' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">帳務補救</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">補收與退費</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showMyLineId()">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">查我的 ID</span>
-                    <p class="mt-1 text-[10px] text-slate-500 leading-4">綁定與權限排查</p>
+                  <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
+                    :class="activeToolTab === 'documents' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
+                    @click="setToolTab('documents')">
+                    <span class="text-xs font-bold" :class="activeToolTab === 'documents' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">單據管理</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">作廢、補發、重產</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('作廢單據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">作廢單據</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">可執行：標記作廢</p>
+                  <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
+                    :class="activeToolTab === 'system' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
+                    @click="setToolTab('system')">
+                    <span class="text-xs font-bold" :class="activeToolTab === 'system' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">系統工具</span>
+                    <p class="mt-1 text-[10px] text-slate-500 leading-4">稅務與 ID</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('補發單據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">補發單據</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">可執行：重寄 PDF</p>
+                </div>
+                <div x-show="activeToolTab === 'documents'" class="grid grid-cols-3 gap-2 rounded-xl border border-teal-100 bg-teal-50 p-3">
+                  <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showAdminPreview('作廢單據')">
+                    作廢
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('重新產生單據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">重新產生</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">可執行：未寄送重產</p>
+                  <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showAdminPreview('補發單據')">
+                    補發
+                  </button>
+                  <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showAdminPreview('重新產生單據')">
+                    重產
+                  </button>
+                </div>
+                <div x-show="activeToolTab === 'system'" class="grid grid-cols-2 gap-2 rounded-xl border border-teal-100 bg-teal-50 p-3">
+                  <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showAdminPreview('稅務專區')">
+                    稅務專區
+                  </button>
+                  <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showMyLineId()">
+                    查我的 ID
                   </button>
                 </div>
               </div>
@@ -1037,7 +1056,7 @@
               </div>
             </div>
 
-            <div x-show="activeAdminTab === 'tools'" class="admin-workspace space-y-4 rounded-2xl bg-white p-4">
+            <div x-show="activeAdminTab === 'tools' && activeToolTab === 'adjustment'" class="admin-workspace space-y-4 rounded-2xl bg-white p-4">
               <div>
                 <h4 class="text-sm font-bold text-white">帳務補救</h4>
                 <p class="mt-1 text-[10px] leading-4 text-slate-500">建立補收/退費紀錄，不會直接更改舊繳費單。</p>
@@ -1302,6 +1321,7 @@
           activeTab: "home",
           activeStatusPanel: "registered",
           activeAdminTab: "calc",
+          activeToolTab: "overview",
           adminPreview: null,
           activeTimePicker: null,
           timePickerHours: ["06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"],
@@ -2025,6 +2045,14 @@
 
           setAdminTab(tab) {
             this.activeAdminTab = tab;
+            this.adminPreview = null;
+            if (tab === "tools") {
+              this.activeToolTab = "overview";
+            }
+          },
+
+          setToolTab(tab) {
+            this.activeToolTab = tab;
             this.adminPreview = null;
           },
 
