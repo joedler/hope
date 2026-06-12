@@ -263,3 +263,36 @@ Q 操作人
   - 一般收據：`單據編號_一般收據_姓名_類別.pdf`
 - 既有舊檔名仍保留相容，不需手動更名或搬移。
 - Drive 維持現有分類資料夾；除非日後另有歸檔需求，不再要求每月自動建立子資料夾。
+
+## GAS Script Properties 對照
+
+必填，缺少即停止：
+
+```text
+LINE_CHANNEL_TOKEN
+SPREADSHEET_ID
+LEAVE_SHEET_ID
+REPORT_SHEET_ID
+SHEET_ID_MEMBER
+```
+
+建議設定，未設定時暫用程式 fallback：
+
+```text
+LINE_GROUP_ID
+ADMIN_LINE_USER_IDS
+ORG_TAX_ID
+TEMPLATE_ID_PAYMENT
+TEMPLATE_ID_RECEIPT
+TEMPLATE_ID_ALLOWANCE
+TEMPLATE_ID_GENERAL_RECEIPT
+PDF_FOLDER_PAYMENT_NOTICE
+PDF_FOLDER_RECEIPT
+PDF_FOLDER_ALLOWANCE
+PDF_FOLDER_GENERAL_RECEIPT
+```
+
+規則：
+- `ADMIN_LINE_USER_IDS` 可用換行、逗號或分號分隔。
+- 範本與資料夾 ID 屬於環境設定，不寫入 Google Sheets 欄位。
+- 正式版與測試版若要切換資料來源或單據範本，應先改 Script Properties，不直接改程式。

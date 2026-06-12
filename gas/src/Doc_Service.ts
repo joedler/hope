@@ -2,14 +2,14 @@
 // 📄 Doc_Service.ts : 單據生成與收據系統 (TypeScript + DRY 重構版)
 // ==========================================
 
-const TEMPLATE_ID_PAYMENT: string = "1oOSkm4aJ980AVqz7sV7zWf6-9YJMRYzApJmNrd5_d3A"; // 繳費單範本
-const TEMPLATE_ID_RECEIPT: string = "1DXIWvcl3NvXicSE2-aXXj2dooNbwYlazLuVT4cBcjw8"; // 收據範本
-const TEMPLATE_ID_ALLOWANCE: string = "156NO2In8nKKp6Xj52rYBkAw7ZlNOdqYqojc-zVfEP_w"; // 領據範本
+const TEMPLATE_ID_PAYMENT: string = getOptionalProperty("TEMPLATE_ID_PAYMENT", "1oOSkm4aJ980AVqz7sV7zWf6-9YJMRYzApJmNrd5_d3A"); // 繳費單範本
+const TEMPLATE_ID_RECEIPT: string = getOptionalProperty("TEMPLATE_ID_RECEIPT", "1DXIWvcl3NvXicSE2-aXXj2dooNbwYlazLuVT4cBcjw8"); // 收據範本
+const TEMPLATE_ID_ALLOWANCE: string = getOptionalProperty("TEMPLATE_ID_ALLOWANCE", "156NO2In8nKKp6Xj52rYBkAw7ZlNOdqYqojc-zVfEP_w"); // 領據範本
 
 const PDF_FOLDER_CONFIG: any = {
-  "PAYMENT_NOTICE": "1N_8vwCGkCcCYbxqldQM6FPjw-PFntCpJ", 
-  "RECEIPT":        "1TZCwAGoLE0umWMg7TU5qlKta86iFBiz_", 
-  "ALLOWANCE":      "16uLXMoEExNvtGPLLxFKMV9Ln0-AUn4UB"  
+  "PAYMENT_NOTICE": getOptionalProperty("PDF_FOLDER_PAYMENT_NOTICE", "1N_8vwCGkCcCYbxqldQM6FPjw-PFntCpJ"), 
+  "RECEIPT":        getOptionalProperty("PDF_FOLDER_RECEIPT", "1TZCwAGoLE0umWMg7TU5qlKta86iFBiz_"), 
+  "ALLOWANCE":      getOptionalProperty("PDF_FOLDER_ALLOWANCE", "16uLXMoEExNvtGPLLxFKMV9Ln0-AUn4UB")  
 };
 
 const EMAIL_CONFIG: any = {

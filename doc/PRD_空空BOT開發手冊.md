@@ -237,3 +237,11 @@
 - Drive 資料夾維持現有分類資料夾，不再強制每月自動新增子資料夾；以檔名單號排序解決查找順序。
 - 查詢與重新產生流程需相容舊檔名，避免既有 `繳費單_姓名_單號.pdf`、`收據_姓名_日期_單號.pdf`、`領據_姓名_日期_單號.pdf` 失效。
 - 行政前端預覽卡片不得顯示完整 Drive 長網址；應顯示 `PDF：已產生`、`連結：已產生` 等短狀態，完整連結仍保留於 Google Sheets 與後端紀錄。
+
+## 2026-06-12 Script Properties 管理規則
+
+- 必填屬性：`LINE_CHANNEL_TOKEN`、`SPREADSHEET_ID`、`LEAVE_SHEET_ID`、`REPORT_SHEET_ID`、`SHEET_ID_MEMBER`。缺少時系統應直接報錯，不可使用正式資料 fallback。
+- 建議屬性化且目前保留 fallback：`LINE_GROUP_ID`、`ADMIN_LINE_USER_IDS`、`ORG_TAX_ID`、`TEMPLATE_ID_PAYMENT`、`TEMPLATE_ID_RECEIPT`、`TEMPLATE_ID_ALLOWANCE`、`TEMPLATE_ID_GENERAL_RECEIPT`、`PDF_FOLDER_PAYMENT_NOTICE`、`PDF_FOLDER_RECEIPT`、`PDF_FOLDER_ALLOWANCE`、`PDF_FOLDER_GENERAL_RECEIPT`。
+- `ADMIN_LINE_USER_IDS` 可用換行、逗號或分號分隔多位行政人員 LINE User ID。
+- 後續正式版替換或建立新測試專案時，優先調整 GAS Script Properties，不應修改程式碼中的 ID。
+- 過渡期採「屬性優先、fallback 保護」；確認正式屬性全數補齊且穩定後，才評估移除 fallback。

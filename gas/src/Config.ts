@@ -13,6 +13,31 @@ function getRequiredProperty(key: string): string {
   throw new Error("缺少必要 Script Property: " + key);
 }
 
+function getOptionalProperty(key: string, fallback: string): string {
+  try {
+    const prop = PropertiesService.getScriptProperties().getProperty(key);
+    if (prop) return prop;
+  } catch (e) {
+    // 保留 fallback，避免屬性尚未建立時影響既有正式功能。
+  }
+  return fallback;
+}
+
+function getOptionalListProperty(key: string, fallback: string[]): string[] {
+  try {
+    const prop = PropertiesService.getScriptProperties().getProperty(key);
+    if (prop) {
+      return prop
+        .split(/[\n,;]+/)
+        .map((item) => item.replace(/^\s+|\s+$/g, ""))
+        .filter((item) => item !== "");
+    }
+  } catch (e) {
+    // 保留 fallback，避免屬性尚未建立時影響既有正式功能。
+  }
+  return fallback;
+}
+
 // LINE Bot 設定
 var CHANNEL_TOKEN: string = getRequiredProperty("LINE_CHANNEL_TOKEN");
 
@@ -23,7 +48,7 @@ var REPORT_SHEET_ID: string = getRequiredProperty("REPORT_SHEET_ID");
 var SHEET_ID_MEMBER: string = getRequiredProperty("SHEET_ID_MEMBER");
 
 // ★ 協會專屬稅務設定 ★
-var ORG_TAX_ID: string = "91622132"; // 協會統一編號
+var ORG_TAX_ID: string = getOptionalProperty("ORG_TAX_ID", "91622132"); // 協會統一編號
 
 // ★ 分頁名稱設定 (請確保試算表分頁名稱一致) ★
 var SHEET_NAME_COURSE: string = "課程設定表";
@@ -37,21 +62,21 @@ var SHEET_NAME_TUITION_ADJUSTMENT: string = "學費調整紀錄表";
 var SHEET_NAME_DOCUMENT_RECORD: string = "單據紀錄表";
 
 // 群組 ID (推播用)
-var GROUP_ID: string = "C0227dd553381f2503d344481ae1b4453";
+var GROUP_ID: string = getOptionalProperty("LINE_GROUP_ID", "C0227dd553381f2503d344481ae1b4453");
 
 // 通關關鍵字
 var MAGIC_KEYWORDS: string[] = ["諮詢師", "家長", "同時段", "人際情緒支持兒童團體"];
 
 // 管理員與秘書清單
-var ADMIN_LIST: string[] = [
+var ADMIN_LIST: string[] = getOptionalListProperty("ADMIN_LINE_USER_IDS", [
   "U65c06840e57dd0fa7dee49fbcc9ca5c6", // 管理員
   "U0ba285786d5ab40ddcb30e7c394ca384",  // 秘書處
   "U8d812c4a0b5e44b34fcc2c1d86b08e87"   // 小白
-];
+]);
 
 // 一般收據專用試算表與範本 ID
-var TEMPLATE_ID_GEN_RECEIPT: string = "1cIMvNBr_j8que87efpJwNF9wqK03uiz8pXVAG7sQXIY"; // 一般收據範本
-var FOLDER_ID_GEN_RECEIPT: string = "17jkNW3fslGa_4nc4MSghFkGsrh3Iwd_E";
+var TEMPLATE_ID_GEN_RECEIPT: string = getOptionalProperty("TEMPLATE_ID_GENERAL_RECEIPT", "1cIMvNBr_j8que87efpJwNF9wqK03uiz8pXVAG7sQXIY"); // 一般收據範本
+var FOLDER_ID_GEN_RECEIPT: string = getOptionalProperty("PDF_FOLDER_GENERAL_RECEIPT", "17jkNW3fslGa_4nc4MSghFkGsrh3Iwd_E");
 var SHEET_NAME_GEN_RECORD: string = "一般收據紀錄"; // 核心試算表中的紀錄分頁
 
 // 一次性設定 Script 屬性的初始化工具，供首次部署新客戶時執行
