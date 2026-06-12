@@ -1994,11 +1994,29 @@
             const formattedMonth = this.adminMonth.replace("-", "/");
             const confirmAction = this.adminPreview.confirmAction || "";
             const isSettlement = confirmAction === "adminConfirmSettlement";
+            let confirmText = "是否確認執行？";
+            if (isSettlement) {
+              confirmText = "確認後會重新試算並寫入結算表，且會執行重複寫入防呆。\n是否確認寫入？";
+            } else if (confirmAction === "adminConfirmEmail") {
+              if (featureName === "寄送繳費單 Email") {
+                confirmText = "確認後會寄送繳費單 PDF Email，並回寫 Email 寄送狀態；不會產生新 PDF 或 LINE push。\n是否確認寄送？";
+              } else if (featureName === "寄送收據 Email") {
+                confirmText = "確認後只會寄送已產生的收據 PDF Email，並回寫 Email 寄送狀態；不會重新產生收據或 LINE push。\n是否確認寄送？";
+              } else if (featureName === "寄送領據 Email") {
+                confirmText = "確認後只會寄送已產生的領據 PDF Email，並回寫 Email 寄送狀態；不會重新產生領據或 LINE push。\n是否確認寄送？";
+              }
+            } else if (confirmAction === "adminConfirmDocument") {
+              if (featureName === "繳費單") {
+                confirmText = "確認後會產生繳費單 PDF 並建立單據紀錄；不會寄送 Email 或 LINE push。\n是否確認產生？";
+              } else if (featureName === "收據") {
+                confirmText = "確認後會依已套用的收款方式、收據類別與收款日期產生收據 PDF，並建立單據紀錄；不會寄送 Email 或 LINE push。\n是否確認產生？";
+              } else if (featureName === "領據") {
+                confirmText = "確認後會產生領據 PDF 並建立單據紀錄；不會寄送 Email 或 LINE push。\n是否確認產生？";
+              }
+            }
             const confirmed = confirm(
               `${formattedMonth} ${featureName}\n\n` +
-              (isSettlement
-                ? "確認後會重新試算並寫入結算表，且會執行重複寫入防呆。\n是否確認寫入？"
-                : "確認後會產生 PDF 並回寫單據狀態；不會寄送 Email 或 LINE push。\n是否確認產生？")
+              confirmText
             );
             if (!confirmed) return;
             if (!this.config.gasWebAppUrl) {
