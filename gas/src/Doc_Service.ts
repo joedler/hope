@@ -555,6 +555,19 @@ function handleTuitionAdjustmentCommand(event: any, userMsg: string) {
   const operatorName = getOperatorNameByUserId(userId);
   const amount = Math.round(hours * unitFee) * (type === "退費" ? -1 : 1);
   const sheet = ensureTuitionAdjustmentSheet();
+  const duplicateRow = findDuplicateTuitionAdjustment(sheet, {
+    targetMonth,
+    studentName,
+    courseName,
+    lessonDate,
+    startTime,
+    endTime,
+    type
+  });
+  if (duplicateRow > 0) {
+    replyLineMessage(replyToken, "⚠️ 已有相同帳務補救紀錄，系統已阻擋重複建立。\n重複條件：學生、課程、日期、開始/結束時間、類型相同。\n既有列號：" + duplicateRow);
+    return;
+  }
   sheet.appendRow([
     new Date(),
     targetMonth,
@@ -616,6 +629,22 @@ function handleLiffTuitionAdjustment(params: any) {
   const operatorName = getOperatorNameByUserId(lineUserId);
   const amount = Math.round(hours * unitFee) * (type === "退費" ? -1 : 1);
   const sheet = ensureTuitionAdjustmentSheet();
+  const duplicateRow = findDuplicateTuitionAdjustment(sheet, {
+    targetMonth,
+    studentName,
+    courseName,
+    lessonDate,
+    startTime,
+    endTime,
+    type
+  });
+  if (duplicateRow > 0) {
+    return {
+      ok: false,
+      code: "DUPLICATE_ADJUSTMENT",
+      message: "已有相同帳務補救紀錄，系統已阻擋重複建立。請檢查學費調整紀錄表第 " + duplicateRow + " 列。"
+    };
+  }
   sheet.appendRow([
     new Date(),
     targetMonth,
@@ -640,6 +669,49 @@ function handleLiffTuitionAdjustment(params: any) {
     ok: true,
     message: `已建立${type}紀錄：${studentName} / ${courseName} / ${formatMoney(amount)}，狀態：待處理。`
   };
+}
+
+function normalizeAdjustmentDateKey(value: any): string {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy/MM/dd");
+  }
+  const text = String(value || "").trim().replace(/-/g, "/");
+  if (!text) return "";
+  const parts = text.split("/");
+  if (parts.length >= 3) {
+    return parts[0] + "/" + parts[1].padStart(2, "0") + "/" + parts[2].padStart(2, "0");
+  }
+  return text;
+}
+
+function normalizeAdjustmentTimeKey(value: any): string {
+  const text = String(value || "").trim();
+  const digits = text.replace(/\D/g, "").padStart(4, "0");
+  return digits.length >= 4 ? digits.substring(0, 4) : digits;
+}
+
+function findDuplicateTuitionAdjustment(sheet: any, target: any): number {
+  const data = sheet.getDataRange().getValues();
+  const targetMonth = String(target.targetMonth || "").trim();
+  const studentName = String(target.studentName || "").trim();
+  const courseName = String(target.courseName || "").trim();
+  const lessonDate = normalizeAdjustmentDateKey(target.lessonDate);
+  const startTime = normalizeAdjustmentTimeKey(target.startTime);
+  const endTime = normalizeAdjustmentTimeKey(target.endTime);
+  const type = String(target.type || "").trim();
+  for (let i = 1; i < data.length; i++) {
+    const status = String(data[i][13] || "").trim();
+    if (status === "作廢" || status === "已取消") continue;
+    if (String(data[i][1] || "").trim() !== targetMonth) continue;
+    if (String(data[i][2] || "").trim() !== studentName) continue;
+    if (String(data[i][3] || "").trim() !== courseName) continue;
+    if (normalizeAdjustmentDateKey(data[i][4]) !== lessonDate) continue;
+    if (normalizeAdjustmentTimeKey(data[i][5]) !== startTime) continue;
+    if (normalizeAdjustmentTimeKey(data[i][6]) !== endTime) continue;
+    if (String(data[i][10] || "").trim() !== type) continue;
+    return i + 1;
+  }
+  return -1;
 }
 
 function handleLiffTuitionAdjustmentOptions(params: any) {
