@@ -439,7 +439,9 @@ function handleLiffAdminConfirmLine(params: any) {
 
   const docType = feature === "寄送繳費單 LINE" ? "繳費單" :
     feature === "寄送收據 LINE" ? "收據" : "領據";
-  const beforePreview = buildDocumentLineReadOnlyPreview(month, docType, true);
+  const beforePreview = docType === "領據"
+    ? appendAllowanceLineFallback(buildDocumentLineReadOnlyPreview(month, docType, true), month)
+    : buildDocumentLineReadOnlyPreview(month, docType, true);
   const selectedIds = parseAdminSelectedIds(params.selectedIds);
   const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
   const selectedRows = selectedIds.length > 0
