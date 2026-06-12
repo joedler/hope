@@ -1931,7 +1931,7 @@
 
           canConfirmAdminPreview() {
             if (!this.adminPreview || this.adminPreview.canConfirm !== true) return false;
-            if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine" || this.adminPreview.confirmAction === "adminVoidDocument" || this.adminPreview.confirmAction === "adminReissueDocument") {
+            if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine" || this.adminPreview.confirmAction === "adminVoidDocument" || this.adminPreview.confirmAction === "adminReissueDocument" || this.adminPreview.confirmAction === "adminRegenerateDocument") {
               return this.selectedAdminRowIds().length > 0;
             }
             return true;
@@ -2021,6 +2021,8 @@
               confirmText = "確認後會將勾選單據標記為作廢；不會刪除 PDF、不會刪除資料列，但作廢後不可再寄送 Email 或 LINE push。\n是否確認作廢？";
             } else if (confirmAction === "adminReissueDocument") {
               confirmText = "確認後會補發同一份 PDF，不會改金額、內容或單據編號。\n是否確認補發？";
+            } else if (confirmAction === "adminRegenerateDocument") {
+              confirmText = "確認後會刪除舊 PDF 檔案並重新產生新 PDF；只允許未 Email 寄送、未 LINE 推播、未作廢的單據。\n是否確認重新產生？";
             } else if (confirmAction === "adminConfirmDocument") {
               if (featureName === "繳費單") {
                 confirmText = "確認後會產生繳費單 PDF 並建立單據紀錄；不會寄送 Email 或 LINE push。\n是否確認產生？";
@@ -2041,6 +2043,13 @@
               voidReason = window.prompt("請輸入作廢原因（必填）", "");
               if (!voidReason || !voidReason.trim()) {
                 alert("作廢原因必填，已取消。");
+                return;
+              }
+            }
+            if (confirmAction === "adminRegenerateDocument") {
+              voidReason = window.prompt("請填寫重新產生原因（必填）", "");
+              if (!voidReason || !voidReason.trim()) {
+                alert("重新產生原因必填，已取消。");
                 return;
               }
             }

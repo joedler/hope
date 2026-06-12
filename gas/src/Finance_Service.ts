@@ -119,11 +119,7 @@ function handleLiffAdminPreview(params: any) {
     },
     "作廢單據": buildVoidDocumentAdminPreview(month),
     "補發單據": buildReissueDocumentAdminPreview(month),
-    "重新產生單據": {
-      summary: `預覽 ${month} 重新產生單據規則。`,
-      items: ["未寄送單據可重新產生 PDF", "已寄送或已 LINE push 不可覆蓋原單", "已寄送單據需先作廢，再建立新版", "正式執行按鈕尚未開放"],
-      nextAction: "重新產生流程待版本控管介面完成後開放"
-    }
+    "重新產生單據": buildRegenerateDocumentAdminPreview(month)
   };
 
   const preview = feature === "學費試算" ? buildTuitionAdminPreview(month) :
@@ -818,6 +814,125 @@ function buildReissueDocumentReadOnlyPreview(month: string) {
   return { items, rows, reissueableCount, voidedCount };
 }
 
+function handleLiffAdminRegenerateDocument(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+  const reason = String(params.reason || "").trim();
+  const selectedIds = parseAdminSelectedIds(params.selectedIds);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+  if (!reason) return { ok: false, message: "請填寫重新產生原因。" };
+
+  const beforePreview = buildRegenerateDocumentReadOnlyPreview(month);
+  const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
+  const selectedRows = selectedIds.length > 0
+    ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+    : [];
+  if (selectedRows.length === 0) return { ok: false, message: `${month} 沒有選取可重新產生的單據。` };
+
+  const resultMessages: string[] = [];
+  for (let i = 0; i < selectedRows.length; i++) {
+    resultMessages.push(regenerateDocumentRecord(selectedRows[i].docType, selectedRows[i].docId, reason, lineUserId));
+  }
+  const failCount = resultMessages.filter(function(msg: string) { return msg.indexOf("❌") === 0 || msg.indexOf("⚠️") === 0; }).length;
+  return {
+    ok: failCount < selectedRows.length,
+    message: `${month} 重新產生單據執行完成：成功 ${selectedRows.length - failCount} 筆，失敗/跳過 ${failCount} 筆。\n` + resultMessages.join("\n"),
+    preview: buildRegenerateDocumentAdminPreview(month)
+  };
+}
+
+function buildRegenerateDocumentAdminPreview(month: string) {
+  const result = buildRegenerateDocumentReadOnlyPreview(month);
+  return {
+    summary: `${month} 重新產生單據預覽：可重新產生 ${result.regeneratableCount} 筆，已寄送/推播不可重產 ${result.lockedCount} 筆，已作廢 ${result.voidedCount} 筆。`,
+    items: result.items,
+    rows: result.rows,
+    nextAction: result.regeneratableCount > 0 ? "確認重新產生選取單據" : "目前沒有可重新產生單據",
+    canConfirm: result.regeneratableCount > 0,
+    confirmAction: "adminRegenerateDocument"
+  };
+}
+
+function buildRegenerateDocumentReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  const items: string[] = [];
+  const rows: any[] = [];
+  let regeneratableCount = 0;
+  let lockedCount = 0;
+  let voidedCount = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][1], timeZone);
+    if (rowMonth !== month) continue;
+    const docType = String(data[i][2] || "").trim();
+    if (["繳費單", "收據", "領據"].indexOf(docType) < 0) continue;
+    if (docType === "收據" && !isValidReceiptDocumentRecordRow(data[i])) continue;
+    const targetType = String(data[i][3] || "").trim();
+    const targetName = String(data[i][4] || "").trim();
+    const docId = String(data[i][5] || "").trim();
+    const amount = parseFloat(data[i][8]) || 0;
+    const pdfUrl = String(data[i][9] || "").trim();
+    const emailStatus = normalizeDocumentEmailStatus(docType, String(data[i][11] || "").trim());
+    const lineStatus = String(data[i][12] || "").trim() || "未推播";
+    const voidStatus = String(data[i][14] || "").trim();
+    const note = String(data[i][15] || "").trim();
+    if (!docId) continue;
+
+    const warnings: string[] = [];
+    if (!pdfUrl) warnings.push("缺 PDF");
+    if (voidStatus) warnings.push("已作廢");
+    if (isDocumentSentOrPushed(emailStatus, lineStatus)) warnings.push("已寄送或已推播，需先作廢再建立新版");
+    if (voidStatus) voidedCount++;
+    if (!voidStatus && isDocumentSentOrPushed(emailStatus, lineStatus)) lockedCount++;
+
+    const selectable = !!pdfUrl && !voidStatus && !isDocumentSentOrPushed(emailStatus, lineStatus);
+    if (selectable) regeneratableCount++;
+    const statusText = voidStatus || (selectable ? "可重新產生" : warnings.join("、") || "不可重新產生");
+    items.push(
+      `${docType} / ${targetName || "未填對象"}\n` +
+      `單號：${docId}\n` +
+      `金額：${formatCurrency(amount)}\n` +
+      `狀態：${statusText}\n` +
+      `Email：${emailStatus}\n` +
+      `LINE：${lineStatus}` +
+      (note ? "\n備註：" + note : "") +
+      (warnings.length ? "\n提醒：" + warnings.join("、") : "")
+    );
+    rows.push({
+      id: "regenerate:" + docType + ":" + docId,
+      type: "document",
+      name: docType + " / " + (targetName || "未填對象"),
+      docType,
+      amount,
+      amountText: formatCurrency(amount),
+      docId,
+      status: statusText,
+      selectable,
+      selectedDefault: false,
+      warnings,
+      details: [
+        "對象：" + (targetType ? targetType + " / " : "") + (targetName || "未填"),
+        "PDF：" + (pdfUrl || "未填"),
+        "Email：" + emailStatus,
+        "LINE：" + lineStatus,
+        note ? "備註：" + note : ""
+      ].filter(function(part: string) { return part !== ""; })
+    });
+  }
+  if (items.length === 0) items.push(`${month} 目前沒有可重新產生的單據紀錄。`);
+  return { items, rows, regeneratableCount, lockedCount, voidedCount };
+}
+
+function isDocumentSentOrPushed(emailStatus: string, lineStatus: string) {
+  return String(emailStatus || "").indexOf("已寄送") > -1 || String(lineStatus || "").indexOf("已推播") > -1;
+}
+
 function reissueDocumentRecord(docType: string, docId: string, channel: string) {
   const record = findDocumentRecord(docType, docId);
   if (!record) return "❌ 找不到單據：" + docType + " " + docId;
@@ -838,17 +953,135 @@ function findDocumentRecord(docType: string, docId: string) {
     if (String(data[i][2] || "").trim() !== cleanDocType) continue;
     if (String(data[i][5] || "").trim() !== cleanDocId) continue;
     return {
+      rowIndex: i + 1,
       month: normalizeFinancialMonth(data[i][1], Session.getScriptTimeZone()),
       docType: cleanDocType,
       targetType: String(data[i][3] || "").trim(),
       targetName: String(data[i][4] || "").trim(),
       docId: cleanDocId,
+      sourceSheet: String(data[i][6] || "").trim(),
+      sourceKey: String(data[i][7] || "").trim(),
       amount: parseFloat(data[i][8]) || 0,
       pdfUrl: String(data[i][9] || "").trim(),
-      voidStatus: String(data[i][14] || "").trim()
+      generateStatus: String(data[i][10] || "").trim(),
+      emailStatus: normalizeDocumentEmailStatus(cleanDocType, String(data[i][11] || "").trim()),
+      lineStatus: String(data[i][12] || "").trim() || "未推播",
+      voidStatus: String(data[i][14] || "").trim(),
+      note: String(data[i][15] || "").trim()
     };
   }
   return null;
+}
+
+function regenerateDocumentRecord(docType: string, docId: string, reason: string, operator: string) {
+  const record = findDocumentRecord(docType, docId);
+  if (!record) return "❌ 找不到單據：" + docType + " " + docId;
+  if (record.voidStatus) return "⚠️ " + record.docType + " " + record.docId + "：已作廢，不可重新產生";
+  if (isDocumentSentOrPushed(record.emailStatus, record.lineStatus)) {
+    return "⚠️ " + record.docType + " " + record.docId + "：已寄送或已推播，需先作廢再建立新版";
+  }
+  if (!record.pdfUrl) return "⚠️ " + record.docType + " " + record.docId + "：缺 PDF，不可重新產生";
+
+  trashDriveFileFromUrl(record.pdfUrl);
+  resetSourceForDocumentRegeneration(record);
+
+  let resultMsg = "";
+  if (record.docType === "繳費單") {
+    resultMsg = createPaymentNoticesBatch(record.month, record.targetName);
+  } else if (record.docType === "收據") {
+    resultMsg = createReceiptDocumentsBatch(record.month, record.targetName);
+  } else if (record.docType === "領據") {
+    resultMsg = createAllowanceDocumentsBatch(record.month, record.targetName);
+  } else {
+    return "❌ 不支援的單據類型：" + record.docType;
+  }
+
+  const refreshed = findDocumentRecord(record.docType, record.docId);
+  const hasNewPdf = refreshed && refreshed.pdfUrl && refreshed.pdfUrl !== record.pdfUrl;
+  if (!hasNewPdf) {
+    return "⚠️ " + record.docType + " " + record.docId + "：重新產生未取得新 PDF；" + resultMsg;
+  }
+  const note = "重新產生：" + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd HH:mm") +
+    "；原因：" + reason +
+    "；舊PDF：" + record.pdfUrl;
+  appendDocumentRecordNote(record.docType, record.docId, note, operator, "重新產生");
+  return "✅ " + record.docType + " " + record.docId + "：已重新產生 PDF";
+}
+
+function trashDriveFileFromUrl(fileUrl: string) {
+  const match = String(fileUrl || "").match(/[-\w]{25,}/);
+  if (!match) return false;
+  try {
+    DriveApp.getFileById(match[0]).setTrashed(true);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function resetSourceForDocumentRegeneration(record: any) {
+  if (!record) return;
+  if (record.docType === "繳費單") {
+    resetPaymentNoticeSourcePdf(record.month, record.targetName);
+  } else if (record.docType === "收據") {
+    clearDocumentRecordPdf(record.docType, record.docId);
+  } else if (record.docType === "領據") {
+    resetAllowanceSourcePdf(record.month, record.targetName);
+  }
+}
+
+function resetPaymentNoticeSourcePdf(month: string, targetName: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  if (!sheet) return;
+  const timeZone = Session.getScriptTimeZone();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    const studentName = String(data[i][1] || "").trim();
+    if (rowMonth !== month || studentName !== targetName) continue;
+    sheet.getRange(i + 1, 16).setValue("");
+    sheet.getRange(i + 1, 17).setValue("");
+  }
+}
+
+function resetAllowanceSourcePdf(month: string, targetName: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
+  if (!sheet) return;
+  const timeZone = Session.getScriptTimeZone();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    const teacherName = String(data[i][1] || "").trim();
+    if (rowMonth !== month || teacherName !== targetName) continue;
+    sheet.getRange(i + 1, 11).setValue("");
+    sheet.getRange(i + 1, 12).setValue("");
+  }
+}
+
+function clearDocumentRecordPdf(docType: string, docId: string) {
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][2] || "").trim() !== docType || String(data[i][5] || "").trim() !== docId) continue;
+    sheet.getRange(i + 1, 10).setValue("");
+    sheet.getRange(i + 1, 11).setValue("重新產生中");
+    return;
+  }
+}
+
+function appendDocumentRecordNote(docType: string, docId: string, note: string, operator: string, generateStatus: string) {
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][2] || "").trim() !== docType || String(data[i][5] || "").trim() !== docId) continue;
+    const oldNote = String(data[i][15] || "").trim();
+    if (generateStatus) sheet.getRange(i + 1, 11).setValue(generateStatus);
+    sheet.getRange(i + 1, 16).setValue(oldNote ? oldNote + "\n" + note : note);
+    sheet.getRange(i + 1, 17).setValue(operator || "系統");
+    return;
+  }
 }
 
 function reissueDocumentEmail(record: any) {

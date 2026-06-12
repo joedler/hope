@@ -1044,8 +1044,13 @@ function createPaymentNoticesBatch(targetMonth: string, targetName: string) {
     const fileName = "繳費單_" + stuData.name + "_" + stuData.docId + ".pdf";
     const existingFiles = targetFolder.getFilesByName(fileName);
     let fileUrl = "";
-    if (existingFiles.hasNext()) { 
-      fileUrl = existingFiles.next().getUrl();
+    while (existingFiles.hasNext()) {
+      const existingFile = existingFiles.next();
+      if (existingFile.isTrashed && existingFile.isTrashed()) continue;
+      fileUrl = existingFile.getUrl();
+      break;
+    }
+    if (fileUrl) {
       results.push("✅ (既有) " + name + " - " + fileUrl); 
     } else { 
       fileUrl = generateSinglePaymentPDF(stuData, targetFolder, targetMonth);
