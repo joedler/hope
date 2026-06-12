@@ -3550,6 +3550,37 @@ function formatCurrency(value: number) {
   return "NT$ " + amount.toLocaleString();
 }
 
+function buildTuitionAdjustmentDateLine(adj: any): string {
+  const label = "[帳務補救-" + (adj.type || "調整") + "]";
+  const lessonText = [adj.lessonDate, (adj.startTime || "") + "-" + (adj.endTime || "")]
+    .filter(function(part: any) { return String(part || "").replace(/^-$/, "").trim() !== ""; })
+    .join(" ");
+  return label + " " + lessonText + " (" + formatCurrency(Math.abs(adj.amount || 0)) + ")";
+}
+
+function buildTuitionAdjustmentMemoLine(adj: any): string {
+  return "[帳務補救-" + (adj.type || "調整") + "] " +
+    "原月份 " + (adj.originalMonth || "未填") + "，" +
+    (adj.lessonDate || "未填日期") + " " + (adj.startTime || "") + "-" + (adj.endTime || "") + "，" +
+    (adj.hours || 0) + "hr x " + formatCurrency(adj.unitFee || 0) + "，" +
+    "金額 " + formatCurrency(adj.amount || 0) + "，" +
+    "原單 " + (adj.relatedDocId || "未填") + "，" +
+    "狀態 " + (adj.status || "未填") + "，原因：" + (adj.reason || "未填");
+}
+
+function buildTuitionSettlementDetailBlock(item: any, fullDetails: string[]): string {
+  const lines = fullDetails.filter(function(line: string) {
+    const text = String(line || "").trim();
+    return text !== "🧾 [本月帳務補救]" && text.indexOf("[帳務補救") !== 0;
+  });
+  if (item.adjustments && item.adjustments.length > 0) {
+    for (let i = 0; i < item.adjustments.length; i++) {
+      lines.push(buildTuitionAdjustmentDateLine(item.adjustments[i]));
+    }
+  }
+  return lines.join("\n");
+}
+
 // ==========================================
 // 2. 原 LINE 對話控制與財務引擎重構模組
 // ==========================================
@@ -4105,7 +4136,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
       }
       if (adjustmentTotal !== 0) {
         const adjustmentLines = item.adjustments.map(function(adj: any) {
-          return "[帳務補救] " + adj.type + " " + formatCurrency(adj.amount) + "（" + adj.status + "）";
+          return buildTuitionAdjustmentMemoLine(adj);
         });
         if (fullDetails.length > 0) fullDetails.push("");
         fullDetails.push("🧾 [本月帳務補救]");
@@ -4113,7 +4144,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
       }
       if (finalAmount !== 0 || item.recordBase > 0 || item.planNext > 0 || item.pendingPlanBase > 0 || adjustmentTotal !== 0) {
         const canWriteCourse = item.pendingPlanBase <= 0;
-        sTotal += canWriteCourse ? finalAmount : 0; const detailBlock = fullDetails.join("\n"); if (sDetailText !== "") sDetailText += "\n--------------------\n";
+        sTotal += canWriteCourse ? finalAmount : 0; const detailBlock = buildTuitionSettlementDetailBlock(item, fullDetails); if (sDetailText !== "") sDetailText += "\n--------------------\n";
         sDetailText += "   📘 " + cName + " (" + item.mode + ")\n" + detailBlock.replace(/^/gm, "      ") + "\n      ➤ 本科總計：$" + finalAmount;
         if (canWriteCourse) courseRows.push([ baseMonthStr, sName, cName, item.mode, detailBlock, formulaStr, item.fee, finalAmount, "", "", "" ]);
       }
