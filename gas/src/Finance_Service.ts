@@ -631,6 +631,49 @@ function getTeacherEmailMap() {
   return emailMap;
 }
 
+function getStudentLineUserIdMap() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const baseSheet = ss.getSheetByName(SHEET_NAME_STUDENT);
+  const lineMap: any = {};
+  if (!baseSheet) return lineMap;
+  const data = baseSheet.getDataRange().getValues();
+  if (data.length < 2) return lineMap;
+  const headers = data[0].map(function(value: any) { return String(value || "").trim().toLowerCase(); });
+  let lineColumn = -1;
+  for (let i = 0; i < headers.length; i++) {
+    const header = headers[i];
+    if (!header) continue;
+    const normalized = header.replace(/\s+/g, "");
+    const isLineColumn = normalized.indexOf("line") > -1 && normalized.indexOf("email") < 0;
+    const isParentLineColumn = header.indexOf("家長") > -1 && header.toLowerCase().indexOf("line") > -1;
+    if (isLineColumn || isParentLineColumn) {
+      lineColumn = i;
+      break;
+    }
+  }
+  if (lineColumn < 0) return lineMap;
+  for (let i = 1; i < data.length; i++) {
+    const name = String(data[i][0] || "").trim();
+    const lineUserId = String(data[i][lineColumn] || "").trim();
+    if (name && lineUserId) lineMap[name] = lineUserId;
+  }
+  return lineMap;
+}
+
+function getTeacherLineUserIdMap() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  const lineMap: any = {};
+  if (!teacherSheet) return lineMap;
+  const data = teacherSheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const name = String(data[i][0] || "").trim();
+    const lineUserId = String(data[i][1] || "").trim();
+    if (name && lineUserId) lineMap[name] = lineUserId;
+  }
+  return lineMap;
+}
+
 function normalizeDocumentEmailStatus(docType: string, status: string) {
   const cleanStatus = String(status || "").trim();
   if (docType === "繳費單" && (!cleanStatus || cleanStatus === "未寄送")) return "待寄送";
@@ -2309,6 +2352,8 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
   const timeZone = Session.getScriptTimeZone();
   const sheet = ensureDocumentRecordSheet();
   const data = sheet.getDataRange().getValues();
+  const studentLineMap = getStudentLineUserIdMap();
+  const teacherLineMap = getTeacherLineUserIdMap();
   const items: string[] = [];
   const rows: any[] = [];
   const summaryParts: string[] = [];
@@ -2343,9 +2388,14 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
         emailFailed: 0,
         linePending: 0,
         lineSent: 0,
+        lineReady: 0,
+        lineMissingId: 0,
         amount: 0
       };
     }
+    const isTeacherTarget = docType === "領據" || targetType === "講師";
+    const targetLineId = isTeacherTarget ? (teacherLineMap[targetName] || "") : (studentLineMap[targetName] || "");
+    const canLinePush = !!pdfUrl && !!targetLineId && lineStatus === "未推播" && !voidStatus;
     groups[docType].count++;
     groups[docType].amount += amount;
     if (pdfUrl || generateStatus === "已產生") groups[docType].generated++;
@@ -2354,6 +2404,8 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
     if (emailStatus.indexOf("失敗") > -1) groups[docType].emailFailed++;
     if (lineStatus === "未推播") groups[docType].linePending++;
     if (lineStatus.indexOf("已推播") > -1) groups[docType].lineSent++;
+    if (canLinePush) groups[docType].lineReady++;
+    if (lineStatus === "未推播" && !targetLineId) groups[docType].lineMissingId++;
     recordCount++;
     totalAmount += amount;
 
@@ -2376,6 +2428,7 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
       warnings: [
         voidStatus || "",
         pdfUrl ? "" : "缺 PDF",
+        lineStatus === "未推播" && !targetLineId ? "缺 LINE User ID" : "",
         emailStatus.indexOf("失敗") > -1 ? emailStatus : ""
       ].filter(function(part: string) { return part !== ""; }),
       details: [
@@ -2384,6 +2437,8 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
         "PDF：" + pdfText,
         "Email：" + emailStatus,
         "LINE：" + lineStatus,
+        "LINE對象：" + (isTeacherTarget ? "講師本人" : "家長/學生"),
+        "LINE ID：" + (targetLineId ? "已設定" : "未設定"),
         "寄送時間：" + (sentAt || "未寄送"),
         "連結：" + (pdfUrl || "未填"),
         note ? "備註：" + note : ""
@@ -2402,7 +2457,7 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
       `狀態：只讀查看\n` +
       `筆數：${g.count} 筆，已有 PDF ${g.generated} 份\n` +
       `Email：待寄送 ${g.emailPending} 筆，已寄送 ${g.emailSent} 筆，失敗 ${g.emailFailed} 筆\n` +
-      `LINE：未推播 ${g.linePending} 筆，已推播 ${g.lineSent} 筆\n` +
+      `LINE：可推播 ${g.lineReady} 筆，缺 LINE ID ${g.lineMissingId} 筆，未推播 ${g.linePending} 筆，已推播 ${g.lineSent} 筆\n` +
       `金額：${formatCurrency(g.amount)}`
     );
   }
@@ -2415,7 +2470,7 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
       `狀態：只讀查看\n` +
       `筆數：${g.count} 筆，已有 PDF ${g.generated} 份\n` +
       `Email：待寄送 ${g.emailPending} 筆，已寄送 ${g.emailSent} 筆，失敗 ${g.emailFailed} 筆\n` +
-      `LINE：未推播 ${g.linePending} 筆，已推播 ${g.lineSent} 筆\n` +
+      `LINE：可推播 ${g.lineReady} 筆，缺 LINE ID ${g.lineMissingId} 筆，未推播 ${g.linePending} 筆，已推播 ${g.lineSent} 筆\n` +
       `金額：${formatCurrency(g.amount)}`
     );
   }
@@ -2427,6 +2482,7 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
     `作廢：保留原紀錄與 PDF，不刪除；作廢後不可再寄送\n` +
     `補發：同一份 PDF 重新寄送，內容與金額不變\n` +
     `重新產生：未寄送可重產；已寄送需先作廢原單，再建立新版\n` +
+    `LINE push 前置檢查：繳費單與收據推給家長/學生 LINE ID；領據推給講師本人 LINE ID\n` +
     `提醒：任何會改狀態、重產 PDF 或寄送的動作，都必須另走預覽、確認、執行`
   );
 
