@@ -29,6 +29,33 @@ const EMAIL_CONFIG: any = {
 
 const PDF_MIME_TYPE = "application/pdf";
 
+function sanitizeDocFilePart(value: any): string {
+  return String(value || "")
+    .replace(/[\\\/:*?"<>|#%\{\}\[\]~&]/g, "_")
+    .replace(/\s+/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function buildDocPdfFileName(docId: string, docType: string, name: string, suffix?: string): string {
+  const parts = [docId, docType, name, suffix]
+    .filter((part) => part !== undefined && part !== null && String(part) !== "")
+    .map((part) => sanitizeDocFilePart(part));
+  return parts.join("_") + ".pdf";
+}
+
+function findExistingFileByNames(folder: any, fileNames: string[]) {
+  for (let i = 0; i < fileNames.length; i++) {
+    const files = folder.getFilesByName(fileNames[i]);
+    while (files.hasNext()) {
+      const file = files.next();
+      if (file.isTrashed && file.isTrashed()) continue;
+      return file;
+    }
+  }
+  return null;
+}
+
 function debugTestSendEmail() {
   const email = Session.getActiveUser().getEmail();
   try {
@@ -467,11 +494,12 @@ function handlePaymentQueryCommand(event: any, userMsg: string) {
     }
   }
   if (docId === "") { replyLineMessage(replyToken, "❌ 找不到紀錄。"); return; }
-  const fileName = "繳費單_" + targetStudent + "_" + docId + ".pdf";
+  const fileName = buildDocPdfFileName(docId, "繳費單", targetStudent);
+  const legacyFileName = "繳費單_" + targetStudent + "_" + docId + ".pdf";
   try {
     const folder = DriveApp.getFolderById(PDF_FOLDER_CONFIG.PAYMENT_NOTICE);
-    const files = folder.getFilesByName(fileName);
-    if (files.hasNext()) { replyLineMessage(replyToken, "📂 繳費單:\n" + files.next().getUrl()); } 
+    const file = findExistingFileByNames(folder, [fileName, legacyFileName]);
+    if (file) { replyLineMessage(replyToken, "📂 繳費單:\n" + file.getUrl()); } 
     else { replyLineMessage(replyToken, "⚠️ 找不到 PDF。"); }
   } catch (e) { replyLineMessage(replyToken, "❌ 查詢錯誤：" + e.toString()); }
 }
@@ -1041,15 +1069,10 @@ function createPaymentNoticesBatch(targetMonth: string, targetName: string) {
   for (const name in studentsMap) {
     const stuData = studentsMap[name];
     if (!stuData.docId || stuData.total === 0) continue;
-    const fileName = "繳費單_" + stuData.name + "_" + stuData.docId + ".pdf";
-    const existingFiles = targetFolder.getFilesByName(fileName);
-    let fileUrl = "";
-    while (existingFiles.hasNext()) {
-      const existingFile = existingFiles.next();
-      if (existingFile.isTrashed && existingFile.isTrashed()) continue;
-      fileUrl = existingFile.getUrl();
-      break;
-    }
+    const fileName = buildDocPdfFileName(stuData.docId, "繳費單", stuData.name);
+    const legacyFileName = "繳費單_" + stuData.name + "_" + stuData.docId + ".pdf";
+    const existingFile = findExistingFileByNames(targetFolder, [fileName, legacyFileName]);
+    let fileUrl = existingFile ? existingFile.getUrl() : "";
     if (fileUrl) {
       results.push("✅ (既有) " + name + " - " + fileUrl); 
     } else { 
@@ -1086,7 +1109,9 @@ function createPaymentNoticesBatch(targetMonth: string, targetName: string) {
 
 function generateSinglePaymentPDF(stuData: any, folder: any, targetMonth: string) {
   const templateFile = DriveApp.getFileById(TEMPLATE_ID_PAYMENT);
-  const newFile = templateFile.makeCopy("繳費單_" + stuData.name + "_" + stuData.docId, folder);
+  const fileName = buildDocPdfFileName(stuData.docId, "繳費單", stuData.name);
+  const copyName = fileName.replace(/\.pdf$/i, "");
+  const newFile = templateFile.makeCopy(copyName, folder);
   const newDoc = DocumentApp.openById(newFile.getId());
   const body = newDoc.getBody();
   const parts = targetMonth.split("/"); const deadlineDate = new Date(parseInt(parts[0]), parseInt(parts[1]), 10);
@@ -1100,7 +1125,7 @@ function generateSinglePaymentPDF(stuData: any, folder: any, targetMonth: string
   body.replaceText("{{個人小計大寫}}", digitToChinese(stuData.total)); 
   body.replaceText("{{繳費期限}}", deadlineStr);
   newDoc.saveAndClose();
-  const pdfBlob = newFile.getAs(PDF_MIME_TYPE); pdfBlob.setName("繳費單_" + stuData.name + "_" + stuData.docId + ".pdf"); 
+  const pdfBlob = newFile.getAs(PDF_MIME_TYPE); pdfBlob.setName(fileName); 
   const pdfFile = folder.createFile(pdfBlob); newFile.setTrashed(true);
   return pdfFile.getUrl();
 }
@@ -1238,15 +1263,15 @@ function executeAllowanceSaveOnly(event: any, postbackData: string) {
 
 function generateAllowancePDF(state: any, folder: any) {
   const templateFile = DriveApp.getFileById(TEMPLATE_ID_ALLOWANCE);
-  const fileName = "領據_" + state.name + "_" + state.date.replace(/\//g,"") + "_" + state.docId + ".pdf"; 
+  const fileName = buildDocPdfFileName(state.docId, "領據", state.name); 
+  const legacyFileName = "領據_" + state.name + "_" + state.date.replace(/\//g,"") + "_" + state.docId + ".pdf"; 
   
-  const existing = folder.getFilesByName(fileName);
-  while (existing.hasNext()) {
-     const file = existing.next();
-     if (!file.isTrashed()) return { url: file.getUrl(), id: file.getId() };
+  const existing = findExistingFileByNames(folder, [fileName, legacyFileName]);
+  if (existing) {
+     return { url: existing.getUrl(), id: existing.getId() };
   }
 
-  const newFile = templateFile.makeCopy(fileName, folder);
+  const newFile = templateFile.makeCopy(fileName.replace(/\.pdf$/i, ""), folder);
   const newDoc = DocumentApp.openById(newFile.getId());
   const body = newDoc.getBody();
   const replacements: any = {
@@ -1263,21 +1288,21 @@ function generateAllowancePDF(state: any, folder: any) {
   body.replaceText("\\{\\{.*?\\}\\}", ""); 
   newDoc.saveAndClose();
   
-  const pdfBlob = newFile.getAs(PDF_MIME_TYPE); const pdfFile = folder.createFile(pdfBlob); newFile.setTrashed(true);
+  const pdfBlob = newFile.getAs(PDF_MIME_TYPE); pdfBlob.setName(fileName); const pdfFile = folder.createFile(pdfBlob); newFile.setTrashed(true);
   return { url: pdfFile.getUrl(), id: pdfFile.getId() };
 }
 
 function generateReceiptPDF(state: any, folder: any) {
   const templateFile = DriveApp.getFileById(TEMPLATE_ID_RECEIPT);
-  const fileName = "收據_" + state.name + "_" + state.date.replace(/\//g,"") + "_" + state.docId + ".pdf"; 
+  const fileName = buildDocPdfFileName(state.docId, "收據", state.name); 
+  const legacyFileName = "收據_" + state.name + "_" + state.date.replace(/\//g,"") + "_" + state.docId + ".pdf"; 
   
-  const existing = folder.getFilesByName(fileName);
-  while (existing.hasNext()) {
-     const file = existing.next();
-     if (!file.isTrashed()) return { url: file.getUrl(), id: file.getId() };
+  const existing = findExistingFileByNames(folder, [fileName, legacyFileName]);
+  if (existing) {
+     return { url: existing.getUrl(), id: existing.getId() };
   }
 
-  const newFile = templateFile.makeCopy(fileName, folder);
+  const newFile = templateFile.makeCopy(fileName.replace(/\.pdf$/i, ""), folder);
   const newDoc = DocumentApp.openById(newFile.getId());
   const body = newDoc.getBody();
   const replacements: any = {
@@ -1291,7 +1316,7 @@ function generateReceiptPDF(state: any, folder: any) {
   body.replaceText("\\{\\{.*?\\}\\}", ""); 
   newDoc.saveAndClose();
   
-  const pdfBlob = newFile.getAs(PDF_MIME_TYPE); const pdfFile = folder.createFile(pdfBlob); newFile.setTrashed(true);
+  const pdfBlob = newFile.getAs(PDF_MIME_TYPE); pdfBlob.setName(fileName); const pdfFile = folder.createFile(pdfBlob); newFile.setTrashed(true);
   return { url: pdfFile.getUrl(), id: pdfFile.getId() };
 }
 
@@ -1543,21 +1568,21 @@ function getNextGenReceiptNumber() {
 
 function generateGeneralReceiptPDF(state: any, folder: any) {
   const templateFile = DriveApp.getFileById(TEMPLATE_ID_GEN_RECEIPT);
-  const fileName = "一般收據_" + state.name + "_" + state.category + "_" + state.docId;
+  const fileName = buildDocPdfFileName(state.docId, "一般收據", state.name, state.category);
+  const legacyFileName = "一般收據_" + state.name + "_" + state.category + "_" + state.docId;
   
-  const existing = folder.getFilesByName(fileName);
-  while (existing.hasNext()) {
-     const file = existing.next();
-     if (!file.isTrashed()) return { url: file.getUrl(), id: file.getId() };
+  const existing = findExistingFileByNames(folder, [fileName, legacyFileName, legacyFileName + ".pdf"]);
+  if (existing) {
+     return { url: existing.getUrl(), id: existing.getId() };
   }
 
-  const newFile = templateFile.makeCopy(fileName, folder);
+  const newFile = templateFile.makeCopy(fileName.replace(/\.pdf$/i, ""), folder);
   const newDoc = DocumentApp.openById(newFile.getId());
   const body = newDoc.getBody();
   const replacements: any = { "{{收款日期}}": state.date, "{{單據編號}}": state.docId, "{{姓名}}": state.name, "{{身分證字號/統一編號}}": state.pid, "{{收入用途/類別}}": state.category, "{{繳費方式}}": state.method, "{{個人小計}}": formatMoney(state.amount), "{{個人小計(大寫)}}": digitToChinese(state.amount) };
   for (const key in replacements) body.replaceText(key.replace(/([()[\]{}*+?^$|#\s])/g, "\\$1"), replacements[key]);
   newDoc.saveAndClose();
   
-  const pdfBlob = newFile.getAs(PDF_MIME_TYPE); const pdfFile = folder.createFile(pdfBlob); newFile.setTrashed(true); 
+  const pdfBlob = newFile.getAs(PDF_MIME_TYPE); pdfBlob.setName(fileName); const pdfFile = folder.createFile(pdfBlob); newFile.setTrashed(true); 
   return { url: pdfFile.getUrl(), id: pdfFile.getId() };
 }

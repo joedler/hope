@@ -193,9 +193,14 @@
         border: 1px solid #f0dfaa;
         border-radius: 0.75rem;
         padding: 0.75rem;
+        overflow-wrap: anywhere;
       }
       .admin-preview-list > li + li {
         margin-top: 0.5rem;
+      }
+      .admin-row-detail {
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
     </style>
     <!-- Alpine.js -->
@@ -936,7 +941,7 @@
                             <span>｜</span>
                             <span x-text="row.status || ''"></span>
                           </p>
-                          <p class="mt-1 text-[11px] leading-4 text-slate-500" x-show="row.details && row.details.length" x-text="row.details.join('；')"></p>
+                          <p class="admin-row-detail mt-1 text-[11px] leading-4 text-slate-500" x-show="row.details && row.details.length" x-text="formatAdminDetails(row.details)"></p>
                           <p class="mt-1 text-[11px] leading-4 text-red-600" x-show="row.warnings && row.warnings.length" x-text="'提醒：' + row.warnings.join('、')"></p>
                         </div>
                       </div>
@@ -1985,6 +1990,22 @@
               canConfirm: preview.canConfirm === true,
               confirmAction: preview.confirmAction || "",
             };
+          },
+
+          formatAdminDetail(part) {
+            const text = String(part || "");
+            if (!text) return "";
+            if ((text.startsWith("PDF：") || text.startsWith("連結：")) && /https?:\/\//.test(text)) {
+              return text.split("：")[0] + "：已產生";
+            }
+            return text.replace(/https:\/\/drive\.google\.com\/\S+/g, "PDF連結已產生");
+          },
+
+          formatAdminDetails(details) {
+            return (details || [])
+              .map((part) => this.formatAdminDetail(part))
+              .filter(Boolean)
+              .join("；");
           },
 
           selectedAdminRowIds() {
