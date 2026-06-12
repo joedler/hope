@@ -2421,12 +2421,20 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
   }
 
   if (items.length === 0) items.push(`${month} 單據紀錄表目前沒有可查看的單據資料。`);
+  items.push(
+    `單據版本管理規則\n` +
+    `狀態：目前只讀，尚未開放直接執行\n` +
+    `作廢：保留原紀錄與 PDF，不刪除；作廢後不可再寄送\n` +
+    `補發：同一份 PDF 重新寄送，內容與金額不變\n` +
+    `重新產生：未寄送可重產；已寄送需先作廢原單，再建立新版\n` +
+    `提醒：任何會改狀態、重產 PDF 或寄送的動作，都必須另走預覽、確認、執行`
+  );
 
   return {
     summary: `${month} 已產生單據總覽：${recordCount} 筆，總金額 ${formatCurrency(totalAmount)}。${summaryParts.length ? " " + summaryParts.join("；") + "。" : ""}`,
     items,
     rows,
-    nextAction: "只讀查看，作廢/重新產生/補發待流程確認後開放",
+    nextAction: "只讀查看；作廢、補發、重新產生需另走預覽確認流程，尚未開放執行",
     canConfirm: false
   };
 }
