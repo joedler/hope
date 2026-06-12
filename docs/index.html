@@ -763,54 +763,22 @@
               <div x-show="activeAdminTab === 'calc'" class="space-y-3">
                 <div>
                   <h4 class="text-sm font-bold text-white">學費流程</h4>
-                  <p class="mt-1 text-[10px] leading-4 text-slate-500">學費試算寫入後，再產生繳費單，最後進入寄送與單據查看。</p>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('學費試算')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">1 學費試算</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：預覽後確認寫入</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('繳費單')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">2 產生繳費單</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：勾選學生產生 PDF</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送繳費單 Email')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">3 寄送繳費單</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：Email 預覽確認</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送繳費單 LINE')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">4 LINE push</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：傳 PDF 連結</p>
-                  </button>
-                </div>
-                <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">LINE push 會傳送 PDF 連結給家長 LINE，需先預覽、勾選、確認後才會寄送。</div>
+                <button type="button" class="w-full rounded-xl border border-slate-800 bg-slate-900 p-4 text-center text-sm font-bold text-white transition hover:border-amber-500/40 hover:text-amber-400" @click="showAdminPreview('學費試算')">
+                  學費試算
+                </button>
               </div>
 
               <div x-show="activeAdminTab === 'receipt'" class="space-y-3">
                 <div>
                   <h4 class="text-sm font-bold text-white">收據流程</h4>
-                  <p class="mt-1 text-[10px] leading-4 text-slate-500">家長完成繳費後，先補收款資料，再產生收據與寄送。</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('收據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">1 收款資料</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：套用收款欄位</p>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center text-sm font-bold text-white transition hover:border-amber-500/40 hover:text-amber-400" @click="showAdminPreview('收據')">
+                    收款資料
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('收據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">2 產生收據</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：勾選學生產生 PDF</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送收據 Email')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">3 寄送收據</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：Email 預覽確認</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送收據 LINE')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">4 LINE push</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：傳 PDF 連結</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('一般收據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">一般收據</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：入會費、常年會費、捐款</p>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center text-sm font-bold text-white transition hover:border-amber-500/40 hover:text-amber-400" @click="showAdminPreview('一般收據')">
+                    一般收據
                   </button>
                 </div>
               </div>
@@ -818,26 +786,10 @@
               <div x-show="activeAdminTab === 'voucher'" class="space-y-3">
                 <div>
                   <h4 class="text-sm font-bold text-white">鐘點流程</h4>
-                  <p class="mt-1 text-[10px] leading-4 text-slate-500">先完成鐘點試算寫入，再產生講師領據與寄送。</p>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('鐘點試算')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">1 鐘點試算</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：預覽後確認寫入</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('領據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">2 產生領據</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：勾選講師產生 PDF</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送領據 Email')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">3 寄送領據</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：Email 預覽確認</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送領據 LINE')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">4 LINE push</span>
-                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：傳 PDF 連結</p>
-                  </button>
-                </div>
+                <button type="button" class="w-full rounded-xl border border-slate-800 bg-slate-900 p-4 text-center text-sm font-bold text-white transition hover:border-amber-500/40 hover:text-amber-400" @click="showAdminPreview('鐘點試算')">
+                  鐘點試算
+                </button>
               </div>
 
               <div x-show="activeAdminTab === 'tools'" class="space-y-3">
@@ -1043,9 +995,20 @@
                   </template>
                   <p class="text-[11px] leading-4 text-amber-700" x-show="selectedAdminRowsSummary()" x-text="selectedAdminRowsSummary()"></p>
                 </div>
+                <div class="mt-4 grid grid-cols-2 gap-2" x-show="isAdminFlowTab()">
+                  <template x-for="action in adminFlowActions()" :key="action.key">
+                    <button
+                      type="button"
+                      class="rounded-xl border border-teal-600 bg-white px-3 py-3 text-xs font-bold text-teal-800 transition hover:bg-teal-50 disabled:border-slate-200 disabled:text-slate-400"
+                      :disabled="submitting"
+                      @click="runAdminFlowAction(action.key)"
+                      x-text="action.label"
+                    ></button>
+                  </template>
+                </div>
                 <button
                   type="button"
-                  x-show="canConfirmAdminPreview()"
+                  x-show="canConfirmAdminPreview() && !isAdminFlowTab()"
                   class="mt-3 w-full rounded-xl border border-teal-700 bg-teal-600 px-4 py-3 text-sm font-semibold text-white disabled:bg-slate-200 disabled:text-slate-400"
                   :disabled="submitting"
                   @click="confirmAdminPreview()"
@@ -2132,6 +2095,75 @@
 
           adminPreviewStatusHint() {
             return "";
+          },
+
+          isAdminFlowTab() {
+            return ["calc", "receipt", "voucher"].includes(this.activeAdminTab);
+          },
+
+          adminFlowActions() {
+            if (this.activeAdminTab === "calc") {
+              return [
+                { key: "tuitionWrite", label: "寫入學費結算" },
+                { key: "paymentNotice", label: "產生繳費單" },
+                { key: "paymentEmail", label: "寄送 Email" },
+                { key: "paymentLine", label: "LINE push" },
+              ];
+            }
+            if (this.activeAdminTab === "receipt") {
+              return [
+                { key: "receiptPayment", label: "套用收款資料" },
+                { key: "receiptDocument", label: "產生收據" },
+                { key: "receiptEmail", label: "寄送 Email" },
+                { key: "receiptLine", label: "LINE push" },
+              ];
+            }
+            if (this.activeAdminTab === "voucher") {
+              return [
+                { key: "salaryWrite", label: "寫入鐘點結算" },
+                { key: "allowanceDocument", label: "產生領據" },
+                { key: "allowanceEmail", label: "寄送 Email" },
+                { key: "allowanceLine", label: "LINE push" },
+              ];
+            }
+            return [];
+          },
+
+          async runAdminFlowAction(actionKey) {
+            const featureByAction = {
+              tuitionWrite: "學費試算",
+              paymentNotice: "繳費單",
+              paymentEmail: "寄送繳費單 Email",
+              paymentLine: "寄送繳費單 LINE",
+              receiptPayment: "收據",
+              receiptDocument: "收據",
+              receiptEmail: "寄送收據 Email",
+              receiptLine: "寄送收據 LINE",
+              salaryWrite: "鐘點試算",
+              allowanceDocument: "領據",
+              allowanceEmail: "寄送領據 Email",
+              allowanceLine: "寄送領據 LINE",
+            };
+            const targetFeature = featureByAction[actionKey];
+            if (!targetFeature) return;
+
+            if (actionKey === "receiptPayment") {
+              if (!this.adminPreview || this.adminPreview.title !== "收據") {
+                await this.showAdminPreview("收據");
+                return;
+              }
+              await this.applyReceiptPaymentInfo();
+              return;
+            }
+
+            if (!this.adminPreview || this.adminPreview.title !== targetFeature) {
+              await this.showAdminPreview(targetFeature);
+              return;
+            }
+
+            if (this.canConfirmAdminPreview()) {
+              await this.confirmAdminPreview();
+            }
           },
 
           selectAllAdminRows() {
