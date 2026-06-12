@@ -367,11 +367,13 @@ function handleLiffAdminConfirmEmail(params: any) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
 
-  if (feature !== "寄送收據 Email" && feature !== "寄送領據 Email") {
-    return { ok: false, message: "目前只開放收據與領據 Email 預覽確認寄送。" };
+  if (feature !== "寄送繳費單 Email" && feature !== "寄送收據 Email" && feature !== "寄送領據 Email") {
+    return { ok: false, message: "目前只開放繳費單、收據與領據 Email 預覽確認寄送。" };
   }
 
-  const beforePreview = feature === "寄送收據 Email" ? buildReceiptEmailReadOnlyPreview(month) : buildAllowanceEmailReadOnlyPreview(month);
+  const beforePreview = feature === "寄送繳費單 Email" ? buildPaymentNoticeEmailReadOnlyPreview(month) :
+    feature === "寄送收據 Email" ? buildReceiptEmailReadOnlyPreview(month) :
+    buildAllowanceEmailReadOnlyPreview(month);
   const selectedIds = parseAdminSelectedIds(params.selectedIds);
   const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
   const selectedRows = selectedIds.length > 0
@@ -383,14 +385,18 @@ function handleLiffAdminConfirmEmail(params: any) {
 
   const resultMessages: string[] = [];
   for (let i = 0; i < selectedRows.length; i++) {
-    if (feature === "寄送收據 Email") {
+    if (feature === "寄送繳費單 Email") {
+      resultMessages.push(sendPaymentNoticeEmailForTarget(month, selectedRows[i].name));
+    } else if (feature === "寄送收據 Email") {
       resultMessages.push(sendReceiptEmailForTarget(month, selectedRows[i].name));
     } else {
       resultMessages.push(sendAllowanceEmailForTarget(month, selectedRows[i].name));
     }
   }
 
-  const afterPreview = feature === "寄送收據 Email" ? buildReceiptEmailAdminPreview(month) : buildAllowanceEmailAdminPreview(month);
+  const afterPreview = feature === "寄送繳費單 Email" ? buildPaymentNoticeEmailAdminPreview(month) :
+    feature === "寄送收據 Email" ? buildReceiptEmailAdminPreview(month) :
+    buildAllowanceEmailAdminPreview(month);
   const failCount = resultMessages.filter(function(msg: string) { return msg.indexOf("❌") === 0 || msg.indexOf("⚠️") === 0; }).length;
   return {
     ok: failCount < selectedRows.length,
@@ -1595,13 +1601,14 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
 
 function buildPaymentNoticeEmailAdminPreview(month: string) {
   try {
-    const result = buildDocumentEmailReadOnlyPreview(month, "繳費單", getStudentEmailMap(), false);
+    const result = buildDocumentEmailReadOnlyPreview(month, "繳費單", getStudentEmailMap(), true);
     return {
-      summary: `${month} 繳費單 Email 預覽：待寄送 ${result.pendingCount} 位學生，可寄送 0 位，已寄送 ${result.sentCount} 位。`,
+      summary: `${month} 繳費單 Email 預覽：待寄送 ${result.pendingCount} 位學生，可寄送 ${result.sendableCount} 位，已寄送 ${result.sentCount} 位。`,
       items: result.items.slice(0, 12),
       rows: result.rows,
-      nextAction: "繳費單 Email 寄送尚未開放，先確認待寄送清單",
-      canConfirm: false
+      nextAction: "確認寄送繳費單 Email",
+      canConfirm: result.rows.some(function(row: any) { return row.selectable; }),
+      confirmAction: "adminConfirmEmail"
     };
   } catch (e) {
     return {
@@ -1611,6 +1618,50 @@ function buildPaymentNoticeEmailAdminPreview(month: string) {
       canConfirm: false
     };
   }
+}
+
+function buildPaymentNoticeEmailReadOnlyPreview(month: string) {
+  return buildDocumentEmailReadOnlyPreview(month, "繳費單", getStudentEmailMap(), true);
+}
+
+function sendPaymentNoticeEmailForTarget(targetMonth: string, targetName: string) {
+  const emailMap = getStudentEmailMap();
+  const timeZone = Session.getScriptTimeZone();
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][1], timeZone);
+    const docType = String(data[i][2] || "").trim();
+    const studentName = String(data[i][4] || "").trim();
+    const docId = String(data[i][5] || "").trim();
+    const pdfUrl = String(data[i][9] || "").trim();
+    const status = normalizeDocumentEmailStatus(docType, String(data[i][11] || "").trim());
+    if (rowMonth !== targetMonth || docType !== "繳費單" || studentName !== targetName || status !== "待寄送" || !pdfUrl) continue;
+
+    const email = emailMap[studentName] || "";
+    if (!email || email.indexOf("@") < 0) {
+      updateDocumentSendStatus("繳費單", docId, "Email", "失敗(無Email)", "", "Email 寄送失敗：學生 Email 未填或格式錯誤");
+      return "❌ " + studentName + "：無 Email";
+    }
+    try {
+      const fileIdMatch = pdfUrl.match(/[-\w]{25,}/);
+      if (!fileIdMatch) {
+        updateDocumentSendStatus("繳費單", docId, "Email", "失敗(連結錯)", "", "Email 寄送失敗：PDF 連結錯誤");
+        return "❌ " + studentName + "：PDF 連結錯誤";
+      }
+      const file = DriveApp.getFileById(fileIdMatch[0]);
+      const subject = EMAIL_CONFIG.PAYMENT_NOTICE.SUBJECT.replace("{{Month}}", targetMonth).replace("{{Name}}", studentName);
+      const body = EMAIL_CONFIG.PAYMENT_NOTICE.BODY.replace("{{Name}}", studentName);
+      GmailApp.sendEmail(email, subject, body, { attachments: [file.getAs(PDF_MIME_TYPE)] });
+      updateDocumentSendStatus("繳費單", docId, "Email", "已寄送", new Date(), "Email 已寄送：" + email);
+      return "✅ " + studentName + "：" + email;
+    } catch (err: any) {
+      updateDocumentSendStatus("繳費單", docId, "Email", "失敗(" + err.message + ")", "", "Email 寄送失敗：" + err.message);
+      return "❌ " + studentName + "：" + err.message;
+    }
+  }
+  return "⚠️ " + targetName + "：沒有待寄送繳費單";
 }
 
 function buildReceiptEmailAdminPreview(month: string) {
