@@ -455,6 +455,69 @@ function handleLiffAdminConfirmLine(params: any) {
   };
 }
 
+function handleLiffAdminCreateGeneralReceipt(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const receiptDate = normalizeGeneralReceiptDate(params.receiptDate);
+  const name = String(params.name || "").trim();
+  const amount = parseFloat(params.amount) || 0;
+  const category = String(params.category || "").trim();
+  const method = String(params.method || "").trim();
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+  if (!receiptDate) return { ok: false, message: "請填寫一般收據日期。" };
+  if (!name) return { ok: false, message: "請填寫姓名或單位名稱。" };
+  if (!amount || amount <= 0) return { ok: false, message: "金額必須大於 0。" };
+  if (["入會費", "常年會費", "捐款", "入會費+常年會費"].indexOf(category) < 0) {
+    return { ok: false, message: "請選擇一般收據類別。" };
+  }
+  if (["匯款", "現金", "轉帳", "其他"].indexOf(method) < 0) {
+    return { ok: false, message: "請選擇收款方式。" };
+  }
+
+  const month = receiptDate.substring(0, 7);
+  const memberInfo = lookupGeneralMemberData(name, category);
+  const docId = getNextGenReceiptNumber();
+  const state: any = {
+    date: receiptDate,
+    month,
+    name,
+    amount,
+    category,
+    method,
+    pid: memberInfo.pid,
+    email: memberInfo.email,
+    docId
+  };
+  const folder = DriveApp.getFolderById(FOLDER_ID_GEN_RECEIPT);
+  const pdfResult = generateGeneralReceiptPDF(state, folder);
+  state.pdfUrl = pdfResult.url;
+  state.pdfId = pdfResult.id;
+
+  const operatorName = getOperatorNameByUserId(lineUserId);
+  saveGeneralReceiptState(state, operatorName);
+  return {
+    ok: true,
+    message: `${receiptDate} 一般收據已產生並寫入。\n姓名：${name}\n類別：${category}\n金額：${formatCurrency(amount)}\n編號：${docId}`,
+    pdfUrl: state.pdfUrl,
+    preview: buildGeneralReceiptAdminPreview(month)
+  };
+}
+
+function normalizeGeneralReceiptDate(value: any) {
+  const text = String(value || "").trim().replace(/-/g, "/");
+  if (!text) return "";
+  const parts = text.split("/");
+  if (parts.length < 3) return "";
+  const year = parts[0];
+  const month = parts[1].padStart(2, "0");
+  const day = parts[2].padStart(2, "0");
+  if (!/^\d{4}$/.test(year) || !/^\d{2}$/.test(month) || !/^\d{2}$/.test(day)) return "";
+  return year + "/" + month + "/" + day;
+}
+
 function sendDocumentLineForTarget(targetMonth: string, docType: string, docId: string) {
   const cleanDocId = String(docId || "").trim();
   if (!cleanDocId) return "❌ 缺單據編號";
@@ -3224,13 +3287,15 @@ function buildGeneralReceiptAdminPreview(month: string) {
     return {
       summary: `${month} 一般收據只讀預覽：${result.recordCount} 筆，合計 ${formatCurrency(result.totalAmount)}，已有 PDF ${result.generatedCount} 份。`,
       items: result.items.slice(0, 12),
-      nextAction: "確認產生一般收據（尚未開放）"
+      rows: result.rows,
+      nextAction: "填寫下方一般收據資料後產生 PDF"
     };
   } catch (e) {
     return {
       summary: `${month} 一般收據只讀預覽讀取失敗。`,
       items: ["請先檢查一般收據紀錄分頁。", "錯誤：" + e.toString()],
-      nextAction: "確認產生一般收據（尚未開放）"
+      rows: [],
+      nextAction: "請先排除一般收據紀錄分頁問題"
     };
   }
 }
@@ -3242,24 +3307,48 @@ function buildGeneralReceiptReadOnlyPreview(month: string) {
   if (!sheet) throw new Error("找不到一般收據紀錄。");
   const data = sheet.getDataRange().getValues();
   const items: string[] = [];
+  const rows: any[] = [];
   let totalAmount = 0;
   let recordCount = 0;
   let generatedCount = 0;
   for (let i = 1; i < data.length; i++) {
-    const rowMonth = normalizeFinancialMonth(data[i][2] || data[i][3], timeZone);
+    const rowMonth = normalizeFinancialMonth(data[i][2], timeZone);
     if (rowMonth !== month) continue;
-    const name = String(data[i][1] || data[i][2] || "").trim();
-    const category = String(data[i][4] || data[i][3] || "").trim();
-    const amount = parseFloat(data[i][5]) || parseFloat(data[i][4]) || 0;
-    const docId = String(data[i][6] || data[i][5] || "").trim();
-    const pdfUrl = String(data[i][9] || data[i][8] || "").trim();
+    const docId = String(data[i][1] || "").trim();
+    const dateText = data[i][2] instanceof Date ? Utilities.formatDate(data[i][2], timeZone, "yyyy/MM/dd") : String(data[i][2] || "").trim();
+    const name = String(data[i][3] || "").trim();
+    const amount = parseFloat(data[i][4]) || 0;
+    const category = String(data[i][5] || "").trim();
+    const method = String(data[i][6] || "").trim();
+    const pdfUrl = String(data[i][7] || "").trim();
+    const emailStatus = String(data[i][8] || "").trim();
+    const operatorName = String(data[i][9] || "").trim();
     recordCount++;
     totalAmount += amount;
     if (pdfUrl) generatedCount++;
-    items.push(`${name || "未填姓名"}\n類別：${category || "類別未填"}\n金額：${formatCurrency(amount)}\n編號：${docId || "未填"}\n狀態：${pdfUrl ? "已有 PDF" : "尚未產生 PDF"}`);
+    items.push(`${name || "未填姓名"}\n類別：${category || "類別未填"}\n金額：${formatCurrency(amount)}\n編號：${docId || "未填"}\n收款：${method || "未填"} / ${dateText || "未填"}\n狀態：${pdfUrl ? "已有 PDF" : "尚未產生 PDF"}`);
+    rows.push({
+      id: "general-receipt:" + (docId || i),
+      type: "document",
+      name: name || "未填姓名",
+      amount,
+      amountText: formatCurrency(amount),
+      docId,
+      pdfUrl,
+      status: pdfUrl ? "已有 PDF" : "尚未產生 PDF",
+      selectable: false,
+      selectedDefault: false,
+      warnings: pdfUrl ? [] : ["缺 PDF"],
+      details: [
+        "類別：" + (category || "未填"),
+        "收款：" + (method || "未填") + " / " + (dateText || "未填"),
+        emailStatus ? "Email：" + emailStatus : "",
+        operatorName ? "操作人：" + operatorName : ""
+      ].filter(function(part: string) { return part !== ""; })
+    });
   }
   if (items.length === 0) items.push(`${month} 目前沒有一般收據紀錄。`);
-  return { items, totalAmount, recordCount, generatedCount };
+  return { items, rows, totalAmount, recordCount, generatedCount };
 }
 
 function buildGeneratedDocumentsAdminPreview(month: string) {

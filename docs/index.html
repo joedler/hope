@@ -820,7 +820,7 @@
                   </button>
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('一般收據')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">一般收據</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">只讀：入會費、常年會費、捐款</p>
+                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：入會費、常年會費、捐款</p>
                   </button>
                 </div>
               </div>
@@ -932,6 +932,50 @@
                     @click="applyReceiptPaymentInfo()"
                   >
                     套用收款資料
+                  </button>
+                </div>
+                <div class="mt-3 rounded-xl border border-teal-200 bg-white p-3 text-xs text-slate-700" x-show="adminPreview && adminPreview.title === '一般收據'">
+                  <p class="font-bold text-teal-700">一般收據資料</p>
+                  <p class="mt-1 leading-4 text-slate-500">用於入會費、常年會費與捐款。確認後會產生 PDF、寫入一般收據紀錄與會計日記帳；不會寄送 Email 或 LINE。</p>
+                  <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label class="block">
+                      <span class="font-semibold text-slate-600">收據日期</span>
+                      <input type="date" class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model="generalReceiptForm.receiptDate">
+                    </label>
+                    <label class="block">
+                      <span class="font-semibold text-slate-600">姓名/單位</span>
+                      <input type="text" class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model.trim="generalReceiptForm.name" placeholder="請輸入姓名或單位">
+                    </label>
+                    <label class="block">
+                      <span class="font-semibold text-slate-600">類別</span>
+                      <select class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model="generalReceiptForm.category">
+                        <option value="入會費">入會費</option>
+                        <option value="常年會費">常年會費</option>
+                        <option value="捐款">捐款</option>
+                        <option value="入會費+常年會費">入會費+常年會費</option>
+                      </select>
+                    </label>
+                    <label class="block">
+                      <span class="font-semibold text-slate-600">收款方式</span>
+                      <select class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model="generalReceiptForm.method">
+                        <option value="匯款">匯款</option>
+                        <option value="現金">現金</option>
+                        <option value="轉帳">轉帳</option>
+                        <option value="其他">其他</option>
+                      </select>
+                    </label>
+                    <label class="block sm:col-span-2">
+                      <span class="font-semibold text-slate-600">金額</span>
+                      <input type="number" min="1" step="1" class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model="generalReceiptForm.amount" placeholder="請輸入金額">
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    class="mt-3 w-full rounded-xl border border-teal-600 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 disabled:opacity-50"
+                    :disabled="submitting || !generalReceiptForm.receiptDate || !generalReceiptForm.name || !generalReceiptForm.amount"
+                    @click="submitGeneralReceipt()"
+                  >
+                    產生一般收據 PDF
                   </button>
                 </div>
                 <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.rows && adminPreview.rows.length">
@@ -1288,6 +1332,13 @@
             method: "匯款",
             category: "課程費",
             paymentDate: new Date().toISOString().substring(0, 10),
+          },
+          generalReceiptForm: {
+            receiptDate: new Date().toISOString().substring(0, 10),
+            name: "",
+            amount: "",
+            category: "捐款",
+            method: "匯款",
           },
           options: {
             students: [],
@@ -2297,7 +2348,7 @@
               "一般收據": {
                 summary: "預覽入會費、常年會費或捐款一般收據。",
                 items: ["選擇收據類型", "檢查收款人與金額", "確認後才產生或寄送", "後續需接正式收件人資料"],
-                nextAction: "確認產生一般收據（尚未開放）",
+                nextAction: "填寫一般收據資料後產生 PDF",
               },
               "領據": {
                 summary: `預覽 ${formattedMonth} 講師領據。`,
@@ -2325,6 +2376,68 @@
             };
             this.submitting = false;
             this.operationMessage = "";
+          },
+
+          async submitGeneralReceipt() {
+            if (!this.config.gasWebAppUrl) {
+              alert("缺少 GAS Web App URL，無法產生一般收據。");
+              return;
+            }
+            const amount = Number(this.generalReceiptForm.amount || 0);
+            if (!this.generalReceiptForm.receiptDate || !this.generalReceiptForm.name || !amount || amount <= 0) {
+              alert("請填寫收據日期、姓名/單位與有效金額。");
+              return;
+            }
+            const month = this.generalReceiptForm.receiptDate.substring(0, 7).replace("-", "/");
+            const confirmed = confirm(
+              `${month} 一般收據\n\n` +
+              `日期：${this.generalReceiptForm.receiptDate}\n` +
+              `姓名/單位：${this.generalReceiptForm.name}\n` +
+              `類別：${this.generalReceiptForm.category}\n` +
+              `收款方式：${this.generalReceiptForm.method}\n` +
+              `金額：NT$ ${amount.toLocaleString("zh-TW")}\n\n` +
+              "確認後會產生 PDF，並寫入一般收據紀錄與會計日記帳；不會寄送 Email 或 LINE。"
+            );
+            if (!confirmed) return;
+            this.submitting = true;
+            this.operationMessage = "正在產生一般收據 PDF...";
+            try {
+              const result = await this.callApi({
+                action: "adminCreateGeneralReceipt",
+                lineUserId: this.lineUserId,
+                receiptDate: this.generalReceiptForm.receiptDate,
+                name: this.generalReceiptForm.name,
+                amount: this.generalReceiptForm.amount,
+                category: this.generalReceiptForm.category,
+                method: this.generalReceiptForm.method,
+              });
+              if (!result.ok) throw new Error(result.message || "一般收據產生失敗。");
+              alert(result.message || "一般收據已產生。");
+              this.adminMonth = this.generalReceiptForm.receiptDate.substring(0, 7);
+              this.generalReceiptForm.name = "";
+              this.generalReceiptForm.amount = "";
+              if (result.preview) {
+                this.adminPreview = this.hydrateAdminPreview({
+                  title: "一般收據",
+                  month,
+                  summary: result.preview.summary,
+                  items: result.preview.items || [],
+                  rows: result.preview.rows || [],
+                  metrics: result.preview.metrics || [],
+                  nextAction: result.preview.nextAction || "填寫一般收據資料後產生 PDF",
+                  canConfirm: false,
+                  confirmAction: "",
+                }, "一般收據已產生，請檢查最新預覽。");
+              } else {
+                await this.showAdminPreview("一般收據");
+              }
+            } catch (error) {
+              this.message = error.message;
+              alert(error.message);
+            } finally {
+              this.submitting = false;
+              this.operationMessage = "";
+            }
           },
 
           async previewAdjustmentPayment() {

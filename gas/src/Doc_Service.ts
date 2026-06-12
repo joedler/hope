@@ -388,44 +388,45 @@ function executeGenReceiptSave(event: any, postbackData: string) {
   CacheService.getScriptCache().remove(cacheKey); 
 
   try {
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sheet = ss.getSheetByName(SHEET_NAME_GEN_RECORD);
-    const journalSheet = ss.getSheetByName("會計日記帳");
-    if (!sheet) return;
-    
-    let operatorName = "ID:" + userId;
-    const tSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
-    if(tSheet) {
-      const tData = tSheet.getDataRange().getValues();
-      for(let i=1; i<tData.length; i++) {
-        if(tData[i][1] === userId) { operatorName = tData[i][0]; break; }
-      }
-    }
-
-    sheet.appendRow([
-      new Date(), state.docId, state.date, state.name, state.amount, state.category, state.method, state.pdfUrl, "待寄送", operatorName
-    ]);
-
-    if (journalSheet) {
-      const now = new Date();
-      const summary = state.category + " - " + state.name;
-      
-      const drCode = (state.method === "現金") ? "1101" : "1102";
-      const drName = (state.method === "現金") ? "現金" : "銀行存款";
-      
-      const crCode = (state.category === "捐款") ? "4102" : "4103";
-      const crName = (state.category === "捐款") ? "捐款收入" : "入會費及常年會費";
-      
-      const journalRows = [
-        [now, state.docId, drCode, drName, summary, state.amount, "", state.docId, operatorName],
-        [now, state.docId, crCode, crName, summary, "", state.amount, state.docId, operatorName]
-      ];
-      journalSheet.getRange(journalSheet.getLastRow() + 1, 1, 2, 9).setValues(journalRows);
-    }
-
+    const operatorName = getOperatorNameByUserId(userId);
+    saveGeneralReceiptState(state, operatorName);
     replyLineMessage(replyToken, "✅ 一般收據存檔成功，會計分錄已自動拋轉！\n編號：" + state.docId);
   } catch (e) {
     replyLineMessage(replyToken, "⚠️ 存檔失敗：" + e.toString());
+  }
+}
+
+function saveGeneralReceiptState(state: any, operatorName: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_GEN_RECORD);
+  const journalSheet = ss.getSheetByName("會計日記帳");
+  if (!sheet) throw new Error("找不到一般收據紀錄分頁。");
+
+  sheet.appendRow([
+    new Date(),
+    state.docId,
+    state.date,
+    state.name,
+    state.amount,
+    state.category,
+    state.method,
+    state.pdfUrl,
+    "待寄送",
+    operatorName
+  ]);
+
+  if (journalSheet) {
+    const now = new Date();
+    const summary = state.category + " - " + state.name;
+    const drCode = state.method === "現金" ? "1101" : "1102";
+    const drName = state.method === "現金" ? "現金" : "銀行存款";
+    const crCode = state.category === "捐款" ? "4102" : "4103";
+    const crName = state.category === "捐款" ? "捐款收入" : "入會費及常年會費";
+    const journalRows = [
+      [now, state.docId, drCode, drName, summary, state.amount, "", state.docId, operatorName],
+      [now, state.docId, crCode, crName, summary, "", state.amount, state.docId, operatorName]
+    ];
+    journalSheet.getRange(journalSheet.getLastRow() + 1, 1, 2, 9).setValues(journalRows);
   }
 }
 
