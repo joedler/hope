@@ -88,6 +88,10 @@ function doGet(e: any) {
         // 確認作廢單據，只標記狀態，不刪除 PDF 或資料列
         result = handleLiffAdminVoidDocument(e.parameter);
         break;
+      case "adminReissueDocument":
+        // 確認補發單據，重寄同一份 PDF
+        result = handleLiffAdminReissueDocument(e.parameter);
+        break;
       case "adminUpdateReceiptPayment":
         // 批次補填收據收款方式、類別與日期
         result = handleLiffAdminUpdateReceiptPayment(e.parameter);
@@ -428,6 +432,7 @@ declare function handleLiffAdminConfirmDocument(params: any): any;
 declare function handleLiffAdminConfirmEmail(params: any): any;
 declare function handleLiffAdminConfirmLine(params: any): any;
 declare function handleLiffAdminVoidDocument(params: any): any;
+declare function handleLiffAdminReissueDocument(params: any): any;
 declare function handleLiffAdminUpdateReceiptPayment(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;
 declare function handleLiffTuitionAdjustmentOptions(params: any): any;

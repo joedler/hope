@@ -118,11 +118,7 @@ function handleLiffAdminPreview(params: any) {
       nextAction: "只讀查看，暫不執行"
     },
     "作廢單據": buildVoidDocumentAdminPreview(month),
-    "補發單據": {
-      summary: `預覽 ${month} 補發單據規則。`,
-      items: ["補發只重寄同一份 PDF", "不改金額、內容、單號與收件人", "若內容需更正，必須作廢後建立新版", "正式執行按鈕尚未開放"],
-      nextAction: "補發流程待二次確認介面完成後開放"
-    },
+    "補發單據": buildReissueDocumentAdminPreview(month),
     "重新產生單據": {
       summary: `預覽 ${month} 重新產生單據規則。`,
       items: ["未寄送單據可重新產生 PDF", "已寄送或已 LINE push 不可覆蓋原單", "已寄送單據需先作廢，再建立新版", "正式執行按鈕尚未開放"],
@@ -696,6 +692,206 @@ function voidDocumentRecord(docType: string, docId: string, reason: string, oper
     return "✅ " + cleanDocType + " " + cleanDocId + "：已作廢";
   }
   return "❌ 找不到單據：" + cleanDocType + " " + cleanDocId;
+}
+
+function handleLiffAdminReissueDocument(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+  const channel = normalizeReissueChannel(params.channel);
+  const selectedIds = parseAdminSelectedIds(params.selectedIds);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+  if (!channel) return { ok: false, message: "請選擇補發方式：Email、LINE 或 both。" };
+
+  const beforePreview = buildReissueDocumentReadOnlyPreview(month);
+  const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
+  const selectedRows = selectedIds.length > 0
+    ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+    : [];
+  if (selectedRows.length === 0) return { ok: false, message: `${month} 沒有選取可補發的單據。` };
+
+  const resultMessages: string[] = [];
+  for (let i = 0; i < selectedRows.length; i++) {
+    resultMessages.push(reissueDocumentRecord(selectedRows[i].docType, selectedRows[i].docId, channel));
+  }
+  const failCount = resultMessages.filter(function(msg: string) { return msg.indexOf("❌") === 0 || msg.indexOf("⚠️") === 0; }).length;
+  return {
+    ok: failCount < selectedRows.length,
+    message: `${month} 補發單據執行完成：成功 ${selectedRows.length - failCount} 筆，失敗/跳過 ${failCount} 筆。\n` + resultMessages.join("\n"),
+    preview: buildReissueDocumentAdminPreview(month)
+  };
+}
+
+function normalizeReissueChannel(value: any) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "email" || raw === "e-mail") return "email";
+  if (raw === "line" || raw === "line push") return "line";
+  if (raw === "both" || raw === "all" || raw === "兩者" || raw === "全部" || raw === "email+line") return "both";
+  return "";
+}
+
+function buildReissueDocumentAdminPreview(month: string) {
+  const result = buildReissueDocumentReadOnlyPreview(month);
+  return {
+    summary: `${month} 補發單據預覽：可補發 ${result.reissueableCount} 筆，已作廢 ${result.voidedCount} 筆。`,
+    items: result.items,
+    rows: result.rows,
+    nextAction: result.reissueableCount > 0 ? "確認補發選取單據" : "目前沒有可補發單據",
+    canConfirm: result.reissueableCount > 0,
+    confirmAction: "adminReissueDocument"
+  };
+}
+
+function buildReissueDocumentReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  const studentEmailMap = getStudentEmailMap();
+  const teacherEmailMap = getTeacherEmailMap();
+  const studentLineMap = getStudentLineUserIdMap();
+  const teacherLineMap = getTeacherLineUserIdMap();
+  const items: string[] = [];
+  const rows: any[] = [];
+  let reissueableCount = 0;
+  let voidedCount = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][1], timeZone);
+    if (rowMonth !== month) continue;
+    const docType = String(data[i][2] || "").trim();
+    if (["繳費單", "收據", "領據"].indexOf(docType) < 0) continue;
+    if (docType === "收據" && !isValidReceiptDocumentRecordRow(data[i])) continue;
+    const targetType = String(data[i][3] || "").trim();
+    const targetName = String(data[i][4] || "").trim();
+    const docId = String(data[i][5] || "").trim();
+    const amount = parseFloat(data[i][8]) || 0;
+    const pdfUrl = String(data[i][9] || "").trim();
+    const emailStatus = normalizeDocumentEmailStatus(docType, String(data[i][11] || "").trim());
+    const lineStatus = String(data[i][12] || "").trim() || "未推播";
+    const voidStatus = String(data[i][14] || "").trim();
+    const note = String(data[i][15] || "").trim();
+    const isTeacherTarget = docType === "領據" || targetType === "講師";
+    const email = isTeacherTarget ? (teacherEmailMap[targetName] || "") : (studentEmailMap[targetName] || "");
+    const lineUserId = isTeacherTarget ? (teacherLineMap[targetName] || "") : (studentLineMap[targetName] || "");
+    if (voidStatus) voidedCount++;
+    const warnings: string[] = [];
+    if (!pdfUrl) warnings.push("缺 PDF");
+    if (!email || email.indexOf("@") < 0) warnings.push("缺 Email");
+    if (!lineUserId) warnings.push("缺 LINE User ID");
+    if (voidStatus) warnings.push("已作廢");
+    const selectable = !!pdfUrl && !voidStatus;
+    if (selectable) reissueableCount++;
+    items.push(
+      `${docType} / ${targetName || "未填對象"}\n` +
+      `單號：${docId}\n` +
+      `金額：${formatCurrency(amount)}\n` +
+      `Email：${email || "未填"}（${emailStatus}）\n` +
+      `LINE ID：${lineUserId ? "已設定" : "未設定"}（${lineStatus}）` +
+      (note ? "\n備註：" + note : "") +
+      (warnings.length ? "\n提醒：" + warnings.join("、") : "")
+    );
+    rows.push({
+      id: "reissue:" + docType + ":" + docId,
+      type: "document",
+      name: docType + " / " + (targetName || "未填對象"),
+      docType,
+      amount,
+      amountText: formatCurrency(amount),
+      docId,
+      status: voidStatus || "可補發",
+      selectable,
+      selectedDefault: false,
+      warnings,
+      details: [
+        "對象：" + (targetType ? targetType + " / " : "") + (targetName || "未填"),
+        "PDF：" + (pdfUrl || "未填"),
+        "Email：" + (email || "未填") + " / " + emailStatus,
+        "LINE ID：" + (lineUserId ? "已設定" : "未設定") + " / " + lineStatus,
+        note ? "備註：" + note : ""
+      ].filter(function(part: string) { return part !== ""; })
+    });
+  }
+  if (items.length === 0) items.push(`${month} 目前沒有可補發的單據紀錄。`);
+  return { items, rows, reissueableCount, voidedCount };
+}
+
+function reissueDocumentRecord(docType: string, docId: string, channel: string) {
+  const record = findDocumentRecord(docType, docId);
+  if (!record) return "❌ 找不到單據：" + docType + " " + docId;
+  if (record.voidStatus) return "⚠️ " + record.targetName + "：" + docType + " 已作廢，不補發";
+  if (!record.pdfUrl) return "❌ " + record.targetName + "：" + docType + " 缺 PDF";
+  const results: string[] = [];
+  if (channel === "email" || channel === "both") results.push(reissueDocumentEmail(record));
+  if (channel === "line" || channel === "both") results.push(reissueDocumentLine(record));
+  return results.join("；");
+}
+
+function findDocumentRecord(docType: string, docId: string) {
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  const cleanDocType = String(docType || "").trim();
+  const cleanDocId = String(docId || "").trim();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][2] || "").trim() !== cleanDocType) continue;
+    if (String(data[i][5] || "").trim() !== cleanDocId) continue;
+    return {
+      month: normalizeFinancialMonth(data[i][1], Session.getScriptTimeZone()),
+      docType: cleanDocType,
+      targetType: String(data[i][3] || "").trim(),
+      targetName: String(data[i][4] || "").trim(),
+      docId: cleanDocId,
+      amount: parseFloat(data[i][8]) || 0,
+      pdfUrl: String(data[i][9] || "").trim(),
+      voidStatus: String(data[i][14] || "").trim()
+    };
+  }
+  return null;
+}
+
+function reissueDocumentEmail(record: any) {
+  const emailMap = record.docType === "領據" ? getTeacherEmailMap() : getStudentEmailMap();
+  const email = emailMap[record.targetName] || "";
+  if (!email || email.indexOf("@") < 0) {
+    updateDocumentSendStatus(record.docType, record.docId, "Email", "補發失敗(無Email)", "", "補發 Email 失敗：Email 未填或格式錯誤");
+    return "❌ " + record.targetName + " Email：缺 Email";
+  }
+  try {
+    const fileIdMatch = record.pdfUrl.match(/[-\w]{25,}/);
+    if (!fileIdMatch) {
+      updateDocumentSendStatus(record.docType, record.docId, "Email", "補發失敗(連結錯)", "", "補發 Email 失敗：PDF 連結錯誤");
+      return "❌ " + record.targetName + " Email：PDF 連結錯誤";
+    }
+    const file = DriveApp.getFileById(fileIdMatch[0]);
+    const subject = `空空_${record.docType}補發_${record.month}_${record.targetName}`;
+    const body = `${record.targetName} 您好：\n\n補發 ${record.month} ${record.docType}，請參閱附件 PDF。\n\n單號：${record.docId}\n金額：${formatCurrency(record.amount)}`;
+    GmailApp.sendEmail(email, subject, body, { attachments: [file.getAs(PDF_MIME_TYPE)] });
+    updateDocumentSendStatus(record.docType, record.docId, "Email", "已寄送", new Date(), "補發 Email 已寄送：" + email);
+    return "✅ " + record.targetName + " Email：已補發";
+  } catch (err: any) {
+    updateDocumentSendStatus(record.docType, record.docId, "Email", "補發失敗(" + err.message + ")", "", "補發 Email 失敗：" + err.message);
+    return "❌ " + record.targetName + " Email：" + err.message;
+  }
+}
+
+function reissueDocumentLine(record: any) {
+  const lineMap = getDocumentLineMap(record.docType);
+  const lineUserId = lineMap[record.targetName] || "";
+  if (!lineUserId) {
+    updateDocumentSendStatus(record.docType, record.docId, "LINE", "補發失敗(缺LINE ID)", "", "補發 LINE push 失敗：缺 LINE User ID");
+    return "❌ " + record.targetName + " LINE：缺 LINE User ID";
+  }
+  const message = buildDocumentLineMessage(record.month, record.docType, record.targetName, record.docId, record.amount, record.pdfUrl);
+  const response = LineClient.push(lineUserId, [{ type: "text", text: message }]);
+  if (response && response.getResponseCode && response.getResponseCode() === 200) {
+    updateDocumentSendStatus(record.docType, record.docId, "LINE", "已推播", new Date(), "補發 LINE push 已寄送");
+    return "✅ " + record.targetName + " LINE：已補發";
+  }
+  const errorText = response && response.getContentText ? response.getContentText() : "LINE API 無回應";
+  updateDocumentSendStatus(record.docType, record.docId, "LINE", "補發失敗", "", "補發 LINE push 失敗：" + errorText);
+  return "❌ " + record.targetName + " LINE：推播失敗";
 }
 
 function handleLiffAdminUpdateReceiptPayment(params: any) {

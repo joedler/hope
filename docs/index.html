@@ -658,18 +658,6 @@
             </label>
 
             <!-- 行政功能分頁 -->
-            <div class="grid grid-cols-3 gap-2">
-              <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-semibold text-teal-700" @click="adminMonth = formatAdminMonthOffset(0)">
-                本月
-              </button>
-              <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-semibold text-teal-700" @click="adminMonth = formatAdminMonthOffset(-1)">
-                上月
-              </button>
-              <button type="button" class="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700" @click="showAdminPreview('已產生單據')">
-                已產生單據
-              </button>
-            </div>
-
             <div class="grid grid-cols-2 gap-2 pt-2 sm:grid-cols-5">
               <button
                 type="button"
@@ -1934,14 +1922,6 @@
             this.adminPreview = null;
           },
 
-          formatAdminMonthOffset(offset) {
-            const now = new Date();
-            const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-            const year = target.getFullYear();
-            const month = String(target.getMonth() + 1).padStart(2, "0");
-            return `${year}-${month}`;
-          },
-
           adminFeaturePending(featureName) {
             alert(
               `${featureName} 已納入行政工作台規劃。\n\n` +
@@ -1951,7 +1931,7 @@
 
           canConfirmAdminPreview() {
             if (!this.adminPreview || this.adminPreview.canConfirm !== true) return false;
-            if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine" || this.adminPreview.confirmAction === "adminVoidDocument") {
+            if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine" || this.adminPreview.confirmAction === "adminVoidDocument" || this.adminPreview.confirmAction === "adminReissueDocument") {
               return this.selectedAdminRowIds().length > 0;
             }
             return true;
@@ -2039,6 +2019,8 @@
               }
             } else if (confirmAction === "adminVoidDocument") {
               confirmText = "確認後會將勾選單據標記為作廢；不會刪除 PDF、不會刪除資料列，但作廢後不可再寄送 Email 或 LINE push。\n是否確認作廢？";
+            } else if (confirmAction === "adminReissueDocument") {
+              confirmText = "確認後會補發同一份 PDF，不會改金額、內容或單據編號。\n是否確認補發？";
             } else if (confirmAction === "adminConfirmDocument") {
               if (featureName === "繳費單") {
                 confirmText = "確認後會產生繳費單 PDF 並建立單據紀錄；不會寄送 Email 或 LINE push。\n是否確認產生？";
@@ -2054,10 +2036,18 @@
             );
             if (!confirmed) return;
             let voidReason = "";
+            let reissueChannel = "";
             if (confirmAction === "adminVoidDocument") {
               voidReason = window.prompt("請輸入作廢原因（必填）", "");
               if (!voidReason || !voidReason.trim()) {
                 alert("作廢原因必填，已取消。");
+                return;
+              }
+            }
+            if (confirmAction === "adminReissueDocument") {
+              reissueChannel = window.prompt("請輸入補發方式：Email、LINE 或 both", "Email");
+              if (!reissueChannel || !reissueChannel.trim()) {
+                alert("補發方式必填，已取消。");
                 return;
               }
             }
@@ -2075,6 +2065,7 @@
                 month: formattedMonth,
                 selectedIds: JSON.stringify(this.selectedAdminRowIds()),
                 reason: voidReason,
+                channel: reissueChannel,
               });
               if (!result.ok) throw new Error(result.message || "確認寫入失敗。");
               alert(result.message || "確認執行完成。");
