@@ -733,12 +733,16 @@
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">3 寄送繳費單</span>
                     <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：Email 預覽確認</p>
                   </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送繳費單 LINE')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">4 LINE push</span>
+                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：傳 PDF 連結</p>
+                  </button>
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('已產生單據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">4 已產生單據</span>
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">5 已產生單據</span>
                     <p class="mt-1 text-[10px] text-amber-400 leading-4">只讀：查看 PDF 與寄送狀態</p>
                   </button>
                 </div>
-                <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">LINE push 尚未開放執行；目前先以 Email/單據狀態預覽為主。</div>
+                <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">LINE push 會傳送 PDF 連結給家長 LINE，需先預覽、勾選、確認後才會寄送。</div>
               </div>
 
               <div x-show="activeAdminTab === 'receipt'" class="space-y-3">
@@ -758,6 +762,10 @@
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送收據 Email')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">3 寄送收據</span>
                     <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：Email 預覽確認</p>
+                  </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送收據 LINE')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">4 LINE push</span>
+                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：傳 PDF 連結</p>
                   </button>
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('一般收據')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">一般收據</span>
@@ -788,8 +796,12 @@
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">3 寄送領據</span>
                     <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：Email 預覽確認</p>
                   </button>
+                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送領據 LINE')">
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">4 LINE push</span>
+                    <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：傳 PDF 連結</p>
+                  </button>
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('已產生單據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">4 已產生單據</span>
+                    <span class="text-xs font-bold text-white group-hover:text-amber-400">5 已產生單據</span>
                     <p class="mt-1 text-[10px] text-amber-400 leading-4">只讀：查看領據狀態</p>
                   </button>
                 </div>
@@ -1927,7 +1939,7 @@
 
           canConfirmAdminPreview() {
             if (!this.adminPreview || this.adminPreview.canConfirm !== true) return false;
-            if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail") {
+            if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine") {
               return this.selectedAdminRowIds().length > 0;
             }
             return true;
@@ -2004,6 +2016,14 @@
                 confirmText = "確認後只會寄送已產生的收據 PDF Email，並回寫 Email 寄送狀態；不會重新產生收據或 LINE push。\n是否確認寄送？";
               } else if (featureName === "寄送領據 Email") {
                 confirmText = "確認後只會寄送已產生的領據 PDF Email，並回寫 Email 寄送狀態；不會重新產生領據或 LINE push。\n是否確認寄送？";
+              }
+            } else if (confirmAction === "adminConfirmLine") {
+              if (featureName === "寄送繳費單 LINE") {
+                confirmText = "確認後會將繳費單 PDF 連結以 LINE push 傳給家長，並回寫 LINE 狀態；不會重新產生 PDF 或寄送 Email。\n是否確認推播？";
+              } else if (featureName === "寄送收據 LINE") {
+                confirmText = "確認後會將收據 PDF 連結以 LINE push 傳給家長，並回寫 LINE 狀態；不會重新產生收據或寄送 Email。\n是否確認推播？";
+              } else if (featureName === "寄送領據 LINE") {
+                confirmText = "確認後會將領據 PDF 連結以 LINE push 傳給講師本人，並回寫 LINE 狀態；不會重新產生領據或寄送 Email。\n是否確認推播？";
               }
             } else if (confirmAction === "adminConfirmDocument") {
               if (featureName === "繳費單") {
