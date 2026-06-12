@@ -151,6 +151,35 @@
       .shadow-lg {
         box-shadow: 0 14px 40px rgba(25, 107, 113, 0.12) !important;
       }
+      .admin-shell {
+        background: rgba(255, 255, 255, 0.78) !important;
+        border-color: #b9e4dc !important;
+        box-shadow: 0 18px 44px rgba(33, 113, 118, 0.12) !important;
+      }
+      .admin-shell [class*="bg-slate-900"][class*="p-4"][class*="text-center"] {
+        background: #ffffff !important;
+        border-color: #cde9e3 !important;
+        box-shadow: 0 8px 20px rgba(33, 113, 118, 0.08) !important;
+        min-height: 6.75rem;
+        text-align: left !important;
+      }
+      .admin-shell [class*="bg-slate-900"][class*="p-4"][class*="text-center"]:hover {
+        border-color: #78cfc5 !important;
+        transform: translateY(-1px);
+      }
+      .admin-shell [x-show*="activeAdminTab"] {
+        background: transparent !important;
+      }
+      .admin-shell [x-show="adminPreview"] {
+        background: #fff9e8 !important;
+        border-color: #efd58c !important;
+        box-shadow: none !important;
+      }
+      .admin-shell [x-show="adminPreview"] li,
+      .admin-shell [x-show="adminPreview"] label,
+      .admin-shell [x-show="adminPreview"] [class*="bg-white"] {
+        border-color: #e7f1ee !important;
+      }
     </style>
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -641,7 +670,7 @@
 
         <!-- 2D. 行政作業面板 -->
         <section x-show="activeTab === 'admin' && teacherProfile.isAdmin" class="space-y-4">
-          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg space-y-4">
+          <div class="admin-shell rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-lg space-y-4">
             <div class="flex justify-between items-center pb-3 border-b border-slate-900">
               <h3 class="text-sm font-bold text-amber-400">行政與財務管理</h3>
               <span class="inline-flex items-center rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400 ring-1 ring-inset ring-amber-500/30">Admin Mode</span>
@@ -725,10 +754,6 @@
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">4 LINE push</span>
                     <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：傳 PDF 連結</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('已產生單據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">5 已產生單據</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">只讀：查看 PDF 與寄送狀態</p>
-                  </button>
                 </div>
                 <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">LINE push 會傳送 PDF 連結給家長 LINE，需先預覽、勾選、確認後才會寄送。</div>
               </div>
@@ -759,10 +784,6 @@
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">一般收據</span>
                     <p class="mt-1 text-[10px] text-amber-400 leading-4">只讀：入會費、常年會費、捐款</p>
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('已產生單據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">已產生單據</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">只讀：查看收據狀態</p>
-                  </button>
                 </div>
               </div>
 
@@ -787,10 +808,6 @@
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('寄送領據 LINE')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">4 LINE push</span>
                     <p class="mt-1 text-[10px] text-teal-400 leading-4">可執行：傳 PDF 連結</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('已產生單據')">
-                    <span class="text-xs font-bold text-white group-hover:text-amber-400">5 已產生單據</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">只讀：查看領據狀態</p>
                   </button>
                 </div>
               </div>
