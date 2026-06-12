@@ -952,20 +952,20 @@
                 </div>
                 <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.rows && adminPreview.rows.length">
                   <div class="flex items-center justify-between gap-2">
-                    <p class="text-xs font-bold text-amber-700" x-text="hasSelectableAdminRows() ? '選擇本次處理項目' : '明細項目'"></p>
-                    <button type="button" x-show="hasSelectableAdminRows()" class="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[10px] font-semibold text-amber-700" @click="selectAllAdminRows()">
-                      勾選可處理
+                    <p class="text-xs font-bold text-amber-700">選擇本次處理項目</p>
+                    <button type="button" class="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[10px] font-semibold text-amber-700" @click="selectAllAdminRows()">
+                      全選顯示項目
                     </button>
                   </div>
                   <template x-for="row in (adminPreview ? adminPreview.rows : [])" :key="row.id">
-                    <div class="block px-3 py-2"
-                      :class="row.selectable ? 'rounded-lg border border-teal-200 bg-white' : 'border-b border-amber-100 last:border-b-0'">
+                    <label class="block rounded-lg border bg-white px-3 py-2"
+                      :class="row.selectable ? 'border-teal-200' : 'border-amber-100'">
                       <div class="flex items-start gap-2">
                         <input type="checkbox" class="mt-1 h-4 w-4 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
-                          x-show="row.selectable" x-model="row.selected" :disabled="!row.selectable">
+                          x-model="row.selected">
                         <div class="min-w-0 flex-1">
                           <div class="flex flex-wrap items-center justify-between gap-2">
-                            <p class="font-bold text-slate-900" x-text="(row.selectable ? '● ' : '') + row.name"></p>
+                            <p class="font-bold text-slate-900" x-text="'● ' + row.name"></p>
                             <p class="font-bold text-teal-700" x-text="row.amountText || ''"></p>
                           </div>
                           <p class="mt-1 text-xs leading-5 text-slate-600" x-show="row.docId || row.status">
@@ -991,7 +991,7 @@
                           <p class="mt-1 text-[11px] leading-4 text-red-600" x-show="row.warnings && row.warnings.length" x-text="'提醒：' + row.warnings.join('、')"></p>
                         </div>
                       </div>
-                    </div>
+                    </label>
                   </template>
                   <p class="text-[11px] leading-4 text-amber-700" x-show="selectedAdminRowsSummary()" x-text="selectedAdminRowsSummary()"></p>
                 </div>
@@ -2034,10 +2034,11 @@
             return true;
           },
 
-          hydrateAdminPreview(preview, statusText) {
+          hydrateAdminPreview(preview, statusText, selectionContext) {
+            const context = selectionContext || null;
             const rows = (preview.rows || []).map((row) => ({
               ...row,
-              selected: row.selectable && row.selectedDefault === true,
+              selected: context ? this.adminRowMatchesSelection(row, context) : false,
             }));
             return {
               ...preview,
@@ -2048,6 +2049,25 @@
               canConfirm: preview.canConfirm === true,
               confirmAction: preview.confirmAction || "",
             };
+          },
+
+          buildAdminSelectionContext() {
+            const rows = this.selectedAdminRows();
+            return {
+              ids: rows.map((row) => row.id).filter(Boolean),
+              docIds: rows.map((row) => row.docId).filter(Boolean),
+              names: rows.map((row) => row.name).filter(Boolean),
+              typedNames: rows.map((row) => `${row.type || ""}:${row.name || ""}`).filter((key) => !key.endsWith(":")),
+            };
+          },
+
+          adminRowMatchesSelection(row, context) {
+            if (!row || !context) return false;
+            if (row.id && context.ids.indexOf(row.id) > -1) return true;
+            if (row.docId && context.docIds.indexOf(row.docId) > -1) return true;
+            if (row.name && context.names.indexOf(row.name) > -1) return true;
+            const typedName = `${row.type || ""}:${row.name || ""}`;
+            return typedName !== ":" && context.typedNames.indexOf(typedName) > -1;
           },
 
           formatAdminDetail(part) {
@@ -2076,21 +2096,23 @@
           },
 
           selectedAdminRowIds() {
+            return this.selectedAdminRows().map((row) => row.id);
+          },
+
+          selectedAdminRows() {
             if (!this.adminPreview || !this.adminPreview.rows) return [];
             return this.adminPreview.rows
-              .filter((row) => row.selectable && row.selected)
-              .map((row) => row.id);
+              .filter((row) => row.selected);
           },
 
           selectedAdminRowsSummary() {
-            const count = this.selectedAdminRowIds().length;
+            const count = this.selectedAdminRows().length;
             if (!this.adminPreview || !this.adminPreview.rows || !this.adminPreview.rows.length) return "";
-            if (!this.hasSelectableAdminRows()) return "";
             return count > 0 ? `已選取 ${count} 項。` : "";
           },
 
           hasSelectableAdminRows() {
-            return !!(this.adminPreview && this.adminPreview.rows && this.adminPreview.rows.some((row) => row.selectable));
+            return !!(this.adminPreview && this.adminPreview.rows && this.adminPreview.rows.length);
           },
 
           adminPreviewStatusHint() {
@@ -2150,7 +2172,9 @@
           canRunAdminFlowAction(actionKey) {
             const targetFeature = this.adminFlowTargetFeature(actionKey);
             if (!targetFeature) return false;
-            if (!this.adminPreview || this.adminPreview.title !== targetFeature) return true;
+            if (!this.adminPreview || !this.adminPreview.rows || !this.adminPreview.rows.length) return false;
+            if (this.selectedAdminRows().length === 0) return false;
+            if (this.adminPreview.title !== targetFeature) return true;
             if (actionKey === "receiptPayment") return true;
             return this.canConfirmAdminPreview();
           },
@@ -2161,7 +2185,8 @@
 
             if (actionKey === "receiptPayment") {
               if (!this.adminPreview || this.adminPreview.title !== "收據") {
-                await this.showAdminPreview("收據");
+                const selectionContext = this.buildAdminSelectionContext();
+                await this.showAdminPreview("收據", { selectionContext });
                 return;
               }
               await this.applyReceiptPaymentInfo();
@@ -2169,19 +2194,31 @@
             }
 
             if (!this.adminPreview || this.adminPreview.title !== targetFeature) {
-              await this.showAdminPreview(targetFeature);
+              const selectionContext = this.buildAdminSelectionContext();
+              await this.showAdminPreview(targetFeature, { selectionContext });
+              if (this.selectedAdminRows().length === 0) {
+                alert("勾選項目不符合此動作的資料來源或狀態，請確認學生、講師、單號與狀態後再執行。");
+                return;
+              }
+              if (this.canConfirmAdminPreview()) {
+                await this.confirmAdminPreview();
+              } else {
+                alert("已帶入勾選資料，但這筆資料不符合此動作的處理條件。請查看卡片狀態與提醒。");
+              }
               return;
             }
 
             if (this.canConfirmAdminPreview()) {
               await this.confirmAdminPreview();
+            } else {
+              alert("請先勾選要處理的資料，並確認卡片狀態符合此動作條件。");
             }
           },
 
           selectAllAdminRows() {
             if (!this.adminPreview || !this.adminPreview.rows) return;
             this.adminPreview.rows.forEach((row) => {
-              row.selected = row.selectable === true;
+              row.selected = true;
             });
           },
 
@@ -2352,7 +2389,8 @@
             }
           },
 
-          async showAdminPreview(featureName) {
+          async showAdminPreview(featureName, options) {
+            const opts = options || {};
             const formattedMonth = this.adminMonth.replace("-", "/");
             this.submitting = true;
             this.operationMessage = `正在讀取${featureName}預覽...`;
@@ -2366,7 +2404,7 @@
                   month: formattedMonth,
                 });
                 if (result.ok && result.preview) {
-                  this.adminPreview = this.hydrateAdminPreview(result.preview);
+                  this.adminPreview = this.hydrateAdminPreview(result.preview, "", opts.selectionContext || null);
                   this.submitting = false;
                   this.operationMessage = "";
                   return;
