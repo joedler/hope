@@ -1958,7 +1958,8 @@ function sendReceiptEmailForTarget(targetMonth: string, targetName: string) {
     const status = String(data[i][16] || "").trim();
     const pdfUrl = String(data[i][15] || "").trim();
     const docId = String(data[i][9] || "").trim();
-    if (rowMonth !== targetMonth || studentName !== targetName || status !== "待寄送" || !pdfUrl) continue;
+    const emailStatus = normalizeFallbackEmailStatus(status, "待寄送");
+    if (rowMonth !== targetMonth || studentName !== targetName || emailStatus !== "待寄送" || !pdfUrl) continue;
     recordDocumentEntry({
       month: targetMonth,
       docType: "收據",
@@ -2225,7 +2226,8 @@ function sendAllowanceEmailForTarget(targetMonth: string, targetName: string) {
     const status = String(data[i][11] || "").trim();
     const pdfUrl = String(data[i][10] || "").trim();
     const docId = String(data[i][7] || "").trim();
-    if (rowMonth !== targetMonth || teacherName !== targetName || status !== "待寄送" || !pdfUrl) continue;
+    const emailStatus = normalizeFallbackEmailStatus(status, "待寄送");
+    if (rowMonth !== targetMonth || teacherName !== targetName || emailStatus !== "待寄送" || !pdfUrl) continue;
     recordDocumentEntry({
       month: targetMonth,
       docType: "領據",
