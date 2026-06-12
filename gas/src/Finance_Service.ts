@@ -116,6 +116,21 @@ function handleLiffAdminPreview(params: any) {
       summary: `查看 ${month} 已產生單據。`,
       items: ["彙整繳費單、收據、領據與一般收據狀態", "此頁只讀，不會作廢、重產或寄送", "後續作廢、重新產生、補發需另走預覽確認流程"],
       nextAction: "只讀查看，暫不執行"
+    },
+    "作廢單據": {
+      summary: `預覽 ${month} 作廢單據規則。`,
+      items: ["保留原紀錄與 PDF，不刪除", "作廢後不可再 Email 或 LINE push", "需記錄原因與操作人", "正式執行按鈕尚未開放"],
+      nextAction: "作廢流程待二次確認介面完成後開放"
+    },
+    "補發單據": {
+      summary: `預覽 ${month} 補發單據規則。`,
+      items: ["補發只重寄同一份 PDF", "不改金額、內容、單號與收件人", "若內容需更正，必須作廢後建立新版", "正式執行按鈕尚未開放"],
+      nextAction: "補發流程待二次確認介面完成後開放"
+    },
+    "重新產生單據": {
+      summary: `預覽 ${month} 重新產生單據規則。`,
+      items: ["未寄送單據可重新產生 PDF", "已寄送或已 LINE push 不可覆蓋原單", "已寄送單據需先作廢，再建立新版", "正式執行按鈕尚未開放"],
+      nextAction: "重新產生流程待版本控管介面完成後開放"
     }
   };
 
@@ -491,7 +506,50 @@ function sendDocumentLineForTarget(targetMonth: string, docType: string, docId: 
     updateDocumentSendStatus(docType, cleanDocId, "LINE", "推播失敗", "", "LINE push 失敗：" + errorText);
     return "❌ " + targetName + "：LINE push 失敗";
   }
+  if (docType === "領據") {
+    const fallback = findAllowanceFallbackRecordByDocId(targetMonth, cleanDocId);
+    if (fallback) {
+      recordDocumentEntry({
+        month: targetMonth,
+        docType: "領據",
+        targetType: "講師",
+        targetName: fallback.targetName,
+        docId: fallback.docId,
+        sourceSheet: SHEET_NAME_FIN_PAY,
+        sourceKey: targetMonth + "|" + fallback.targetName,
+        amount: fallback.amount,
+        pdfUrl: fallback.pdfUrl,
+        generateStatus: "已產生",
+        emailStatus: fallback.emailStatus || "待寄送",
+        lineStatus: "未推播",
+        note: "由鐘點結算表 LINE push 流程同步"
+      });
+      return sendDocumentLineForTarget(targetMonth, docType, cleanDocId);
+    }
+  }
   return "❌ 找不到單據：" + cleanDocId;
+}
+
+function findAllowanceFallbackRecordByDocId(targetMonth: string, docId: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
+  if (!sheet) return null;
+  const timeZone = Session.getScriptTimeZone();
+  const data = sheet.getDataRange().getValues();
+  const cleanDocId = String(docId || "").trim();
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    const rowDocId = String(data[i][7] || "").trim();
+    if (rowMonth !== targetMonth || rowDocId !== cleanDocId) continue;
+    return {
+      targetName: String(data[i][1] || "").trim(),
+      docId: rowDocId,
+      amount: parseFloat(data[i][14]) || parseFloat(data[i][6]) || 0,
+      pdfUrl: String(data[i][10] || "").trim(),
+      emailStatus: normalizeFallbackEmailStatus(String(data[i][11] || "").trim(), "待寄送")
+    };
+  }
+  return null;
 }
 
 function buildDocumentLineMessage(month: string, docType: string, targetName: string, docId: string, amount: number, pdfUrl: string) {
@@ -964,7 +1022,7 @@ function buildReceiptLineAdminPreview(month: string) {
 
 function buildAllowanceLineAdminPreview(month: string) {
   try {
-    const result = buildDocumentLineReadOnlyPreview(month, "領據", true);
+    const result = appendAllowanceLineFallback(buildDocumentLineReadOnlyPreview(month, "領據", true), month);
     return {
       summary: `${month} 領據 LINE push 預覽：待推播 ${result.pendingCount} 位講師，可推播 ${result.sendableCount} 位，已推播 ${result.sentCount} 位。`,
       items: result.items,
@@ -981,6 +1039,63 @@ function buildAllowanceLineAdminPreview(month: string) {
       canConfirm: false
     };
   }
+}
+
+function appendAllowanceLineFallback(preview: any, month: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
+  if (!sheet) return preview;
+
+  const timeZone = Session.getScriptTimeZone();
+  const data = sheet.getDataRange().getValues();
+  const existing = getExistingPreviewDocIds(preview);
+  const lineMap = getTeacherLineUserIdMap();
+  preview.items = (preview.items || []).filter(function(item: string) {
+    return String(item || "").indexOf("目前沒有") < 0;
+  });
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
+    const teacherName = String(data[i][1] || "").trim();
+    const pdfUrl = String(data[i][10] || "").trim();
+    const docId = String(data[i][7] || "").trim();
+    if (rowMonth !== month || !teacherName || !pdfUrl || !docId || existing[docId]) continue;
+    const lineUserId = lineMap[teacherName] || "";
+    const warnings: string[] = [];
+    if (!lineUserId) warnings.push("缺 LINE User ID");
+    const selectable = !!lineUserId;
+    preview.pendingCount = (preview.pendingCount || 0) + 1;
+    if (selectable) preview.sendableCount = (preview.sendableCount || 0) + 1;
+    preview.items.push(
+      `${teacherName}\n` +
+      `推播對象：講師本人\n` +
+      `LINE ID：${lineUserId ? "已設定" : "未設定"}\n` +
+      `金額：${formatCurrency(parseFloat(data[i][14]) || parseFloat(data[i][6]) || 0)}\n` +
+      `單號：${docId}\n` +
+      `LINE狀態：未推播\n` +
+      `來源：鐘點結算表既有領據` +
+      (warnings.length ? "\n提醒：" + warnings.join("、") : "")
+    );
+    preview.rows.push({
+      id: "line:領據:" + docId,
+      type: "teacher",
+      name: teacherName,
+      amount: parseFloat(data[i][14]) || parseFloat(data[i][6]) || 0,
+      amountText: formatCurrency(parseFloat(data[i][14]) || parseFloat(data[i][6]) || 0),
+      docId,
+      status: "未推播",
+      selectable,
+      selectedDefault: selectable,
+      warnings,
+      details: [
+        "LINE對象：講師本人",
+        "LINE ID：" + (lineUserId ? "已設定" : "未設定"),
+        "PDF：" + pdfUrl,
+        "來源：鐘點結算表既有領據，推播前會先同步單據紀錄表"
+      ]
+    });
+  }
+  if ((preview.items || []).length === 0) preview.items.push(`${month} 目前沒有 領據 LINE push 資料。`);
+  return preview;
 }
 
 function getExistingPreviewDocIds(preview: any) {
