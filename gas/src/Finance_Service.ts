@@ -117,11 +117,7 @@ function handleLiffAdminPreview(params: any) {
       items: ["彙整繳費單、收據、領據與一般收據狀態", "此頁只讀，不會作廢、重產或寄送", "後續作廢、重新產生、補發需另走預覽確認流程"],
       nextAction: "只讀查看，暫不執行"
     },
-    "作廢單據": {
-      summary: `預覽 ${month} 作廢單據規則。`,
-      items: ["保留原紀錄與 PDF，不刪除", "作廢後不可再 Email 或 LINE push", "需記錄原因與操作人", "正式執行按鈕尚未開放"],
-      nextAction: "作廢流程待二次確認介面完成後開放"
-    },
+    "作廢單據": buildVoidDocumentAdminPreview(month),
     "補發單據": {
       summary: `預覽 ${month} 補發單據規則。`,
       items: ["補發只重寄同一份 PDF", "不改金額、內容、單號與收件人", "若內容需更正，必須作廢後建立新版", "正式執行按鈕尚未開放"],
@@ -571,6 +567,135 @@ function buildDocumentLineMessage(month: string, docType: string, targetName: st
     "",
     "若內容有疑問，請直接回覆行政人員。"
   ].join("\n");
+}
+
+function handleLiffAdminVoidDocument(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+  const reason = String(params.reason || "").trim();
+  const selectedIds = parseAdminSelectedIds(params.selectedIds);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+  if (!reason) return { ok: false, message: "請填寫作廢原因。" };
+
+  const beforePreview = buildVoidDocumentReadOnlyPreview(month);
+  const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
+  const selectedRows = selectedIds.length > 0
+    ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+    : [];
+  if (selectedRows.length === 0) return { ok: false, message: `${month} 沒有選取可作廢的單據。` };
+
+  const resultMessages: string[] = [];
+  for (let i = 0; i < selectedRows.length; i++) {
+    resultMessages.push(voidDocumentRecord(selectedRows[i].docType, selectedRows[i].docId, reason, lineUserId));
+  }
+  const failCount = resultMessages.filter(function(msg: string) { return msg.indexOf("❌") === 0 || msg.indexOf("⚠️") === 0; }).length;
+  return {
+    ok: failCount < selectedRows.length,
+    message: `${month} 作廢單據執行完成：成功 ${selectedRows.length - failCount} 筆，失敗/跳過 ${failCount} 筆。\n` + resultMessages.join("\n"),
+    preview: buildVoidDocumentAdminPreview(month)
+  };
+}
+
+function buildVoidDocumentAdminPreview(month: string) {
+  const result = buildVoidDocumentReadOnlyPreview(month);
+  return {
+    summary: `${month} 作廢單據預覽：可作廢 ${result.voidableCount} 筆，已作廢 ${result.voidedCount} 筆。`,
+    items: result.items,
+    rows: result.rows,
+    nextAction: result.voidableCount > 0 ? "確認作廢選取單據" : "目前沒有可作廢單據",
+    canConfirm: result.voidableCount > 0,
+    confirmAction: "adminVoidDocument"
+  };
+}
+
+function buildVoidDocumentReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  const items: string[] = [];
+  const rows: any[] = [];
+  let voidableCount = 0;
+  let voidedCount = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][1], timeZone);
+    if (rowMonth !== month) continue;
+    const docType = String(data[i][2] || "").trim();
+    const targetType = String(data[i][3] || "").trim();
+    const targetName = String(data[i][4] || "").trim();
+    const docId = String(data[i][5] || "").trim();
+    const amount = parseFloat(data[i][8]) || 0;
+    const pdfUrl = String(data[i][9] || "").trim();
+    const emailStatus = normalizeDocumentEmailStatus(docType, String(data[i][11] || "").trim());
+    const lineStatus = String(data[i][12] || "").trim() || "未推播";
+    const voidStatus = String(data[i][14] || "").trim();
+    const note = String(data[i][15] || "").trim();
+    if (!docType || !docId) continue;
+    if (docType === "收據" && !isValidReceiptDocumentRecordRow(data[i])) continue;
+
+    const selectable = !voidStatus;
+    if (selectable) voidableCount++;
+    if (voidStatus) voidedCount++;
+    const statusText = voidStatus || "有效";
+    items.push(
+      `${docType} / ${targetName || "未填對象"}\n` +
+      `單號：${docId}\n` +
+      `金額：${formatCurrency(amount)}\n` +
+      `狀態：${statusText}\n` +
+      `Email：${emailStatus}\n` +
+      `LINE：${lineStatus}` +
+      (note ? "\n備註：" + note : "")
+    );
+    rows.push({
+      id: "void:" + docType + ":" + docId,
+      type: "document",
+      name: docType + " / " + (targetName || "未填對象"),
+      docType,
+      amount,
+      amountText: formatCurrency(amount),
+      docId,
+      status: statusText,
+      selectable,
+      selectedDefault: false,
+      warnings: voidStatus ? ["已作廢"] : [],
+      details: [
+        "對象：" + (targetType ? targetType + " / " : "") + (targetName || "未填"),
+        "PDF：" + (pdfUrl || "未填"),
+        "Email：" + emailStatus,
+        "LINE：" + lineStatus,
+        note ? "備註：" + note : ""
+      ].filter(function(part: string) { return part !== ""; })
+    });
+  }
+  if (items.length === 0) items.push(`${month} 目前沒有可查看的單據紀錄。`);
+  return { items, rows, voidableCount, voidedCount };
+}
+
+function voidDocumentRecord(docType: string, docId: string, reason: string, operator: string) {
+  const cleanDocType = String(docType || "").trim();
+  const cleanDocId = String(docId || "").trim();
+  if (!cleanDocType || !cleanDocId) return "❌ 缺單據類型或單據編號";
+  const sheet = ensureDocumentRecordSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const existingType = String(data[i][2] || "").trim();
+    const existingDocId = String(data[i][5] || "").trim();
+    if (existingType !== cleanDocType || existingDocId !== cleanDocId) continue;
+    const voidStatus = String(data[i][14] || "").trim();
+    if (voidStatus) return "⚠️ " + cleanDocType + " " + cleanDocId + "：已作廢";
+    const timeText = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd HH:mm");
+    const oldNote = String(data[i][15] || "").trim();
+    const note = `作廢：${timeText}；原因：${reason}`;
+    sheet.getRange(i + 1, 15).setValue("作廢");
+    sheet.getRange(i + 1, 16).setValue(oldNote ? oldNote + "\n" + note : note);
+    sheet.getRange(i + 1, 17).setValue(operator || "系統");
+    return "✅ " + cleanDocType + " " + cleanDocId + "：已作廢";
+  }
+  return "❌ 找不到單據：" + cleanDocType + " " + cleanDocId;
 }
 
 function handleLiffAdminUpdateReceiptPayment(params: any) {

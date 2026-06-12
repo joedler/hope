@@ -1951,7 +1951,7 @@
 
           canConfirmAdminPreview() {
             if (!this.adminPreview || this.adminPreview.canConfirm !== true) return false;
-            if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine") {
+            if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine" || this.adminPreview.confirmAction === "adminVoidDocument") {
               return this.selectedAdminRowIds().length > 0;
             }
             return true;
@@ -2037,6 +2037,8 @@
               } else if (featureName === "寄送領據 LINE") {
                 confirmText = "確認後會將領據 PDF 連結以 LINE push 傳給講師本人，並回寫 LINE 狀態；不會重新產生領據或寄送 Email。\n是否確認推播？";
               }
+            } else if (confirmAction === "adminVoidDocument") {
+              confirmText = "確認後會將勾選單據標記為作廢；不會刪除 PDF、不會刪除資料列，但作廢後不可再寄送 Email 或 LINE push。\n是否確認作廢？";
             } else if (confirmAction === "adminConfirmDocument") {
               if (featureName === "繳費單") {
                 confirmText = "確認後會產生繳費單 PDF 並建立單據紀錄；不會寄送 Email 或 LINE push。\n是否確認產生？";
@@ -2051,6 +2053,14 @@
               confirmText
             );
             if (!confirmed) return;
+            let voidReason = "";
+            if (confirmAction === "adminVoidDocument") {
+              voidReason = window.prompt("請輸入作廢原因（必填）", "");
+              if (!voidReason || !voidReason.trim()) {
+                alert("作廢原因必填，已取消。");
+                return;
+              }
+            }
             if (!this.config.gasWebAppUrl) {
               alert("模擬確認執行。");
               return;
@@ -2064,6 +2074,7 @@
                 feature: featureName,
                 month: formattedMonth,
                 selectedIds: JSON.stringify(this.selectedAdminRowIds()),
+                reason: voidReason,
               });
               if (!result.ok) throw new Error(result.message || "確認寫入失敗。");
               alert(result.message || "確認執行完成。");
