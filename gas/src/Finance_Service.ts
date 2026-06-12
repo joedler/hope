@@ -1964,9 +1964,11 @@ function buildTuitionAdminPreview(month: string) {
       items.push(`另有 ${result.items.length - items.length} 筆課程彙總未列出，正式預覽頁後續再提供完整清單。`);
     }
     if ((result as any).isExistingSettlement) {
+      const rows = (result as any).rows || [];
       return {
         summary: `${month} 已寫入學費結算：${result.studentCount} 位學生，總額 ${formatCurrency(result.grandTotal)}。`,
         items,
+        rows,
         nextAction: "已寫入，請勿重複試算",
         canConfirm: false
       };
@@ -2217,10 +2219,46 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
   }
   const pendingItems = buildPendingTuitionPlanItems(ss, month);
   for (let p = 0; p < pendingItems.length; p++) items.push(pendingItems[p]);
-  return { items, grandTotal, studentCount, pendingCount: pendingItems.length, isExistingSettlement: true };
+  let rows: any[] = [];
+  try {
+    const noticePreview = buildPaymentNoticeReadOnlyPreview(month);
+    rows = (noticePreview.rows || []).concat(buildPendingTuitionPlanRows(ss, month));
+  } catch (e) {
+    rows = buildExistingTuitionSettlementRowsFromSummary(studentsMap).concat(buildPendingTuitionPlanRows(ss, month));
+  }
+  return { items, rows, grandTotal, studentCount, pendingCount: pendingItems.length, isExistingSettlement: true };
 }
 
 function buildPendingTuitionPlanItems(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string): string[] {
+  return buildPendingTuitionPlanRows(ss, month).map(function(row: any) {
+    return row.name + "\n" + (row.details || []).join("\n");
+  });
+}
+
+function buildExistingTuitionSettlementRowsFromSummary(studentsMap: any): any[] {
+  const rows: any[] = [];
+  for (const studentName in studentsMap) {
+    const item = studentsMap[studentName];
+    const total = item.total || item.courseAmountSum || 0;
+    rows.push({
+      id: "student:" + studentName,
+      type: "student",
+      name: studentName,
+      amount: total,
+      amountText: formatCurrency(total),
+      docId: item.docId || "",
+      pdfUrl: "",
+      status: "已寫入",
+      selectable: false,
+      selectedDefault: false,
+      warnings: item.docId ? [] : ["缺單據編號"],
+      details: [`課程數：${item.courses.length}`]
+    });
+  }
+  return rows;
+}
+
+function buildPendingTuitionPlanRows(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string): any[] {
   const timeZone = Session.getScriptTimeZone();
   const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
   const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
@@ -2236,7 +2274,7 @@ function buildPendingTuitionPlanItems(ss: GoogleAppsScript.Spreadsheet.Spreadshe
   }
 
   const data = planSheet.getDataRange().getValues();
-  const items: string[] = [];
+  const rows: any[] = [];
   for (let i = 1; i < data.length; i++) {
     const lessonMonth = normalizeFinancialMonth(data[i][2], timeZone);
     const status = String(data[i][9] || "").trim();
@@ -2245,15 +2283,28 @@ function buildPendingTuitionPlanItems(ss: GoogleAppsScript.Spreadsheet.Spreadshe
     if (lessonMonth !== month || status !== "未核銷" || !studentName || !courseName) continue;
     const hours = parseFloat(data[i][5]) || 0;
     const fee = feeMap[studentName + "_" + courseName] || 0;
-    items.push(
-      studentName + " / " + courseName +
-      "\n狀態：待核銷，未寫入" +
-      "\n時間：" + formatSheetMonthDay(data[i][2], timeZone) + " " + data[i][3] + "-" + data[i][4] +
-      "\n時數：" + hours + "hr" +
-      "\n預估：" + formatCurrency(Math.round(hours * fee))
-    );
+    const amount = Math.round(hours * fee);
+    rows.push({
+      id: "pending-plan:" + i,
+      type: "pending-plan",
+      name: studentName + " / " + courseName,
+      amount,
+      amountText: formatCurrency(amount),
+      docId: "",
+      pdfUrl: "",
+      status: "待核銷，未寫入",
+      selectable: false,
+      selectedDefault: false,
+      warnings: [],
+      details: [
+        "狀態：待核銷，未寫入",
+        "時間：" + formatSheetMonthDay(data[i][2], timeZone) + " " + data[i][3] + "-" + data[i][4],
+        "時數：" + hours + "hr",
+        "預估：" + formatCurrency(amount)
+      ]
+    });
   }
-  return items;
+  return rows;
 }
 
 function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, stats: any, configMap: any, month: string) {

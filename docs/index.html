@@ -958,19 +958,19 @@
                     </button>
                   </div>
                   <template x-for="row in (adminPreview ? adminPreview.rows : [])" :key="row.id">
-                    <label class="block rounded-lg border bg-white px-3 py-2"
-                      :class="row.selectable ? 'border-teal-200' : 'border-slate-200 opacity-70'">
+                    <div class="block px-3 py-2"
+                      :class="row.selectable ? 'rounded-lg border border-teal-200 bg-white' : 'border-b border-amber-100 last:border-b-0'">
                       <div class="flex items-start gap-2">
                         <input type="checkbox" class="mt-1 h-4 w-4 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
                           x-show="row.selectable" x-model="row.selected" :disabled="!row.selectable">
                         <div class="min-w-0 flex-1">
                           <div class="flex flex-wrap items-center justify-between gap-2">
-                            <p class="font-bold text-slate-900" x-text="'● ' + row.name"></p>
+                            <p class="font-bold text-slate-900" x-text="(row.selectable ? '● ' : '') + row.name"></p>
                             <p class="font-bold text-teal-700" x-text="row.amountText || ''"></p>
                           </div>
-                          <p class="mt-1 text-xs leading-5 text-slate-600">
-                            <span x-text="row.docId ? '單號 ' + row.docId : '缺單號'"></span>
-                            <span>｜</span>
+                          <p class="mt-1 text-xs leading-5 text-slate-600" x-show="row.docId || row.status">
+                            <span x-show="row.docId" x-text="'單號 ' + row.docId"></span>
+                            <span x-show="row.docId && row.status">｜</span>
                             <span x-text="row.status || ''"></span>
                           </p>
                           <div class="admin-row-detail mt-1 space-y-1 text-[11px] leading-4 text-slate-500" x-show="row.details && row.details.length">
@@ -991,7 +991,7 @@
                           <p class="mt-1 text-[11px] leading-4 text-red-600" x-show="row.warnings && row.warnings.length" x-text="'提醒：' + row.warnings.join('、')"></p>
                         </div>
                       </div>
-                    </label>
+                    </div>
                   </template>
                   <p class="text-[11px] leading-4 text-amber-700" x-show="selectedAdminRowsSummary()" x-text="selectedAdminRowsSummary()"></p>
                 </div>
@@ -1000,7 +1000,7 @@
                     <button
                       type="button"
                       class="rounded-xl border border-teal-600 bg-white px-3 py-3 text-xs font-bold text-teal-800 transition hover:bg-teal-50 disabled:border-slate-200 disabled:text-slate-400"
-                      :disabled="submitting"
+                      :disabled="submitting || !canRunAdminFlowAction(action.key)"
                       @click="runAdminFlowAction(action.key)"
                       x-text="action.label"
                     ></button>
@@ -2129,7 +2129,7 @@
             return [];
           },
 
-          async runAdminFlowAction(actionKey) {
+          adminFlowTargetFeature(actionKey) {
             const featureByAction = {
               tuitionWrite: "學費試算",
               paymentNotice: "繳費單",
@@ -2144,7 +2144,19 @@
               allowanceEmail: "寄送領據 Email",
               allowanceLine: "寄送領據 LINE",
             };
-            const targetFeature = featureByAction[actionKey];
+            return featureByAction[actionKey] || "";
+          },
+
+          canRunAdminFlowAction(actionKey) {
+            const targetFeature = this.adminFlowTargetFeature(actionKey);
+            if (!targetFeature) return false;
+            if (!this.adminPreview || this.adminPreview.title !== targetFeature) return true;
+            if (actionKey === "receiptPayment") return true;
+            return this.canConfirmAdminPreview();
+          },
+
+          async runAdminFlowAction(actionKey) {
+            const targetFeature = this.adminFlowTargetFeature(actionKey);
             if (!targetFeature) return;
 
             if (actionKey === "receiptPayment") {
