@@ -130,6 +130,7 @@ function handleLiffAdminPreview(params: any) {
     feature === "寄送繳費單 Email" ? buildPaymentNoticeEmailAdminPreview(month) :
     feature === "寄送收據 Email" ? buildReceiptEmailAdminPreview(month) :
     feature === "寄送領據 Email" ? buildAllowanceEmailAdminPreview(month) :
+    feature === "寄送一般收據 Email" ? buildGeneralReceiptEmailAdminPreview(month) :
     feature === "寄送繳費單 LINE" ? buildPaymentNoticeLineAdminPreview(month) :
     feature === "寄送收據 LINE" ? buildReceiptLineAdminPreview(month) :
     feature === "寄送領據 LINE" ? buildAllowanceLineAdminPreview(month) :
@@ -503,6 +504,38 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
     message: `${receiptDate} 一般收據已產生並寫入。\n姓名：${name}\n類別：${category}\n金額：${formatCurrency(amount)}\n編號：${docId}`,
     pdfUrl: state.pdfUrl,
     preview: buildGeneralReceiptAdminPreview(month)
+  };
+}
+
+function handleLiffAdminConfirmGeneralReceiptEmail(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+  const selectedIds = parseAdminSelectedIds(params.selectedIds);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+
+  const beforePreview = buildGeneralReceiptEmailReadOnlyPreview(month);
+  const selectableRows = (beforePreview.rows || []).filter(function(row: any) { return row.selectable; });
+  const selectedRows = selectedIds.length > 0
+    ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+    : selectableRows;
+  if (selectedRows.length === 0) {
+    return { ok: false, message: `${month} 沒有選取可寄送的一般收據；請確認 PDF、Email 與待寄送狀態。` };
+  }
+
+  const resultMessages: string[] = [];
+  for (let i = 0; i < selectedRows.length; i++) {
+    resultMessages.push(sendGeneralReceiptEmailForTarget(month, selectedRows[i].name));
+  }
+  const afterPreview = buildGeneralReceiptEmailAdminPreview(month);
+  const failCount = resultMessages.filter(function(msg: string) { return msg.indexOf("❌") === 0 || msg.indexOf("⚠️") === 0; }).length;
+  return {
+    ok: failCount < selectedRows.length,
+    message: `${month} 一般收據 Email 執行完成：成功 ${selectedRows.length - failCount} 筆，失敗/跳過 ${failCount} 筆。\n` + resultMessages.join("\n"),
+    preview: afterPreview
   };
 }
 
@@ -3300,6 +3333,92 @@ function buildGeneralReceiptAdminPreview(month: string) {
   }
 }
 
+function buildGeneralReceiptEmailAdminPreview(month: string) {
+  try {
+    const result = buildGeneralReceiptEmailReadOnlyPreview(month);
+    return {
+      summary: `${month} 一般收據 Email 預覽：待寄送 ${result.pendingCount} 筆，可寄送 ${result.sendableCount} 筆，已寄送 ${result.sentCount} 筆。`,
+      items: result.items.slice(0, 12),
+      rows: result.rows,
+      nextAction: "確認寄送一般收據 Email",
+      canConfirm: result.sendableCount > 0,
+      confirmAction: "adminConfirmGeneralReceiptEmail"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} 一般收據 Email 預覽讀取失敗。`,
+      items: ["請先檢查一般收據紀錄、會員/捐款者 Email 與 Gmail 權限。", "錯誤：" + e.toString()],
+      rows: [],
+      nextAction: "確認寄送一般收據 Email（暫不可執行）",
+      canConfirm: false
+    };
+  }
+}
+
+function buildGeneralReceiptEmailReadOnlyPreview(month: string) {
+  const timeZone = Session.getScriptTimeZone();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_GEN_RECORD);
+  if (!sheet) throw new Error("找不到一般收據紀錄。");
+  const data = sheet.getDataRange().getValues();
+  const items: string[] = [];
+  const rows: any[] = [];
+  let pendingCount = 0;
+  let sendableCount = 0;
+  let sentCount = 0;
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][2], timeZone);
+    if (rowMonth !== month) continue;
+    const docId = String(data[i][1] || "").trim();
+    const dateText = data[i][2] instanceof Date ? Utilities.formatDate(data[i][2], timeZone, "yyyy/MM/dd") : String(data[i][2] || "").trim();
+    const name = String(data[i][3] || "").trim();
+    const amount = parseFloat(data[i][4]) || 0;
+    const category = String(data[i][5] || "").trim();
+    const method = String(data[i][6] || "").trim();
+    const pdfUrl = String(data[i][7] || "").trim();
+    const emailStatus = String(data[i][8] || "").trim() || "待寄送";
+    const memberInfo = lookupGeneralMemberData(name, category);
+    const email = memberInfo.email || "";
+    if (emailStatus === "待寄送") pendingCount++;
+    if (emailStatus.indexOf("已寄送") > -1) sentCount++;
+    const warnings: string[] = [];
+    if (!pdfUrl) warnings.push("缺 PDF");
+    if (!email || email.indexOf("@") < 0) warnings.push("缺 Email");
+    if (emailStatus !== "待寄送") warnings.push(emailStatus ? "狀態不是待寄送" : "缺寄送狀態");
+    const selectable = emailStatus === "待寄送" && !!pdfUrl && email.indexOf("@") > -1;
+    if (selectable) sendableCount++;
+    items.push(
+      `${name || "未填姓名"}\n` +
+      `Email：${email || "未填"}\n` +
+      `類別：${category || "未填"}\n` +
+      `金額：${formatCurrency(amount)}\n` +
+      `編號：${docId || "未填"}\n` +
+      `狀態：${emailStatus}` +
+      (warnings.length ? "\n提醒：" + warnings.join("、") : "")
+    );
+    rows.push({
+      id: "general-receipt-email:" + (docId || i),
+      type: "document",
+      name: name || "未填姓名",
+      amount,
+      amountText: formatCurrency(amount),
+      docId,
+      pdfUrl,
+      status: emailStatus,
+      selectable,
+      selectedDefault: selectable,
+      warnings,
+      details: [
+        "Email：" + (email || "未填"),
+        "類別：" + (category || "未填"),
+        "收款：" + (method || "未填") + " / " + (dateText || "未填")
+      ]
+    });
+  }
+  if (items.length === 0) items.push(`${month} 目前沒有一般收據 Email 資料。`);
+  return { items, rows, pendingCount, sendableCount, sentCount };
+}
+
 function buildGeneralReceiptReadOnlyPreview(month: string) {
   const timeZone = Session.getScriptTimeZone();
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -4549,6 +4668,7 @@ function normalizeFinancialMonth(value: any, timeZone: string): string {
 
 // 記帳、財務三表與會員查詢模組宣告與引進
 declare function lookupGeneralMemberData(name: string, category: string): any;
+declare function sendGeneralReceiptEmailForTarget(targetMonth: string, targetName: string): string;
 declare function handleFinancialReportCommand(event: any, userMsg: string, type: string): void;
 declare function handleManualJournalEntryCommand(event: any, userMsg: string): void;
 declare function executeManualJournalSave(event: any, data: string): void;

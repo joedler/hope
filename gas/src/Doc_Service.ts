@@ -1538,13 +1538,17 @@ function handleSendGenReceiptCommand(event: any, userMsg: string) {
   if (parts.length < 3) { replyLineMessage(replyToken, "格式：寄一般收據 YYYY/MM 姓名"); return; }
   const targetMonth = parts[1]; const targetName = parts[2];
   if (!targetMonth.match(/^\d{4}\/\d{2}$/)) { replyLineMessage(replyToken, "月份格式錯誤，請使用 YYYY/MM"); return; }
-  
+
+  replyLineMessage(replyToken, sendGeneralReceiptEmailForTarget(targetMonth, targetName));
+}
+
+function sendGeneralReceiptEmailForTarget(targetMonth: string, targetName: string): string {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const sheet = ss.getSheetByName(SHEET_NAME_GEN_RECORD);
-  if (!sheet) return;
+  if (!sheet) return "❌ 找不到一般收據紀錄分頁。";
   const data = sheet.getDataRange().getValues();
   let targetRow = -1; let pdfUrl = ""; let category = ""; let currentEmailStatus = "";
-  
+
   for (let i = data.length - 1; i >= 1; i--) {
      const rowDateRaw = data[i][2];
      const rowMonth = (rowDateRaw instanceof Date) ? Utilities.formatDate(rowDateRaw, Session.getScriptTimeZone(), "yyyy/MM") : String(rowDateRaw).substring(0, 7);
@@ -1552,13 +1556,13 @@ function handleSendGenReceiptCommand(event: any, userMsg: string) {
          targetRow = i + 1; category = data[i][5]; pdfUrl = data[i][7]; currentEmailStatus = data[i][8]; break;
      }
   }
-  
-  if (targetRow == -1) { replyLineMessage(replyToken, "⚠️ 找不到紀錄。"); return; }
-  if (currentEmailStatus === "已寄送") { replyLineMessage(replyToken, "⚠️ 已寄送完成，系統阻擋重複寄送。"); return; }
-  
+
+  if (targetRow == -1) return "⚠️ 找不到一般收據紀錄。";
+  if (String(currentEmailStatus || "").indexOf("已寄送") > -1) return "⚠️ 已寄送完成，系統阻擋重複寄送。";
+
   const memberInfo = lookupGeneralMemberData(targetName, category);
   const email = memberInfo.email; let newStatus = "寄送失敗"; let reportMsg = "";
-  
+
   if (email && email.indexOf("@") > -1) {
      try {
        const fileIdMatch = pdfUrl.match(/[-\w]{25,}/);
@@ -1574,9 +1578,9 @@ function handleSendGenReceiptCommand(event: any, userMsg: string) {
        } else { newStatus = "失敗:無效連結"; reportMsg = "❌ 找不到 PDF 連結。"; }
      } catch(e: any) { newStatus = "失敗:" + e.message; reportMsg = "❌ 系統報錯：" + e.message; }
   } else { newStatus = "無Email"; reportMsg = "❌ 找不到 Email。"; }
-  
+
   sheet.getRange(targetRow, 9).setValue(newStatus);
-  replyLineMessage(replyToken, reportMsg);
+  return reportMsg;
 }
 
 function replyGenReceiptPreview(replyToken: string, state: any) {

@@ -977,6 +977,14 @@
                   >
                     產生一般收據 PDF
                   </button>
+                  <button
+                    type="button"
+                    class="mt-2 w-full rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 disabled:opacity-50"
+                    :disabled="submitting"
+                    @click="showAdminPreview('寄送一般收據 Email')"
+                  >
+                    寄送一般收據 Email
+                  </button>
                 </div>
                 <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.rows && adminPreview.rows.length">
                   <div class="flex items-center justify-between gap-2">
@@ -1393,10 +1401,12 @@
               await this.loadMe();
               this.applyEntryParams();
               if (this.state === "bound") {
-                await this.loadOptions();
-                await this.loadRecentRegisteredLessons();
-                await this.loadTuitionAdjustmentOptions();
-                await this.loadUnverifiedSchedules();
+                await Promise.all([
+                  this.loadOptions(),
+                  this.loadRecentRegisteredLessons(),
+                  this.loadTuitionAdjustmentOptions(),
+                  this.loadUnverifiedSchedules(),
+                ]);
               }
             } catch (error) {
               this.state = "unbound";
@@ -2150,6 +2160,8 @@
               } else if (featureName === "寄送領據 Email") {
                 confirmText = "確認後只會寄送已產生的領據 PDF Email，並回寫 Email 寄送狀態；不會重新產生領據或 LINE push。\n是否確認寄送？";
               }
+            } else if (confirmAction === "adminConfirmGeneralReceiptEmail") {
+              confirmText = "確認後只會寄送已產生的一般收據 PDF Email，並回寫一般收據紀錄的 Email 狀態；不會重新產生 PDF 或 LINE push。\n是否確認寄送？";
             } else if (confirmAction === "adminConfirmLine") {
               if (featureName === "寄送繳費單 LINE") {
                 confirmText = "確認後會將繳費單 PDF 連結以 LINE push 傳給家長，並回寫 LINE 狀態；不會重新產生 PDF 或寄送 Email。\n是否確認推播？";
@@ -2349,6 +2361,11 @@
                 summary: "預覽入會費、常年會費或捐款一般收據。",
                 items: ["選擇收據類型", "檢查收款人與金額", "確認後才產生或寄送", "後續需接正式收件人資料"],
                 nextAction: "填寫一般收據資料後產生 PDF",
+              },
+              "寄送一般收據 Email": {
+                summary: `預覽 ${formattedMonth} 一般收據 Email。`,
+                items: ["檢查一般收據 PDF", "檢查會員或捐款者 Email", "確認後才寄送"],
+                nextAction: "確認寄送一般收據 Email（尚未開放）",
               },
               "領據": {
                 summary: `預覽 ${formattedMonth} 講師領據。`,

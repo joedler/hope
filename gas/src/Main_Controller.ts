@@ -100,6 +100,10 @@ function doGet(e: any) {
         // 產生一般收據 PDF 並寫入一般收據紀錄
         result = handleLiffAdminCreateGeneralReceipt(e.parameter);
         break;
+      case "adminConfirmGeneralReceiptEmail":
+        // 確認寄送一般收據 Email
+        result = handleLiffAdminConfirmGeneralReceiptEmail(e.parameter);
+        break;
       case "adminUpdateReceiptPayment":
         // 批次補填收據收款方式、類別與日期
         result = handleLiffAdminUpdateReceiptPayment(e.parameter);
@@ -443,6 +447,7 @@ declare function handleLiffAdminVoidDocument(params: any): any;
 declare function handleLiffAdminReissueDocument(params: any): any;
 declare function handleLiffAdminRegenerateDocument(params: any): any;
 declare function handleLiffAdminCreateGeneralReceipt(params: any): any;
+declare function handleLiffAdminConfirmGeneralReceiptEmail(params: any): any;
 declare function handleLiffAdminUpdateReceiptPayment(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;
 declare function handleLiffTuitionAdjustmentOptions(params: any): any;
