@@ -180,6 +180,23 @@
       .admin-shell [x-show="adminPreview"] [class*="bg-white"] {
         border-color: #e7f1ee !important;
       }
+      .admin-workspace {
+        background: transparent !important;
+        padding: 0 !important;
+      }
+      .admin-preview-list {
+        list-style: none !important;
+        padding-left: 0 !important;
+      }
+      .admin-preview-list > li {
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid #f0dfaa;
+        border-radius: 0.75rem;
+        padding: 0.75rem;
+      }
+      .admin-preview-list > li + li {
+        margin-top: 0.5rem;
+      }
     </style>
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -731,7 +748,7 @@
             </div>
 
             <!-- 分頁工作區 -->
-            <div x-show="activeAdminTab !== 'adjustment'" class="rounded-2xl bg-white p-4">
+            <div x-show="activeAdminTab !== 'adjustment'" class="admin-workspace rounded-2xl bg-white p-4">
               <div x-show="activeAdminTab === 'calc'" class="space-y-3">
                 <div>
                   <h4 class="text-sm font-bold text-white">學費流程</h4>
@@ -828,15 +845,15 @@
                   </button>
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('作廢單據')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">作廢單據</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">規則預覽：暫不執行</p>
+                    <p class="mt-1 text-[10px] text-amber-400 leading-4">可執行：標記作廢</p>
                   </button>
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('補發單據')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">補發單據</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">規則預覽：暫不執行</p>
+                    <p class="mt-1 text-[10px] text-amber-400 leading-4">可執行：重寄 PDF</p>
                   </button>
                   <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center hover:border-amber-500/40 transition group" @click="showAdminPreview('重新產生單據')">
                     <span class="text-xs font-bold text-white group-hover:text-amber-400">重新產生</span>
-                    <p class="mt-1 text-[10px] text-amber-400 leading-4">規則預覽：暫不執行</p>
+                    <p class="mt-1 text-[10px] text-amber-400 leading-4">可執行：未寄送重產</p>
                   </button>
                 </div>
               </div>
@@ -855,7 +872,7 @@
                 </div>
                 <div class="mt-3 space-y-2">
                   <p x-text="adminPreview ? adminPreview.summary : ''"></p>
-                  <ul class="list-disc space-y-1 pl-5">
+                  <ul class="admin-preview-list space-y-1">
                     <template x-for="item in (adminPreview ? adminPreview.items : [])" :key="item">
                       <li class="whitespace-pre-line" x-text="item"></li>
                     </template>
@@ -966,7 +983,7 @@
               </div>
             </div>
 
-            <div x-show="activeAdminTab === 'adjustment'" class="space-y-4 rounded-2xl bg-white p-4">
+            <div x-show="activeAdminTab === 'adjustment'" class="admin-workspace space-y-4 rounded-2xl bg-white p-4">
               <div>
                 <h4 class="text-sm font-bold text-white">帳務補救</h4>
                 <p class="mt-1 text-[10px] leading-4 text-slate-500">建立補收/退費紀錄，不會直接更改舊繳費單。</p>
