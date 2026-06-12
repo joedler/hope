@@ -879,7 +879,7 @@
                       :class="row.selectable ? 'border-teal-200' : 'border-slate-200 opacity-70'">
                       <div class="flex items-start gap-2">
                         <input type="checkbox" class="mt-1 h-4 w-4 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
-                          x-model="row.selected" :disabled="!row.selectable">
+                          x-show="row.selectable" x-model="row.selected" :disabled="!row.selectable">
                         <div class="min-w-0 flex-1">
                           <div class="flex flex-wrap items-center justify-between gap-2">
                             <p class="font-bold text-slate-900" x-text="row.name"></p>

@@ -2332,15 +2332,37 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
     const voidStatus = String(data[i][14] || "").trim();
     const note = String(data[i][15] || "").trim();
 
-    if (!groups[docType]) groups[docType] = { count: 0, generated: 0, emailSent: 0, lineSent: 0, amount: 0 };
+    if (docType === "收據" && !isValidReceiptDocumentRecordRow(data[i])) continue;
+
+    if (!groups[docType]) {
+      groups[docType] = {
+        count: 0,
+        generated: 0,
+        emailPending: 0,
+        emailSent: 0,
+        emailFailed: 0,
+        linePending: 0,
+        lineSent: 0,
+        amount: 0
+      };
+    }
     groups[docType].count++;
     groups[docType].amount += amount;
     if (pdfUrl || generateStatus === "已產生") groups[docType].generated++;
+    if (emailStatus === "待寄送") groups[docType].emailPending++;
     if (emailStatus.indexOf("已寄送") > -1) groups[docType].emailSent++;
+    if (emailStatus.indexOf("失敗") > -1) groups[docType].emailFailed++;
+    if (lineStatus === "未推播") groups[docType].linePending++;
     if (lineStatus.indexOf("已推播") > -1) groups[docType].lineSent++;
     recordCount++;
     totalAmount += amount;
 
+    const pdfText = pdfUrl ? "PDF 已產生" : "缺 PDF";
+    const statusText = [
+      generateStatus || "產生狀態未填",
+      emailStatus ? "Email " + emailStatus : "",
+      lineStatus ? "LINE " + lineStatus : ""
+    ].filter(function(part: string) { return part !== ""; }).join(" / ");
     rows.push({
       id: "document-record:" + docType + ":" + docId,
       type: "document",
@@ -2348,17 +2370,22 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
       amount,
       amountText: formatCurrency(amount),
       docId,
-      status: generateStatus,
+      status: statusText,
       selectable: false,
       selectedDefault: false,
-      warnings: voidStatus ? [voidStatus] : [],
+      warnings: [
+        voidStatus || "",
+        pdfUrl ? "" : "缺 PDF",
+        emailStatus.indexOf("失敗") > -1 ? emailStatus : ""
+      ].filter(function(part: string) { return part !== ""; }),
       details: [
         "對象：" + (targetType ? targetType + " / " : "") + (targetName || "未填"),
         "金額：" + formatCurrency(amount),
-        "PDF：" + (pdfUrl || "未填"),
+        "PDF：" + pdfText,
         "Email：" + emailStatus,
         "LINE：" + lineStatus,
         "寄送時間：" + (sentAt || "未寄送"),
+        "連結：" + (pdfUrl || "未填"),
         note ? "備註：" + note : ""
       ].filter(function(part: string) { return part !== ""; })
     });
@@ -2374,8 +2401,8 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
       `${label}\n` +
       `狀態：只讀查看\n` +
       `筆數：${g.count} 筆，已有 PDF ${g.generated} 份\n` +
-      `Email：已寄送 ${g.emailSent} 筆\n` +
-      `LINE：已推播 ${g.lineSent} 筆\n` +
+      `Email：待寄送 ${g.emailPending} 筆，已寄送 ${g.emailSent} 筆，失敗 ${g.emailFailed} 筆\n` +
+      `LINE：未推播 ${g.linePending} 筆，已推播 ${g.lineSent} 筆\n` +
       `金額：${formatCurrency(g.amount)}`
     );
   }
@@ -2387,8 +2414,8 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
       `${label}\n` +
       `狀態：只讀查看\n` +
       `筆數：${g.count} 筆，已有 PDF ${g.generated} 份\n` +
-      `Email：已寄送 ${g.emailSent} 筆\n` +
-      `LINE：已推播 ${g.lineSent} 筆\n` +
+      `Email：待寄送 ${g.emailPending} 筆，已寄送 ${g.emailSent} 筆，失敗 ${g.emailFailed} 筆\n` +
+      `LINE：未推播 ${g.linePending} 筆，已推播 ${g.lineSent} 筆\n` +
       `金額：${formatCurrency(g.amount)}`
     );
   }
