@@ -682,16 +682,19 @@ function addFallbackEmailPreviewRow(preview: any, params: any) {
   const targetType = params.targetType || "學生";
   const sourceLabel = params.sourceLabel || "原結算表";
   const lineStatus = params.lineStatus || "未推播";
+  const status = String(params.status || "待寄送").trim();
   const warnings: string[] = [];
   if (!pdfUrl) warnings.push("缺 PDF");
   if (!email || email.indexOf("@") < 0) warnings.push("缺 Email");
+  if (status !== "待寄送") warnings.push(status ? "狀態不是待寄送" : "缺寄送狀態");
 
   preview.items = (preview.items || []).filter(function(item: string) {
     return String(item || "").indexOf("目前沒有") < 0;
   });
 
-  const selectable = !!pdfUrl && email.indexOf("@") > -1;
-  preview.pendingCount = (preview.pendingCount || 0) + 1;
+  const selectable = status === "待寄送" && !!pdfUrl && email.indexOf("@") > -1;
+  if (status === "待寄送") preview.pendingCount = (preview.pendingCount || 0) + 1;
+  if (status.indexOf("已寄送") > -1) preview.sentCount = (preview.sentCount || 0) + 1;
   if (selectable) preview.sendableCount = (preview.sendableCount || 0) + 1;
 
   preview.items.push(
@@ -699,7 +702,7 @@ function addFallbackEmailPreviewRow(preview: any, params: any) {
     `收件人：${email || "未填"}\n` +
     `金額：${formatCurrency(amount)}\n` +
     `單號：${docId || "未填"}\n` +
-    `Email狀態：待寄送\n` +
+    `Email狀態：${status}\n` +
     `LINE狀態：${lineStatus}\n` +
     `來源：${sourceLabel}` +
     (params.note ? "\n備註：" + params.note : "") +
@@ -712,7 +715,7 @@ function addFallbackEmailPreviewRow(preview: any, params: any) {
     amount,
     amountText: formatCurrency(amount),
     docId,
-    status: "待寄送",
+    status,
     selectable,
     selectedDefault: selectable,
     warnings,
@@ -769,6 +772,15 @@ function appendPaymentNoticeEmailFallback(preview: any, month: string, emailMap:
   return preview;
 }
 
+function normalizeFallbackEmailStatus(rawStatus: string, defaultStatus: string) {
+  const status = String(rawStatus || "").trim();
+  if (status.indexOf("已寄送") > -1) return "已寄送";
+  if (status.indexOf("失敗") > -1) return status;
+  if (status === "待寄送") return "待寄送";
+  if (!status || status.indexOf("已產") > -1 || status.indexOf("PDF") > -1) return defaultStatus;
+  return status;
+}
+
 function appendReceiptEmailFallback(preview: any, month: string, emailMap: any) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
@@ -783,7 +795,9 @@ function appendReceiptEmailFallback(preview: any, month: string, emailMap: any) 
     const status = String(data[i][16] || "").trim();
     const pdfUrl = String(data[i][15] || "").trim();
     const docId = String(data[i][9] || "").trim();
-    if (rowMonth !== month || !studentName || status !== "待寄送" || !pdfUrl || !docId || existing[docId]) continue;
+    const emailStatus = normalizeFallbackEmailStatus(status, "待寄送");
+    if (rowMonth !== month || !studentName || !pdfUrl || !docId || existing[docId]) continue;
+    if (emailStatus !== "待寄送" && emailStatus.indexOf("已寄送") < 0) continue;
     addFallbackEmailPreviewRow(preview, {
       targetType: "學生",
       targetName: studentName,
@@ -791,6 +805,7 @@ function appendReceiptEmailFallback(preview: any, month: string, emailMap: any) 
       docId,
       pdfUrl,
       email: emailMap[studentName] || "",
+      status: emailStatus,
       sourceLabel: "學費結算表既有收據",
       note: "尚未同步單據紀錄表"
     });
@@ -813,7 +828,9 @@ function appendAllowanceEmailFallback(preview: any, month: string, emailMap: any
     const status = String(data[i][11] || "").trim();
     const pdfUrl = String(data[i][10] || "").trim();
     const docId = String(data[i][7] || "").trim();
-    if (rowMonth !== month || !teacherName || status !== "待寄送" || !pdfUrl || !docId || existing[docId]) continue;
+    const emailStatus = normalizeFallbackEmailStatus(status, "待寄送");
+    if (rowMonth !== month || !teacherName || !pdfUrl || !docId || existing[docId]) continue;
+    if (emailStatus !== "待寄送" && emailStatus.indexOf("已寄送") < 0) continue;
     addFallbackEmailPreviewRow(preview, {
       targetType: "講師",
       targetName: teacherName,
@@ -821,6 +838,7 @@ function appendAllowanceEmailFallback(preview: any, month: string, emailMap: any
       docId,
       pdfUrl,
       email: emailMap[teacherName] || "",
+      status: emailStatus,
       sourceLabel: "鐘點結算表既有領據",
       note: "尚未同步單據紀錄表"
     });
