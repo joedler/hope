@@ -893,9 +893,9 @@
                     type="button"
                     class="mt-3 w-full rounded-xl border border-teal-600 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 disabled:opacity-50"
                     :disabled="submitting"
-                    @click="applyReceiptPaymentInfo()"
+                    @click="runAdminFlowAction('receiptPayment')"
                   >
-                    套用收款資料
+                    選擇要套用的學生
                   </button>
                 </div>
                 <div class="mt-3 rounded-xl border border-teal-200 bg-white p-3 text-xs text-slate-700" x-show="adminPreview && adminPreview.title === '一般收據'">
@@ -952,17 +952,17 @@
                 </div>
                 <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.rows && adminPreview.rows.length">
                   <div class="flex items-center justify-between gap-2">
-                    <p class="text-xs font-bold text-amber-700">選擇本次處理項目</p>
-                    <button type="button" class="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[10px] font-semibold text-amber-700" @click="selectAllAdminRows()">
-                      全選顯示項目
+                    <p class="text-xs font-bold text-amber-700" x-text="adminSelectionHeading()"></p>
+                    <button type="button" x-show="hasEligibleAdminRows()" class="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[10px] font-semibold text-amber-700" @click="selectAllAdminRows()">
+                      全選本步驟可處理
                     </button>
                   </div>
                   <template x-for="row in (adminPreview ? adminPreview.rows : [])" :key="row.id">
                     <label class="block rounded-lg border bg-white px-3 py-2"
-                      :class="row.selectable ? 'border-teal-200' : 'border-amber-100'">
+                      :class="isAdminRowSelectable(row) ? 'border-teal-200' : 'border-amber-100 opacity-70'">
                       <div class="flex items-start gap-2">
                         <input type="checkbox" class="mt-1 h-4 w-4 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
-                          x-model="row.selected">
+                          x-model="row.selected" :disabled="!isAdminRowSelectable(row)">
                         <div class="min-w-0 flex-1">
                           <div class="flex flex-wrap items-center justify-between gap-2">
                             <p class="font-bold text-slate-900" x-text="'● ' + row.name"></p>
@@ -999,21 +999,22 @@
                   <template x-for="action in adminFlowActions()" :key="action.key">
                     <button
                       type="button"
-                      class="rounded-xl border border-teal-600 bg-white px-3 py-3 text-xs font-bold text-teal-800 transition hover:bg-teal-50 disabled:border-slate-200 disabled:text-slate-400"
+                      class="rounded-xl border px-3 py-3 text-xs font-bold transition disabled:border-slate-200 disabled:text-slate-400"
+                      :class="activeAdminActionKey === action.key ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-teal-600 bg-white text-teal-800 hover:bg-teal-50'"
                       :disabled="submitting || !canRunAdminFlowAction(action.key)"
                       @click="runAdminFlowAction(action.key)"
-                      x-text="action.label"
+                      x-text="adminFlowActionLabel(action)"
                     ></button>
                   </template>
                 </div>
                 <button
                   type="button"
-                  x-show="canConfirmAdminPreview() && !isAdminFlowTab()"
+                  x-show="canConfirmAdminPreview() && (!isAdminFlowTab() || activeAdminActionKey)"
                   class="mt-3 w-full rounded-xl border border-teal-700 bg-teal-600 px-4 py-3 text-sm font-semibold text-white disabled:bg-slate-200 disabled:text-slate-400"
                   :disabled="submitting"
                   @click="confirmAdminPreview()"
                 >
-                  <span x-show="!submitting" x-text="adminPreview ? adminPreview.nextAction : '確認寫入'"></span>
+                  <span x-show="!submitting" x-text="currentAdminConfirmLabel()"></span>
                   <span x-show="submitting">正在確認寫入...</span>
                 </button>
               </div>
@@ -1285,6 +1286,7 @@
           activeStatusPanel: "registered",
           activeAdminTab: "calc",
           activeToolTab: "overview",
+          activeAdminActionKey: "",
           adminPreview: null,
           activeTimePicker: null,
           timePickerHours: ["06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"],
@@ -2009,6 +2011,7 @@
           setAdminTab(tab) {
             this.activeAdminTab = tab;
             this.adminPreview = null;
+            this.activeAdminActionKey = "";
             if (tab === "tools") {
               this.activeToolTab = "overview";
             }
@@ -2017,6 +2020,7 @@
           setToolTab(tab) {
             this.activeToolTab = tab;
             this.adminPreview = null;
+            this.activeAdminActionKey = "";
           },
 
           adminFeaturePending(featureName) {
@@ -2027,10 +2031,13 @@
           },
 
           canConfirmAdminPreview() {
-            if (!this.adminPreview || this.adminPreview.canConfirm !== true) return false;
+            if (!this.adminPreview) return false;
+            if (this.isAdminFlowTab() && this.activeAdminActionKey === "receiptPayment") return this.selectedAdminRowIds().length > 0;
+            if (this.adminPreview.canConfirm !== true) return false;
             if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine" || this.adminPreview.confirmAction === "adminVoidDocument" || this.adminPreview.confirmAction === "adminReissueDocument" || this.adminPreview.confirmAction === "adminRegenerateDocument") {
               return this.selectedAdminRowIds().length > 0;
             }
+            if (this.isAdminFlowTab()) return this.selectedAdminRowIds().length > 0;
             return true;
           },
 
@@ -2102,7 +2109,7 @@
           selectedAdminRows() {
             if (!this.adminPreview || !this.adminPreview.rows) return [];
             return this.adminPreview.rows
-              .filter((row) => row.selected);
+              .filter((row) => row.selected && this.isAdminRowSelectable(row));
           },
 
           selectedAdminRowsSummary() {
@@ -2113,6 +2120,35 @@
 
           hasSelectableAdminRows() {
             return !!(this.adminPreview && this.adminPreview.rows && this.adminPreview.rows.length);
+          },
+
+          hasEligibleAdminRows() {
+            return !!(this.adminPreview && this.adminPreview.rows && this.adminPreview.rows.some((row) => this.isAdminRowSelectable(row)));
+          },
+
+          isAdminRowSelectable(row) {
+            if (!row) return false;
+            if (!this.isAdminFlowTab()) return row.selectable === true;
+            if (!this.activeAdminActionKey) return false;
+            const targetFeature = this.adminFlowTargetFeature(this.activeAdminActionKey);
+            if (!this.adminPreview || this.adminPreview.title !== targetFeature) return false;
+            if (this.activeAdminActionKey === "receiptPayment") {
+              return !!(row.docId && Number(row.amount || 0) > 0 && !row.pdfUrl);
+            }
+            if (this.activeAdminActionKey === "tuitionWrite") {
+              return row.type === "tuition" && row.selectable === true;
+            }
+            if (this.activeAdminActionKey === "paymentNotice") {
+              return row.type === "student" && row.selectable === true;
+            }
+            return row.selectable === true;
+          },
+
+          adminSelectionHeading() {
+            if (!this.isAdminFlowTab()) return "選擇本次處理項目";
+            if (!this.activeAdminActionKey) return "先選擇下方要執行的步驟";
+            const action = this.adminFlowActions().find((item) => item.key === this.activeAdminActionKey);
+            return action ? `選擇要${action.label}的項目` : "選擇本次處理項目";
           },
 
           adminPreviewStatusHint() {
@@ -2151,6 +2187,31 @@
             return [];
           },
 
+          adminFlowActionLabel(action) {
+            if (!action) return "";
+            const count = this.adminFlowActionEligibleCount(action.key);
+            if (count === null) return action.label;
+            return `${action.label}${count > 0 ? "（" + count + "）" : ""}`;
+          },
+
+          adminFlowActionEligibleCount(actionKey) {
+            if (!this.adminPreview || !this.adminPreview.rows) return 0;
+            const targetFeature = this.adminFlowTargetFeature(actionKey);
+            if (this.adminPreview.title === targetFeature) {
+              return (this.adminPreview.rows || []).filter((row) => {
+                if (actionKey === "receiptPayment") return !!(row.docId && Number(row.amount || 0) > 0 && !row.pdfUrl);
+                return row.selectable === true;
+              }).length;
+            }
+            if (this.adminPreview.title === "學費試算" && (actionKey === "tuitionWrite" || actionKey === "paymentNotice")) {
+              return (this.adminPreview.rows || []).filter((row) => {
+                if (actionKey === "tuitionWrite") return row.type === "tuition" && row.selectable === true;
+                return row.type === "student" && row.selectable === true;
+              }).length;
+            }
+            return null;
+          },
+
           adminFlowTargetFeature(actionKey) {
             const featureByAction = {
               tuitionWrite: "學費試算",
@@ -2172,58 +2233,60 @@
           canRunAdminFlowAction(actionKey) {
             const targetFeature = this.adminFlowTargetFeature(actionKey);
             if (!targetFeature) return false;
-            if (!this.adminPreview || !this.adminPreview.rows || !this.adminPreview.rows.length) return false;
-            if (this.selectedAdminRows().length === 0) return false;
-            if (this.adminPreview.title !== targetFeature) return true;
-            if (actionKey === "receiptPayment") return true;
-            return this.canConfirmAdminPreview();
+            const knownCount = this.adminFlowActionEligibleCount(actionKey);
+            return knownCount === null ? !!this.adminPreview : knownCount > 0;
           },
 
           async runAdminFlowAction(actionKey) {
             const targetFeature = this.adminFlowTargetFeature(actionKey);
             if (!targetFeature) return;
+            this.activeAdminActionKey = actionKey;
 
             if (actionKey === "receiptPayment") {
               if (!this.adminPreview || this.adminPreview.title !== "收據") {
-                const selectionContext = this.buildAdminSelectionContext();
-                await this.showAdminPreview("收據", { selectionContext });
+                await this.showAdminPreview("收據", { activeActionKey: actionKey });
                 return;
               }
-              await this.applyReceiptPaymentInfo();
+              this.clearIneligibleAdminSelections();
               return;
             }
 
             if (!this.adminPreview || this.adminPreview.title !== targetFeature) {
-              const selectionContext = this.buildAdminSelectionContext();
-              await this.showAdminPreview(targetFeature, { selectionContext });
-              if (this.selectedAdminRows().length === 0) {
-                alert("勾選項目不符合此動作的資料來源或狀態，請確認學生、講師、單號與狀態後再執行。");
-                return;
-              }
-              if (this.canConfirmAdminPreview()) {
-                await this.confirmAdminPreview();
-              } else {
-                alert("已帶入勾選資料，但這筆資料不符合此動作的處理條件。請查看卡片狀態與提醒。");
-              }
+              await this.showAdminPreview(targetFeature, { activeActionKey: actionKey });
               return;
             }
 
-            if (this.canConfirmAdminPreview()) {
-              await this.confirmAdminPreview();
-            } else {
-              alert("請先勾選要處理的資料，並確認卡片狀態符合此動作條件。");
-            }
+            this.clearIneligibleAdminSelections();
           },
 
           selectAllAdminRows() {
             if (!this.adminPreview || !this.adminPreview.rows) return;
             this.adminPreview.rows.forEach((row) => {
-              row.selected = true;
+              row.selected = this.isAdminRowSelectable(row);
             });
+          },
+
+          clearIneligibleAdminSelections() {
+            if (!this.adminPreview || !this.adminPreview.rows) return;
+            this.adminPreview.rows.forEach((row) => {
+              if (!this.isAdminRowSelectable(row)) row.selected = false;
+            });
+          },
+
+          currentAdminConfirmLabel() {
+            if (this.isAdminFlowTab() && this.activeAdminActionKey) {
+              const action = this.adminFlowActions().find((item) => item.key === this.activeAdminActionKey);
+              return action ? `確認${action.label}` : "確認執行";
+            }
+            return this.adminPreview ? this.adminPreview.nextAction : "確認寫入";
           },
 
           async confirmAdminPreview() {
             if (!this.canConfirmAdminPreview()) return;
+            if (this.isAdminFlowTab() && this.activeAdminActionKey === "receiptPayment") {
+              await this.applyReceiptPaymentInfo();
+              return;
+            }
             const featureName = this.adminPreview.title;
             const formattedMonth = this.adminMonth.replace("-", "/");
             const confirmAction = this.adminPreview.confirmAction || "";
@@ -2362,6 +2425,7 @@
                 method: this.receiptPaymentForm.method,
                 category: this.receiptPaymentForm.category,
                 paymentDate: this.receiptPaymentForm.paymentDate,
+                selectedIds: JSON.stringify(this.selectedAdminRowIds()),
               });
               if (!result.ok) throw new Error(result.message || "套用收款資料失敗。");
               alert(result.message || "收款資料已套用。");
@@ -2391,6 +2455,7 @@
 
           async showAdminPreview(featureName, options) {
             const opts = options || {};
+            this.activeAdminActionKey = opts.activeActionKey !== undefined ? (opts.activeActionKey || "") : "";
             const formattedMonth = this.adminMonth.replace("-", "/");
             this.submitting = true;
             this.operationMessage = `正在讀取${featureName}預覽...`;
@@ -2405,6 +2470,7 @@
                 });
                 if (result.ok && result.preview) {
                   this.adminPreview = this.hydrateAdminPreview(result.preview, "", opts.selectionContext || null);
+                  this.clearIneligibleAdminSelections();
                   this.submitting = false;
                   this.operationMessage = "";
                   return;

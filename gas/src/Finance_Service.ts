@@ -1237,6 +1237,7 @@ function handleLiffAdminUpdateReceiptPayment(params: any) {
   const method = String(params.method || "").trim();
   const category = String(params.category || "").trim();
   const paymentDate = String(params.paymentDate || "").replace(/-/g, "/").trim();
+  const selectedIds = parseAdminSelectedIds(params.selectedIds);
 
   const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
   if (!isAdmin) {
@@ -1262,6 +1263,7 @@ function handleLiffAdminUpdateReceiptPayment(params: any) {
     const studentName = String(data[i][1] || "").trim();
     const total = parseFloat(data[i][8]) || 0;
     const docId = String(data[i][9] || "").trim();
+    if (selectedIds.length > 0 && selectedIds.indexOf("student:" + studentName) < 0) continue;
     if (!studentName || !docId || !total) continue;
     if (hasValidReceiptDocumentRecord(docId)) continue;
     sheet.getRange(i + 1, 13).setValue(method);
