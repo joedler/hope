@@ -3877,6 +3877,10 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
     const isTeacherTarget = docType === "領據" || targetType === "講師";
     const targetLineId = isTeacherTarget ? (teacherLineMap[targetName] || "") : (studentLineMap[targetName] || "");
     const canLinePush = !!pdfUrl && !!targetLineId && lineStatus === "未推播" && !voidStatus;
+    const manageableDoc = ["繳費單", "收據", "領據"].indexOf(docType) > -1;
+    const canVoid = !!docType && !!docId && !voidStatus;
+    const canReissue = manageableDoc && !!pdfUrl && !voidStatus;
+    const canRegenerate = manageableDoc && !!pdfUrl && !voidStatus && !isDocumentSentOrPushed(emailStatus, lineStatus);
     groups[docType].count++;
     groups[docType].amount += amount;
     if (pdfUrl || generateStatus === "已產生") groups[docType].generated++;
@@ -3907,11 +3911,17 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
       status: statusText,
       selectable: false,
       selectedDefault: false,
+      actions: {
+        documentVoid: canVoid,
+        documentReissue: canReissue,
+        documentRegenerate: canRegenerate
+      },
       warnings: [
         voidStatus || "",
         pdfUrl ? "" : "缺 PDF",
         lineStatus === "未推播" && !targetLineId ? "缺 LINE User ID" : "",
-        emailStatus.indexOf("失敗") > -1 ? emailStatus : ""
+        emailStatus.indexOf("失敗") > -1 ? emailStatus : "",
+        !canRegenerate && manageableDoc && pdfUrl && !voidStatus && isDocumentSentOrPushed(emailStatus, lineStatus) ? "已寄送或已推播，重產需先作廢" : ""
       ].filter(function(part: string) { return part !== ""; }),
       details: [
         "對象：" + (targetType ? targetType + " / " : "") + (targetName || "未填"),

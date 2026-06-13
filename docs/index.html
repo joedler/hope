@@ -786,43 +786,22 @@
               <div x-show="activeAdminTab === 'tools'" class="space-y-3">
                 <div>
                   <h4 class="text-sm font-bold text-white">帳務工具</h4>
-                  <p class="mt-1 text-[10px] leading-4 text-slate-500">查單據、補救帳務、管理單據與系統工具。</p>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-3 gap-3">
                   <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
                     :class="activeToolTab === 'overview' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
                     @click="setToolTab('overview'); showAdminPreview('單據總覽')">
                     <span class="text-xs font-bold" :class="activeToolTab === 'overview' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">單據總覽</span>
-                    <p class="mt-1 text-[10px] text-slate-500 leading-4">PDF 與寄送狀態</p>
                   </button>
                   <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
                     :class="activeToolTab === 'adjustment' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
                     @click="setToolTab('adjustment')">
                     <span class="text-xs font-bold" :class="activeToolTab === 'adjustment' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">帳務補救</span>
-                    <p class="mt-1 text-[10px] text-slate-500 leading-4">補收與退費</p>
-                  </button>
-                  <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
-                    :class="activeToolTab === 'documents' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
-                    @click="setToolTab('documents')">
-                    <span class="text-xs font-bold" :class="activeToolTab === 'documents' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">單據管理</span>
-                    <p class="mt-1 text-[10px] text-slate-500 leading-4">作廢、補發、重產</p>
                   </button>
                   <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
                     :class="activeToolTab === 'system' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
                     @click="setToolTab('system')">
                     <span class="text-xs font-bold" :class="activeToolTab === 'system' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">系統工具</span>
-                    <p class="mt-1 text-[10px] text-slate-500 leading-4">稅務與 ID</p>
-                  </button>
-                </div>
-                <div x-show="activeToolTab === 'documents'" class="grid grid-cols-3 gap-2 rounded-xl border border-teal-100 bg-teal-50 p-3">
-                  <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showAdminPreview('作廢單據')">
-                    作廢
-                  </button>
-                  <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showAdminPreview('補發單據')">
-                    補發
-                  </button>
-                  <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showAdminPreview('重新產生單據')">
-                    重產
                   </button>
                 </div>
                 <div x-show="activeToolTab === 'system'" class="grid grid-cols-2 gap-2 rounded-xl border border-teal-100 bg-teal-50 p-3">
@@ -846,7 +825,7 @@
                   </div>
                   <button type="button" class="rounded-lg border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-700" @click="adminPreview = null">關閉</button>
                 </div>
-                <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.title !== '一般收據' && ((!adminPreview.rows || !adminPreview.rows.length) || adminPreview.title === '單據總覽')">
+                <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.title !== '一般收據' && (!adminPreview.rows || !adminPreview.rows.length)">
                   <p x-text="adminPreview ? adminPreview.summary : ''"></p>
                   <ul class="admin-preview-list space-y-1">
                     <template x-for="item in (adminPreview ? adminPreview.items : [])" :key="item">
@@ -1013,6 +992,18 @@
                     ></button>
                   </template>
                 </div>
+                <div class="mt-4 grid grid-cols-3 gap-2" x-show="isDocumentToolPreview()">
+                  <template x-for="action in documentToolActions()" :key="action.key">
+                    <button
+                      type="button"
+                      class="rounded-xl border px-3 py-3 text-xs font-bold transition disabled:border-slate-200 disabled:text-slate-400"
+                      :class="activeToolActionKey === action.key ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-teal-600 bg-white text-teal-800 hover:bg-teal-50'"
+                      :disabled="submitting || documentToolActionEligibleCount(action.key) <= 0"
+                      @click="runDocumentToolAction(action.key)"
+                      x-text="documentToolActionLabel(action)"
+                    ></button>
+                  </template>
+                </div>
                 <button
                   type="button"
                   x-show="canConfirmAdminPreview() && (!isAdminFlowTab() || activeAdminActionKey)"
@@ -1029,7 +1020,6 @@
             <div x-show="activeAdminTab === 'tools' && activeToolTab === 'adjustment'" class="admin-workspace space-y-4 rounded-2xl bg-white p-4">
               <div>
                 <h4 class="text-sm font-bold text-white">帳務補救</h4>
-                <p class="mt-1 text-[10px] leading-4 text-slate-500">建立補收/退費紀錄，不會直接更改舊繳費單。</p>
               </div>
 
               <div class="grid grid-cols-2 gap-2">
@@ -1293,6 +1283,7 @@
           activeAdminTab: "calc",
           activeToolTab: "overview",
           activeAdminActionKey: "",
+          activeToolActionKey: "",
           adminPreview: null,
           activeTimePicker: null,
           timePickerHours: ["06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"],
@@ -2018,6 +2009,7 @@
             this.activeAdminTab = tab;
             this.adminPreview = null;
             this.activeAdminActionKey = "";
+            this.activeToolActionKey = "";
             if (tab === "tools") {
               this.activeToolTab = "overview";
               await this.showAdminPreview("單據總覽");
@@ -2035,6 +2027,7 @@
             this.activeToolTab = tab;
             this.adminPreview = null;
             this.activeAdminActionKey = "";
+            this.activeToolActionKey = "";
           },
 
           adminFeaturePending(featureName) {
@@ -2046,6 +2039,7 @@
 
           canConfirmAdminPreview() {
             if (!this.adminPreview) return false;
+            if (this.isDocumentToolPreview() && this.activeToolActionKey) return this.selectedAdminRowIds().length > 0;
             if (this.isAdminFlowTab() && this.activeAdminActionKey === "receiptPayment") return this.selectedAdminRowIds().length > 0;
             if (this.adminPreview.confirmAction === "adminConfirmNotification") return this.selectedAdminNotifications().length > 0;
             if (this.adminPreview.canConfirm !== true) return false;
@@ -2120,6 +2114,15 @@
           },
 
           selectedAdminRowIds() {
+            if (this.isDocumentToolPreview() && this.activeToolActionKey) {
+              const prefixMap = {
+                documentVoid: "void",
+                documentReissue: "reissue",
+                documentRegenerate: "regenerate",
+              };
+              const prefix = prefixMap[this.activeToolActionKey] || "document-record";
+              return this.selectedAdminRows().map((row) => `${prefix}:${row.docType || ""}:${row.docId || ""}`);
+            }
             return this.selectedAdminRows().map((row) => row.id);
           },
 
@@ -2163,6 +2166,9 @@
 
           isAdminRowSelectable(row) {
             if (!row) return false;
+            if (this.isDocumentToolPreview()) {
+              return !!(this.activeToolActionKey && row.actions && row.actions[this.activeToolActionKey] === true);
+            }
             if (!this.isAdminFlowTab()) return row.selectable === true;
             if (!this.activeAdminActionKey) return false;
             const targetFeature = this.adminFlowTargetFeature(this.activeAdminActionKey);
@@ -2189,6 +2195,11 @@
           },
 
           adminSelectionHeading() {
+            if (this.isDocumentToolPreview()) {
+              if (!this.activeToolActionKey) return "先選擇下方要執行的單據操作";
+              const action = this.documentToolActions().find((item) => item.key === this.activeToolActionKey);
+              return action ? `選擇要${action.label}的單據` : "選擇本次處理項目";
+            }
             if (!this.isAdminFlowTab()) return "選擇本次處理項目";
             if (!this.activeAdminActionKey) return "先選擇下方要執行的步驟";
             const action = this.adminFlowActions().find((item) => item.key === this.activeAdminActionKey);
@@ -2201,6 +2212,34 @@
 
           isAdminFlowTab() {
             return ["calc", "receipt", "voucher"].includes(this.activeAdminTab);
+          },
+
+          isDocumentToolPreview() {
+            return this.activeAdminTab === "tools" && this.activeToolTab === "overview" && this.adminPreview && this.adminPreview.title === "單據總覽";
+          },
+
+          documentToolActions() {
+            return [
+              { key: "documentVoid", label: "作廢" },
+              { key: "documentReissue", label: "補發" },
+              { key: "documentRegenerate", label: "重產" },
+            ];
+          },
+
+          documentToolActionLabel(action) {
+            if (!action) return "";
+            const count = this.documentToolActionEligibleCount(action.key);
+            return `${action.label}${count > 0 ? "（" + count + "）" : ""}`;
+          },
+
+          documentToolActionEligibleCount(actionKey) {
+            if (!this.adminPreview || !this.adminPreview.rows) return 0;
+            return this.adminPreview.rows.filter((row) => row.actions && row.actions[actionKey] === true).length;
+          },
+
+          runDocumentToolAction(actionKey) {
+            this.activeToolActionKey = actionKey;
+            this.clearIneligibleAdminSelections();
           },
 
           adminFlowActions() {
@@ -2355,6 +2394,10 @@
           },
 
           currentAdminConfirmLabel() {
+            if (this.isDocumentToolPreview() && this.activeToolActionKey) {
+              const action = this.documentToolActions().find((item) => item.key === this.activeToolActionKey);
+              return action ? `確認${action.label}` : "確認執行";
+            }
             if (this.isAdminFlowTab() && this.activeAdminActionKey) {
               const action = this.adminFlowActions().find((item) => item.key === this.activeAdminActionKey);
               return action ? `確認${action.label}` : "確認執行";
@@ -2370,7 +2413,13 @@
             }
             const featureName = this.adminPreview.title;
             const formattedMonth = this.adminMonth.replace("-", "/");
-            const confirmAction = this.adminPreview.confirmAction || "";
+            const toolConfirmActionMap = {
+              documentVoid: "adminVoidDocument",
+              documentReissue: "adminReissueDocument",
+              documentRegenerate: "adminRegenerateDocument",
+            };
+            const isDocumentToolAction = this.isDocumentToolPreview() && !!this.activeToolActionKey;
+            const confirmAction = isDocumentToolAction ? toolConfirmActionMap[this.activeToolActionKey] : (this.adminPreview.confirmAction || "");
             const isSettlement = confirmAction === "adminConfirmSettlement";
             let confirmText = "是否確認執行？";
             if (isSettlement) {
@@ -2458,6 +2507,10 @@
               if (!result.ok) throw new Error(result.message || "確認寫入失敗。");
               alert(result.message || "確認執行完成。");
               if (result.preview) {
+                if (isDocumentToolAction) {
+                  await this.showAdminPreview("單據總覽");
+                  return;
+                }
                 this.adminPreview = this.hydrateAdminPreview({
                   title: isSettlement ? (featureName === "學費試算" ? "繳費單" : "領據") : featureName,
                   month: formattedMonth,
@@ -2540,6 +2593,7 @@
           async showAdminPreview(featureName, options) {
             const opts = options || {};
             this.activeAdminActionKey = opts.activeActionKey !== undefined ? (opts.activeActionKey || "") : "";
+            this.activeToolActionKey = opts.activeToolActionKey !== undefined ? (opts.activeToolActionKey || "") : "";
             const formattedMonth = this.adminMonth.replace("-", "/");
             this.submitting = true;
             this.operationMessage = `正在讀取${featureName}預覽...`;
