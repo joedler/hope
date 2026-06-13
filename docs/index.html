@@ -161,9 +161,9 @@
         background: #ffffff !important;
         border-color: #cde9e3 !important;
         box-shadow: none !important;
-        min-height: 5.35rem;
-        padding: 0.9rem 0.75rem !important;
-        text-align: left !important;
+        min-height: 3.5rem;
+        padding: 0.65rem 0.75rem !important;
+        text-align: center !important;
       }
       .admin-shell [class*="bg-slate-900"][class*="p-4"][class*="text-center"]:hover {
         border-color: #78cfc5 !important;
@@ -222,7 +222,14 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
       .admin-flow-tab {
-        min-height: 56px;
+        min-height: 48px;
+        white-space: nowrap;
+      }
+      .admin-tool-tabs {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .admin-tool-tab {
+        min-height: 48px;
         white-space: nowrap;
       }
       .admin-action-grid {
@@ -808,21 +815,21 @@
                 <div>
                   <h4 class="text-sm font-bold text-white">帳務工具</h4>
                 </div>
-                <div class="grid grid-cols-3 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
-                    :class="activeToolTab === 'overview' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
+                <div class="admin-tool-tabs grid gap-3">
+                  <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
+                    :class="activeToolTab === 'overview' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
                     @click="setToolTab('overview'); showAdminPreview('單據總覽')">
-                    <span class="text-xs font-bold" :class="activeToolTab === 'overview' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">單據總覽</span>
+                    單據總覽
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
-                    :class="activeToolTab === 'adjustment' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
+                  <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
+                    :class="activeToolTab === 'adjustment' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
                     @click="setToolTab('adjustment')">
-                    <span class="text-xs font-bold" :class="activeToolTab === 'adjustment' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">帳務補救</span>
+                    帳務補救
                   </button>
-                  <button type="button" class="rounded-xl border border-slate-800 p-4 text-center transition group"
-                    :class="activeToolTab === 'system' ? 'bg-amber-50 text-amber-700' : 'bg-slate-900 text-white hover:border-amber-500/40'"
+                  <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
+                    :class="activeToolTab === 'system' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
                     @click="setToolTab('system')">
-                    <span class="text-xs font-bold" :class="activeToolTab === 'system' ? 'text-amber-700' : 'text-white group-hover:text-amber-400'">系統工具</span>
+                    系統工具
                   </button>
                 </div>
                 <div x-show="activeToolTab === 'system'" class="grid grid-cols-2 gap-2 rounded-xl border border-teal-100 bg-teal-50 p-3">
@@ -938,6 +945,21 @@
                     </template>
                   </div>
                 </div>
+                <div class="mt-4" x-show="isDocumentToolPreview()">
+                  <p class="mb-2 text-xs font-bold text-amber-700" x-text="adminSelectionHeading()"></p>
+                  <div class="admin-action-grid grid gap-2">
+                    <template x-for="action in documentToolActions()" :key="action.key">
+                      <button
+                        type="button"
+                        class="rounded-xl border px-3 py-3 text-xs font-bold transition disabled:border-slate-200 disabled:text-slate-400"
+                        :class="activeToolActionKey === action.key ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-teal-600 bg-white text-teal-800 hover:bg-teal-50'"
+                        :disabled="submitting || documentToolActionEligibleCount(action.key) <= 0"
+                        @click="runDocumentToolAction(action.key)"
+                        x-text="documentToolActionLabel(action)"
+                      ></button>
+                    </template>
+                  </div>
+                </div>
                 <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.rows && adminPreview.rows.length">
                   <div class="flex items-center justify-end gap-2">
                     <button type="button" x-show="hasEligibleAdminRows()" class="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[10px] font-semibold text-amber-700" @click="selectAllAdminRows()">
@@ -1011,18 +1033,6 @@
                     </label>
                   </template>
                   <p class="text-[11px] leading-4 text-amber-700" x-show="selectedAdminRowsSummary()" x-text="selectedAdminRowsSummary()"></p>
-                </div>
-                <div class="mt-4 grid grid-cols-3 gap-2" x-show="isDocumentToolPreview()">
-                  <template x-for="action in documentToolActions()" :key="action.key">
-                    <button
-                      type="button"
-                      class="rounded-xl border px-3 py-3 text-xs font-bold transition disabled:border-slate-200 disabled:text-slate-400"
-                      :class="activeToolActionKey === action.key ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-teal-600 bg-white text-teal-800 hover:bg-teal-50'"
-                      :disabled="submitting || documentToolActionEligibleCount(action.key) <= 0"
-                      @click="runDocumentToolAction(action.key)"
-                      x-text="documentToolActionLabel(action)"
-                    ></button>
-                  </template>
                 </div>
                 <button
                   type="button"
