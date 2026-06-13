@@ -2367,6 +2367,11 @@ function buildTuitionReadOnlyPreview(month: string) {
           status: selectable ? "可寫入" : "待核銷預排不可寫入",
           selectable,
           selectedDefault: selectable,
+          actions: {
+            tuitionWrite: selectable,
+            paymentNotice: false,
+            paymentNotify: false
+          },
           warnings: item.pendingPlanBase > 0 ? ["尚有待核銷預排，暫不可寫入"] : [],
           details: [item.mode, formula]
         });
@@ -2473,6 +2478,11 @@ function buildExistingTuitionSettlementRowsFromSummary(studentsMap: any): any[] 
       status: "已寫入",
       selectable: false,
       selectedDefault: false,
+      actions: {
+        tuitionWrite: false,
+        paymentNotice: false,
+        paymentNotify: !!item.pdfUrl && item.status !== "已寄送"
+      },
       warnings: item.docId ? [] : ["缺單據編號"],
       details: [`課程數：${item.courses.length}`]
     });
@@ -2517,6 +2527,11 @@ function buildPendingTuitionPlanRows(ss: GoogleAppsScript.Spreadsheet.Spreadshee
       status: "待核銷，未寫入",
       selectable: false,
       selectedDefault: false,
+      actions: {
+        tuitionWrite: false,
+        paymentNotice: false,
+        paymentNotify: false
+      },
       warnings: [],
       details: [
         "狀態：待核銷，未寫入",
@@ -2574,15 +2589,18 @@ function buildSalaryAdminPreview(month: string) {
       return {
         summary: `${month} 已寫入鐘點結算：${result.teacherCount} 位講師，應付 ${formatCurrency(result.grossTotal)}，實發 ${formatCurrency(result.netTotal)}。`,
         items,
+        rows: (result as any).rows || [],
         nextAction: "已寫入鐘點結算，請勿重複試算",
         canConfirm: false
       };
     }
+    const rows = (result as any).rows || [];
     return {
       summary: `${month} 鐘點試算：${result.teacherCount} 位講師，應付總額 ${formatCurrency(result.grossTotal)}，實發總額 ${formatCurrency(result.netTotal)}。`,
       items,
+      rows,
       nextAction: "確認寫入鐘點試算",
-      canConfirm: result.teacherCount > 0,
+      canConfirm: rows.some(function(row: any) { return row.actions && row.actions.salaryWrite === true; }),
       confirmAction: "adminConfirmSettlement"
     };
   } catch (e) {
@@ -2660,6 +2678,7 @@ function buildSalaryReadOnlyPreview(month: string) {
   appendSalaryAdjustmentsToStats(ss, salaryStats, profitMap, month, timeZone);
 
   const items: string[] = [];
+  const rows: any[] = [];
   const existingSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_PAY, 0, month);
   if (existingSettlementCount > 0) {
     return buildExistingSalarySettlementPreview(ss, month, existingSettlementCount);
@@ -2692,10 +2711,30 @@ function buildSalaryReadOnlyPreview(month: string) {
       }
     }
     items.push(lines.join("\n"));
+    const selectable = item.total > 0 && item.missingRateCount <= 0;
+    rows.push({
+      id: "teacher:" + teacherName,
+      type: "teacher",
+      name: teacherName,
+      amount: taxAndNhi.netAmount,
+      amountText: formatCurrency(taxAndNhi.netAmount),
+      docId: "",
+      pdfUrl: "",
+      status: selectable ? "可寫入" : "缺鐘點比例或金額，暫不可寫入",
+      selectable,
+      selectedDefault: selectable,
+      actions: {
+        salaryWrite: selectable,
+        allowanceDocument: false,
+        allowanceNotify: false
+      },
+      warnings: item.missingRateCount > 0 ? ["有課程缺少鐘點比例/單價"] : [],
+      details: item.details || []
+    });
   }
 
   if (items.length === 0) items.push(`${month} 目前沒有待試算鐘點資料。`);
-  return { items, grossTotal, netTotal, teacherCount };
+  return { items, rows, grossTotal, netTotal, teacherCount };
 }
 
 function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string, existingSettlementCount: number) {
@@ -2716,6 +2755,7 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
   const items: string[] = [
     `狀態：已寫入鐘點結算，不可重複試算寫入。`
   ];
+  const rows: any[] = [];
   let grossTotal = 0;
   let netTotal = 0;
   let teacherCount = 0;
@@ -2752,9 +2792,33 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
       "\nPDF：" + (pdfUrl ? "已產生" : "尚未產生") +
       (note ? "\n備註：" + note : "")
     );
+    const canCreateAllowance = !!docId && gross > 0 && !pdfUrl;
+    rows.push({
+      id: "teacher:" + teacherName,
+      type: "teacher",
+      name: teacherName,
+      amount: netAmount,
+      amountText: formatCurrency(netAmount),
+      docId,
+      pdfUrl,
+      status: pdfUrl ? (emailStatus || "已有領據 PDF") : "尚未產生領據 PDF",
+      selectable: false,
+      selectedDefault: false,
+      actions: {
+        salaryWrite: false,
+        allowanceDocument: canCreateAllowance,
+        allowanceNotify: !!pdfUrl && emailStatus === "待寄送"
+      },
+      warnings: [
+        docId ? "" : "缺領據編號",
+        gross > 0 ? "" : "缺應付金額",
+        pdfUrl ? "已產生領據 PDF，不可重複產生" : ""
+      ].filter(function(part: string) { return part !== ""; }),
+      details: detail ? detail.split("\n") : []
+    });
   }
 
-  return { items, grossTotal, netTotal, teacherCount, existingSettlementCount, isExistingSettlement: true };
+  return { items, rows, grossTotal, netTotal, teacherCount, existingSettlementCount, isExistingSettlement: true };
 }
 
 function appendSalaryPreviewItem(
@@ -2931,6 +2995,11 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
       status: statusText,
       selectable,
       selectedDefault: selectable,
+      actions: {
+        tuitionWrite: false,
+        paymentNotice: selectable,
+        paymentNotify: false
+      },
       warnings,
       details: item.courses.map(function(course: any) {
         return `${course.title || "未填課程"}${course.mode ? "（" + course.mode + "）" : ""}`;
@@ -3030,7 +3099,8 @@ function buildReceiptReadOnlyPreview(month: string) {
     if (!item.total) warnings.push("缺收據金額");
     const receiptState = item.receiptUrl ? (item.status || "已有收據 PDF") : "尚未產生收據 PDF";
     items.push(`${studentName}\n金額：${formatCurrency(item.total)}\n課程：${item.courseCount} 項\n單號：${item.docId || "未填"}\n收款：${item.method || "方式未填"} / ${item.category || "類別未填"} / ${item.date || "日期未填"}\n狀態：${receiptState}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
-    const selectable = !item.receiptUrl && !!item.docId && !!item.method && !!item.category && !!item.date && item.total > 0;
+    const paymentSelectable = !item.receiptUrl && !!item.docId && item.total > 0 && (!item.method || !item.category || !item.date);
+    const receiptSelectable = !item.receiptUrl && !!item.docId && !!item.method && !!item.category && !!item.date && item.total > 0;
     rows.push({
       id: "student:" + studentName,
       type: "student",
@@ -3040,8 +3110,13 @@ function buildReceiptReadOnlyPreview(month: string) {
       docId: item.docId,
       pdfUrl: item.receiptUrl,
       status: receiptState,
-      selectable,
-      selectedDefault: selectable,
+      selectable: receiptSelectable,
+      selectedDefault: receiptSelectable,
+      actions: {
+        receiptPayment: paymentSelectable,
+        receiptDocument: receiptSelectable,
+        receiptNotify: !!item.receiptUrl && item.status === "待寄送"
+      },
       warnings,
       details: [
         "課程 " + item.courseCount + " 項",
@@ -3385,6 +3460,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
     if (!gross) warnings.push("缺應付金額");
     if (pdfUrl) warnings.push("已產生");
     const stateText = pdfUrl ? (status || "已有領據 PDF") : "尚未產生領據 PDF";
+    const selectable = !pdfUrl && !!docId && gross > 0;
     items.push(`${teacherName}\n應付：${formatCurrency(gross)}\n扣繳：${formatCurrency(taxAmount)}\n補充保費：${formatCurrency(nhiAmount)}\n實發：${formatCurrency(net)}\n領據：${docId || "未填"}\n狀態：${stateText}${detail ? "\n明細：\n- " + detail.split("；").join("\n- ") : ""}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
     rows.push({
       id: "teacher:" + teacherName,
@@ -3395,8 +3471,13 @@ function buildAllowanceReadOnlyPreview(month: string) {
       docId,
       pdfUrl,
       status: stateText,
-      selectable: !pdfUrl && !!docId && gross > 0,
-      selectedDefault: !pdfUrl && !!docId && gross > 0,
+      selectable,
+      selectedDefault: selectable,
+      actions: {
+        salaryWrite: false,
+        allowanceDocument: selectable,
+        allowanceNotify: !!pdfUrl && status === "待寄送"
+      },
       warnings,
       details: detail ? detail.split("；") : []
     });
@@ -3877,16 +3958,6 @@ function buildGeneratedDocumentsAdminPreview(month: string) {
   }
 
   if (items.length === 0) items.push(`${month} 單據紀錄表目前沒有可查看的單據資料。`);
-  items.push(
-    `單據版本管理規則\n` +
-    `狀態：可在單據管理流程處理\n` +
-    `作廢：保留原紀錄與 PDF，不刪除；作廢後不可再寄送\n` +
-    `補發：同一份 PDF 重新寄送，內容與金額不變\n` +
-    `重新產生：未寄送可重產；已寄送需先作廢原單，再建立新版\n` +
-    `LINE push 前置檢查：繳費單與收據推給家長/學生 LINE ID；領據推給講師本人 LINE ID\n` +
-    `提醒：任何會改狀態、重產 PDF 或寄送的動作，都必須另走預覽、確認、執行`
-  );
-
   return {
     summary: `${month} 單據總覽：${recordCount} 筆，總金額 ${formatCurrency(totalAmount)}。${summaryParts.length ? " " + summaryParts.join("；") + "。" : ""}`,
     items,

@@ -2177,6 +2177,9 @@
             if (!this.activeAdminActionKey) return false;
             const targetFeature = this.adminFlowTargetFeature(this.activeAdminActionKey);
             if (!this.adminPreview || this.adminPreview.title !== targetFeature) return false;
+            if (row.actions && Object.prototype.hasOwnProperty.call(row.actions, this.activeAdminActionKey)) {
+              return row.actions[this.activeAdminActionKey] === true;
+            }
             if (this.activeAdminActionKey === "receiptPayment") {
               return !!(row.docId && Number(row.amount || 0) > 0 && !row.pdfUrl);
             }
@@ -2246,18 +2249,32 @@
             if (!this.adminPreview || !this.adminPreview.rows) return 0;
             const targetFeature = this.adminFlowTargetFeature(actionKey);
             if (this.adminPreview.title === targetFeature) {
-              return (this.adminPreview.rows || []).filter((row) => {
-                if (actionKey === "receiptPayment") return !!(row.docId && Number(row.amount || 0) > 0 && !row.pdfUrl);
-                return row.selectable === true;
-              }).length;
+              return (this.adminPreview.rows || []).filter((row) => this.isAdminRowEligibleForAction(row, actionKey)).length;
             }
-            if (this.adminPreview.title === "學費試算" && (actionKey === "tuitionWrite" || actionKey === "paymentNotice")) {
-              return (this.adminPreview.rows || []).filter((row) => {
-                if (actionKey === "tuitionWrite") return row.type === "tuition" && row.selectable === true;
-                return row.type === "student" && row.selectable === true;
-              }).length;
+            if (this.adminPreview.title === "學費試算" && ["tuitionWrite", "paymentNotice"].includes(actionKey)) {
+              return (this.adminPreview.rows || []).filter((row) => this.isAdminRowEligibleForAction(row, actionKey)).length;
+            }
+            if (this.adminPreview.title === "鐘點試算" && ["salaryWrite", "allowanceDocument"].includes(actionKey)) {
+              return (this.adminPreview.rows || []).filter((row) => this.isAdminRowEligibleForAction(row, actionKey)).length;
             }
             return null;
+          },
+
+          isAdminRowEligibleForAction(row, actionKey) {
+            if (!row) return false;
+            if (row.actions && Object.prototype.hasOwnProperty.call(row.actions, actionKey)) {
+              return row.actions[actionKey] === true;
+            }
+            if (actionKey === "receiptPayment") return !!(row.docId && Number(row.amount || 0) > 0 && !row.pdfUrl);
+            if (actionKey === "tuitionWrite") return row.type === "tuition" && row.selectable === true;
+            if (actionKey === "paymentNotice") return row.type === "student" && row.selectable === true;
+            if (["paymentNotify", "receiptNotify", "allowanceNotify"].includes(actionKey)) {
+              return row.selectable === true && row.channels && (
+                (row.channels.email && row.channels.email.selectable === true) ||
+                (row.channels.line && row.channels.line.selectable === true)
+              );
+            }
+            return row.selectable === true;
           },
 
           adminFlowTargetFeature(actionKey) {
