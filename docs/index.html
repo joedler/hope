@@ -2041,6 +2041,10 @@
             if (!this.adminPreview) return false;
             if (this.isDocumentToolPreview() && this.activeToolActionKey) return this.selectedAdminRowIds().length > 0;
             if (this.isAdminFlowTab() && this.activeAdminActionKey === "receiptPayment") return this.selectedAdminRowIds().length > 0;
+            if (this.isAdminFlowTab() && this.activeAdminActionKey) {
+              if (this.isNotifyAction(this.activeAdminActionKey)) return this.selectedAdminNotifications().length > 0;
+              return this.selectedAdminRowIds().length > 0;
+            }
             if (this.adminPreview.confirmAction === "adminConfirmNotification") return this.selectedAdminNotifications().length > 0;
             if (this.adminPreview.canConfirm !== true) return false;
             if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine" || this.adminPreview.confirmAction === "adminVoidDocument" || this.adminPreview.confirmAction === "adminReissueDocument" || this.adminPreview.confirmAction === "adminRegenerateDocument") {
@@ -2135,7 +2139,7 @@
           selectedAdminRowsSummary() {
             const count = this.selectedAdminRows().length;
             if (!this.adminPreview || !this.adminPreview.rows || !this.adminPreview.rows.length) return "";
-            if (this.adminPreview.confirmAction === "adminConfirmNotification") {
+            if (this.adminPreview.confirmAction === "adminConfirmNotification" || this.isNotifyAction(this.activeAdminActionKey)) {
               const notifications = this.selectedAdminNotifications();
               const emailCount = notifications.filter((item) => item.email).length;
               const lineCount = notifications.filter((item) => item.line).length;
@@ -2146,10 +2150,11 @@
 
           selectedAdminNotifications() {
             if (!this.adminPreview || !this.adminPreview.rows) return [];
+            const docType = this.notificationDocTypeForAction(this.activeAdminActionKey);
             return this.adminPreview.rows
               .filter((row) => row.selected && row.channels)
               .map((row) => ({
-                id: row.id,
+                id: docType ? `notification:${docType}:${row.docId || row.name || row.id}` : row.id,
                 email: row.selectedEmail === true && row.channels.email && row.channels.email.selectable === true,
                 line: row.selectedLine === true && row.channels.line && row.channels.line.selectable === true,
               }))
@@ -2171,8 +2176,6 @@
             }
             if (!this.isAdminFlowTab()) return row.selectable === true;
             if (!this.activeAdminActionKey) return false;
-            const targetFeature = this.adminFlowTargetFeature(this.activeAdminActionKey);
-            if (!this.adminPreview || this.adminPreview.title !== targetFeature) return false;
             if (row.actions && Object.prototype.hasOwnProperty.call(row.actions, this.activeAdminActionKey)) {
               return row.actions[this.activeAdminActionKey] === true;
             }
@@ -2324,32 +2327,49 @@
             return featureByAction[actionKey] || "";
           },
 
+          adminFlowConfirmAction(actionKey) {
+            const actionMap = {
+              tuitionWrite: "adminConfirmSettlement",
+              paymentNotice: "adminConfirmDocument",
+              paymentNotify: "adminConfirmNotification",
+              receiptDocument: "adminConfirmDocument",
+              receiptNotify: "adminConfirmNotification",
+              salaryWrite: "adminConfirmSettlement",
+              allowanceDocument: "adminConfirmDocument",
+              allowanceNotify: "adminConfirmNotification",
+            };
+            return actionMap[actionKey] || "";
+          },
+
+          adminFlowDefaultFeature() {
+            const featureByTab = {
+              calc: "學費試算",
+              receipt: "收據",
+              voucher: "鐘點試算",
+            };
+            return featureByTab[this.activeAdminTab] || "";
+          },
+
+          isNotifyAction(actionKey) {
+            return ["paymentNotify", "receiptNotify", "allowanceNotify"].includes(actionKey);
+          },
+
+          notificationDocTypeForAction(actionKey) {
+            const docTypeByAction = {
+              paymentNotify: "繳費單",
+              receiptNotify: "收據",
+              allowanceNotify: "領據",
+            };
+            return docTypeByAction[actionKey] || "";
+          },
+
           canRunAdminFlowAction(actionKey) {
-            const targetFeature = this.adminFlowTargetFeature(actionKey);
-            if (!targetFeature) return false;
             const knownCount = this.adminFlowActionEligibleCount(actionKey);
             return knownCount !== null && knownCount > 0;
           },
 
           async runAdminFlowAction(actionKey) {
-            const targetFeature = this.adminFlowTargetFeature(actionKey);
-            if (!targetFeature) return;
             this.activeAdminActionKey = actionKey;
-
-            if (actionKey === "receiptPayment") {
-              if (!this.adminPreview || this.adminPreview.title !== "收據") {
-                await this.showAdminPreview("收據", { activeActionKey: actionKey });
-                return;
-              }
-              this.clearIneligibleAdminSelections();
-              return;
-            }
-
-            if (!this.adminPreview || this.adminPreview.title !== targetFeature) {
-              await this.showAdminPreview(targetFeature, { activeActionKey: actionKey });
-              return;
-            }
-
             this.clearIneligibleAdminSelections();
           },
 
@@ -2411,7 +2431,10 @@
               await this.applyReceiptPaymentInfo();
               return;
             }
-            const featureName = this.adminPreview.title;
+            const displayFeatureName = this.adminPreview.title;
+            const featureName = this.isAdminFlowTab() && this.activeAdminActionKey
+              ? (this.adminFlowTargetFeature(this.activeAdminActionKey) || displayFeatureName)
+              : displayFeatureName;
             const formattedMonth = this.adminMonth.replace("-", "/");
             const toolConfirmActionMap = {
               documentVoid: "adminVoidDocument",
@@ -2419,7 +2442,8 @@
               documentRegenerate: "adminRegenerateDocument",
             };
             const isDocumentToolAction = this.isDocumentToolPreview() && !!this.activeToolActionKey;
-            const confirmAction = isDocumentToolAction ? toolConfirmActionMap[this.activeToolActionKey] : (this.adminPreview.confirmAction || "");
+            const flowConfirmAction = this.isAdminFlowTab() && this.activeAdminActionKey ? this.adminFlowConfirmAction(this.activeAdminActionKey) : "";
+            const confirmAction = isDocumentToolAction ? toolConfirmActionMap[this.activeToolActionKey] : (flowConfirmAction || this.adminPreview.confirmAction || "");
             const isSettlement = confirmAction === "adminConfirmSettlement";
             let confirmText = "是否確認執行？";
             if (isSettlement) {
@@ -2511,6 +2535,12 @@
                   await this.showAdminPreview("單據總覽");
                   return;
                 }
+                if (this.isAdminFlowTab() && this.activeAdminActionKey) {
+                  const defaultFeature = this.adminFlowDefaultFeature();
+                  this.activeAdminActionKey = "";
+                  await this.showAdminPreview(defaultFeature || displayFeatureName);
+                  return;
+                }
                 this.adminPreview = this.hydrateAdminPreview({
                   title: isSettlement ? (featureName === "學費試算" ? "繳費單" : "領據") : featureName,
                   month: formattedMonth,
@@ -2523,6 +2553,12 @@
                   confirmAction: result.preview.confirmAction || "",
                 }, "確認執行完成，請檢查最新預覽");
               } else {
+                if (this.isAdminFlowTab() && this.activeAdminActionKey) {
+                  const defaultFeature = this.adminFlowDefaultFeature();
+                  this.activeAdminActionKey = "";
+                  await this.showAdminPreview(defaultFeature || displayFeatureName);
+                  return;
+                }
                 await this.showAdminPreview(featureName);
               }
             } catch (error) {

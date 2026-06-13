@@ -1917,6 +1917,44 @@ function buildDocumentNotificationReadOnlyPreview(month: string, docType: string
   return { items, rows, emailReadyCount, lineReadyCount };
 }
 
+function enrichRowsWithNotificationState(rows: any[], month: string, docType: string, actionKey: string) {
+  if (!rows || rows.length === 0) return rows;
+  let notification: any;
+  try {
+    notification = buildDocumentNotificationReadOnlyPreview(month, docType);
+  } catch (e) {
+    return rows;
+  }
+  const map: any = {};
+  (notification.rows || []).forEach(function(row: any) {
+    const keys = [
+      String(row.docId || "").trim(),
+      String(row.name || "").trim(),
+      String(row.id || "").trim()
+    ].filter(function(key: string) { return key !== ""; });
+    keys.forEach(function(key: string) { map[key] = row; });
+  });
+
+  rows.forEach(function(row: any) {
+    const key = String(row.docId || row.name || row.id || "").trim();
+    const found = map[key] || map[String(row.name || "").trim()];
+    if (!found) {
+      if (!row.actions) row.actions = {};
+      row.actions[actionKey] = false;
+      return;
+    }
+    row.channels = found.channels;
+    row.actions = row.actions || {};
+    row.actions[actionKey] = found.selectable === true;
+    if (found.status) row.status = row.status ? row.status + "｜" + found.status : found.status;
+    const notifyDetails = found.details || [];
+    row.details = (row.details || []).concat(notifyDetails);
+    const notifyWarnings = found.warnings || [];
+    row.warnings = (row.warnings || []).concat(notifyWarnings);
+  });
+  return rows;
+}
+
 function extractNotificationTarget(details: any[], label: string) {
   for (let i = 0; i < details.length; i++) {
     const text = String(details[i] || "");
@@ -2453,6 +2491,7 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
   } catch (e) {
     rows = buildExistingTuitionSettlementRowsFromSummary(studentsMap).concat(buildPendingTuitionPlanRows(ss, month));
   }
+  enrichRowsWithNotificationState(rows, month, "繳費單", "paymentNotify");
   return { items, rows, grandTotal, studentCount, pendingCount: pendingItems.length, isExistingSettlement: true };
 }
 
@@ -2481,7 +2520,7 @@ function buildExistingTuitionSettlementRowsFromSummary(studentsMap: any): any[] 
       actions: {
         tuitionWrite: false,
         paymentNotice: false,
-        paymentNotify: !!item.pdfUrl && item.status !== "已寄送"
+        paymentNotify: false
       },
       warnings: item.docId ? [] : ["缺單據編號"],
       details: [`課程數：${item.courses.length}`]
@@ -2818,6 +2857,7 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
     });
   }
 
+  enrichRowsWithNotificationState(rows, month, "領據", "allowanceNotify");
   return { items, rows, grossTotal, netTotal, teacherCount, existingSettlementCount, isExistingSettlement: true };
 }
 
@@ -3007,6 +3047,7 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
     });
   }
 
+  enrichRowsWithNotificationState(rows, month, "繳費單", "paymentNotify");
   if (items.length === 0) {
     items.push(`${month} 學費結算表沒有可產生繳費單的資料；請先完成學費試算確認寫入。`);
   }
@@ -3125,6 +3166,7 @@ function buildReceiptReadOnlyPreview(month: string) {
     });
   }
 
+  enrichRowsWithNotificationState(rows, month, "收據", "receiptNotify");
   if (items.length === 0) items.push(`${month} 學費結算表沒有可開收據的資料；請先完成學費試算與繳費單流程。`);
   return { items, rows, grandTotal, studentCount, generatedCount, pendingSendCount };
 }
@@ -3483,6 +3525,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
     });
   }
 
+  enrichRowsWithNotificationState(rows, month, "領據", "allowanceNotify");
   if (items.length === 0) items.push(`${month} 鐘點結算表沒有可開領據的資料；請先完成鐘點試算確認寫入。`);
   return { items, rows, grossTotal, netTotal, teacherCount, generatedCount, pendingSendCount };
 }
