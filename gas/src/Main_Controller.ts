@@ -84,6 +84,10 @@ function doGet(e: any) {
         // 確認 LINE push 已產生的 PDF 連結
         result = handleLiffAdminConfirmLine(e.parameter);
         break;
+      case "adminConfirmNotification":
+        // 確認寄送通知，可同時處理 Email 與 LINE push
+        result = handleLiffAdminConfirmNotification(e.parameter);
+        break;
       case "adminVoidDocument":
         // 確認作廢單據，只標記狀態，不刪除 PDF 或資料列
         result = handleLiffAdminVoidDocument(e.parameter);
@@ -443,6 +447,7 @@ declare function handleLiffAdminConfirmSettlement(params: any): any;
 declare function handleLiffAdminConfirmDocument(params: any): any;
 declare function handleLiffAdminConfirmEmail(params: any): any;
 declare function handleLiffAdminConfirmLine(params: any): any;
+declare function handleLiffAdminConfirmNotification(params: any): any;
 declare function handleLiffAdminVoidDocument(params: any): any;
 declare function handleLiffAdminReissueDocument(params: any): any;
 declare function handleLiffAdminRegenerateDocument(params: any): any;

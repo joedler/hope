@@ -139,6 +139,9 @@ function handleLiffAdminPreview(params: any) {
     feature === "寄送繳費單 LINE" ? buildPaymentNoticeLineAdminPreview(month) :
     feature === "寄送收據 LINE" ? buildReceiptLineAdminPreview(month) :
     feature === "寄送領據 LINE" ? buildAllowanceLineAdminPreview(month) :
+    feature === "寄送繳費單通知" ? buildDocumentNotificationAdminPreview(month, "繳費單") :
+    feature === "寄送收據通知" ? buildDocumentNotificationAdminPreview(month, "收據") :
+    feature === "寄送領據通知" ? buildDocumentNotificationAdminPreview(month, "領據") :
     feature === "一般收據" ? buildGeneralReceiptAdminPreview(month) :
     (feature === "已產生單據" || feature === "單據總覽") ? buildGeneratedDocumentsAdminPreview(month) :
     previewMap[feature];
@@ -459,6 +462,92 @@ function handleLiffAdminConfirmLine(params: any) {
     message: `${month} ${feature}執行完成：成功 ${selectedRows.length - failCount} 筆，失敗/跳過 ${failCount} 筆。\n` + resultMessages.join("\n"),
     preview: afterPreview
   };
+}
+
+function handleLiffAdminConfirmNotification(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const feature = String(params.feature || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+
+  const docType = feature === "寄送繳費單通知" ? "繳費單" :
+    feature === "寄送收據通知" ? "收據" :
+    feature === "寄送領據通知" ? "領據" : "";
+  if (!docType) return { ok: false, message: "目前只開放繳費單、收據與領據通知預覽確認寄送。" };
+
+  const beforePreview = buildDocumentNotificationReadOnlyPreview(month, docType);
+  const selectedNotifications = parseAdminSelectedNotifications(params.selectedNotifications);
+  const selectedIds = parseAdminSelectedIds(params.selectedIds);
+  const selectedMap: any = {};
+  selectedNotifications.forEach(function(item: any) {
+    selectedMap[item.id] = item;
+  });
+
+  const selectedRows = (beforePreview.rows || []).filter(function(row: any) {
+    if (selectedNotifications.length > 0) return !!selectedMap[row.id];
+    return selectedIds.indexOf(row.id) > -1;
+  });
+  if (selectedRows.length === 0) {
+    return { ok: false, message: `${month} 沒有選取可寄送通知的項目。` };
+  }
+
+  const resultMessages: string[] = [];
+  let successCount = 0;
+  let skipCount = 0;
+  for (let i = 0; i < selectedRows.length; i++) {
+    const row = selectedRows[i];
+    const selected = selectedMap[row.id] || { email: true, line: true };
+    if (selected.email) {
+      if (row.channels && row.channels.email && row.channels.email.selectable) {
+        const msg = docType === "繳費單" ? sendPaymentNoticeEmailForTarget(month, row.name) :
+          docType === "收據" ? sendReceiptEmailForTarget(month, row.name) :
+          sendAllowanceEmailForTarget(month, row.name);
+        resultMessages.push("Email " + msg);
+        if (msg.indexOf("❌") !== 0 && msg.indexOf("⚠️") !== 0) successCount++; else skipCount++;
+      } else {
+        resultMessages.push(`Email ${row.name}：略過，狀態不符合寄送條件。`);
+        skipCount++;
+      }
+    }
+    if (selected.line) {
+      if (row.channels && row.channels.line && row.channels.line.selectable) {
+        const msg = sendDocumentLineForTarget(month, docType, row.docId);
+        resultMessages.push("LINE " + msg);
+        if (msg.indexOf("❌") !== 0 && msg.indexOf("⚠️") !== 0) successCount++; else skipCount++;
+      } else {
+        resultMessages.push(`LINE ${row.name}：略過，狀態不符合推播條件。`);
+        skipCount++;
+      }
+    }
+  }
+
+  const afterPreview = buildDocumentNotificationAdminPreview(month, docType);
+  return {
+    ok: successCount > 0,
+    message: `${month} ${docType}通知執行完成：成功 ${successCount} 筆，失敗/跳過 ${skipCount} 筆。\n` + resultMessages.join("\n"),
+    preview: afterPreview
+  };
+}
+
+function parseAdminSelectedNotifications(raw: any) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(function(item: any) {
+      return {
+        id: String(item.id || "").trim(),
+        email: item.email === true,
+        line: item.line === true
+      };
+    }).filter(function(item: any) { return item.id && (item.email || item.line); });
+  } catch (e) {
+    return [];
+  }
 }
 
 function handleLiffAdminCreateGeneralReceipt(params: any) {
@@ -1703,6 +1792,137 @@ function buildAllowanceLineAdminPreview(month: string) {
       canConfirm: false
     };
   }
+}
+
+function buildDocumentNotificationAdminPreview(month: string, docType: string) {
+  try {
+    const result = buildDocumentNotificationReadOnlyPreview(month, docType);
+    return {
+      summary: `${month} ${docType}通知預覽：Email 可寄 ${result.emailReadyCount} 筆，LINE 可推 ${result.lineReadyCount} 筆。`,
+      items: result.items,
+      rows: result.rows,
+      nextAction: "確認寄送通知",
+      canConfirm: result.rows.some(function(row: any) { return row.selectable; }),
+      confirmAction: "adminConfirmNotification"
+    };
+  } catch (e) {
+    return {
+      summary: `${month} ${docType}通知預覽讀取失敗。`,
+      items: ["請先檢查單據紀錄表、PDF、Email、LINE ID 與寄送狀態。", "錯誤：" + e.toString()],
+      nextAction: "確認寄送通知",
+      canConfirm: false
+    };
+  }
+}
+
+function buildDocumentNotificationReadOnlyPreview(month: string, docType: string) {
+  const emailPreview = docType === "繳費單" ? buildPaymentNoticeEmailReadOnlyPreview(month) :
+    docType === "收據" ? buildReceiptEmailReadOnlyPreview(month) :
+    buildAllowanceEmailReadOnlyPreview(month);
+  const linePreview = docType === "領據"
+    ? appendAllowanceLineFallback(buildDocumentLineReadOnlyPreview(month, docType, true), month)
+    : buildDocumentLineReadOnlyPreview(month, docType, true);
+  const map: any = {};
+
+  function keyFor(row: any) {
+    return String(row.docId || row.name || row.id || "").trim();
+  }
+  function ensure(row: any) {
+    const key = keyFor(row);
+    if (!map[key]) {
+      map[key] = {
+        id: "notification:" + docType + ":" + key,
+        type: row.type,
+        name: row.name,
+        amount: row.amount,
+        amountText: row.amountText,
+        docId: row.docId,
+        pdfUrl: row.pdfUrl,
+        status: "",
+        selectable: false,
+        selectedDefault: false,
+        warnings: [],
+        details: [],
+        channels: {
+          email: { selectable: false, selectedDefault: false, status: "無資料", target: "", warning: "" },
+          line: { selectable: false, selectedDefault: false, status: "無資料", target: "", warning: "" }
+        }
+      };
+    }
+    return map[key];
+  }
+
+  (emailPreview.rows || []).forEach(function(row: any) {
+    const item = ensure(row);
+    item.type = item.type || row.type;
+    item.name = item.name || row.name;
+    item.amount = item.amount || row.amount;
+    item.amountText = item.amountText || row.amountText;
+    item.docId = item.docId || row.docId;
+    item.pdfUrl = item.pdfUrl || row.pdfUrl;
+    item.channels.email = {
+      selectable: row.selectable === true,
+      selectedDefault: row.selectable === true,
+      status: row.status || "",
+      target: extractNotificationTarget(row.details || [], "Email"),
+      warning: (row.warnings || []).join("、")
+    };
+    item.selectable = item.selectable || row.selectable === true;
+  });
+
+  (linePreview.rows || []).forEach(function(row: any) {
+    const item = ensure(row);
+    item.type = item.type || row.type;
+    item.name = item.name || row.name;
+    item.amount = item.amount || row.amount;
+    item.amountText = item.amountText || row.amountText;
+    item.docId = item.docId || row.docId;
+    item.pdfUrl = item.pdfUrl || row.pdfUrl;
+    item.channels.line = {
+      selectable: row.selectable === true,
+      selectedDefault: row.selectable === true,
+      status: row.status || "",
+      target: extractNotificationTarget(row.details || [], "LINE ID"),
+      warning: (row.warnings || []).join("、")
+    };
+    item.selectable = item.selectable || row.selectable === true;
+  });
+
+  const rows: any[] = [];
+  let emailReadyCount = 0;
+  let lineReadyCount = 0;
+  for (const key in map) {
+    const item = map[key];
+    if (item.channels.email.selectable) emailReadyCount++;
+    if (item.channels.line.selectable) lineReadyCount++;
+    item.selectedDefault = item.selectable;
+    item.status = [
+      "Email：" + (item.channels.email.status || "無資料"),
+      "LINE：" + (item.channels.line.status || "無資料")
+    ].join("｜");
+    item.details = [
+      "Email：" + (item.channels.email.target || "未填") + "（" + (item.channels.email.status || "無資料") + "）",
+      "LINE：" + (item.channels.line.target || "未設定") + "（" + (item.channels.line.status || "無資料") + "）"
+    ];
+    const warnings: string[] = [];
+    if (item.channels.email.warning) warnings.push("Email：" + item.channels.email.warning);
+    if (item.channels.line.warning) warnings.push("LINE：" + item.channels.line.warning);
+    item.warnings = warnings;
+    rows.push(item);
+  }
+  const items = rows.map(function(row: any) {
+    return `${row.name}\n單號：${row.docId || "未填"}\n金額：${row.amountText || ""}\n${row.status}`;
+  });
+  if (items.length === 0) items.push(`${month} 目前沒有 ${docType} 通知資料。`);
+  return { items, rows, emailReadyCount, lineReadyCount };
+}
+
+function extractNotificationTarget(details: any[], label: string) {
+  for (let i = 0; i < details.length; i++) {
+    const text = String(details[i] || "");
+    if (text.indexOf(label + "：") === 0) return text.substring((label + "：").length);
+  }
+  return "";
 }
 
 function appendAllowanceLineFallback(preview: any, month: string) {

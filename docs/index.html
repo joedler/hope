@@ -962,7 +962,7 @@
                       :class="isAdminRowSelectable(row) ? 'border-teal-200' : 'border-amber-100 opacity-70'">
                       <div class="flex items-start gap-2">
                         <input type="checkbox" class="mt-1 h-4 w-4 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
-                          x-model="row.selected" :disabled="!isAdminRowSelectable(row)">
+                          x-model="row.selected" :disabled="!isAdminRowSelectable(row)" @change="syncAdminNotificationChannels(row)">
                         <div class="min-w-0 flex-1">
                           <div class="flex flex-wrap items-center justify-between gap-2">
                             <p class="font-bold text-slate-900" x-text="'● ' + row.name"></p>
@@ -988,6 +988,30 @@
                           >
                             查看 PDF
                           </a>
+                          <div class="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2" x-show="row.channels">
+                            <label class="flex items-start gap-2 rounded-lg border border-teal-100 bg-teal-50 px-2 py-1.5">
+                              <input type="checkbox" class="mt-0.5 h-3.5 w-3.5 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
+                                x-model="row.selectedEmail"
+                                :disabled="!row.channels || !row.channels.email || row.channels.email.selectable !== true || !isAdminRowSelectable(row)"
+                                @change="syncAdminNotificationParent(row)">
+                              <span>
+                                <span class="font-semibold text-teal-800">Email</span>
+                                <span class="block text-slate-600" x-text="row.channels && row.channels.email ? ((row.channels.email.target || '未填') + '｜' + (row.channels.email.status || '無資料')) : ''"></span>
+                                <span class="block text-red-600" x-show="row.channels && row.channels.email && row.channels.email.warning" x-text="row.channels.email.warning"></span>
+                              </span>
+                            </label>
+                            <label class="flex items-start gap-2 rounded-lg border border-teal-100 bg-teal-50 px-2 py-1.5">
+                              <input type="checkbox" class="mt-0.5 h-3.5 w-3.5 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
+                                x-model="row.selectedLine"
+                                :disabled="!row.channels || !row.channels.line || row.channels.line.selectable !== true || !isAdminRowSelectable(row)"
+                                @change="syncAdminNotificationParent(row)">
+                              <span>
+                                <span class="font-semibold text-teal-800">LINE</span>
+                                <span class="block text-slate-600" x-text="row.channels && row.channels.line ? ((row.channels.line.target || '未設定') + '｜' + (row.channels.line.status || '無資料')) : ''"></span>
+                                <span class="block text-red-600" x-show="row.channels && row.channels.line && row.channels.line.warning" x-text="row.channels.line.warning"></span>
+                              </span>
+                            </label>
+                          </div>
                           <p class="mt-1 text-[11px] leading-4 text-red-600" x-show="row.warnings && row.warnings.length" x-text="'提醒：' + row.warnings.join('、')"></p>
                         </div>
                       </div>
@@ -2033,6 +2057,7 @@
           canConfirmAdminPreview() {
             if (!this.adminPreview) return false;
             if (this.isAdminFlowTab() && this.activeAdminActionKey === "receiptPayment") return this.selectedAdminRowIds().length > 0;
+            if (this.adminPreview.confirmAction === "adminConfirmNotification") return this.selectedAdminNotifications().length > 0;
             if (this.adminPreview.canConfirm !== true) return false;
             if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine" || this.adminPreview.confirmAction === "adminVoidDocument" || this.adminPreview.confirmAction === "adminReissueDocument" || this.adminPreview.confirmAction === "adminRegenerateDocument") {
               return this.selectedAdminRowIds().length > 0;
@@ -2046,6 +2071,8 @@
             const rows = (preview.rows || []).map((row) => ({
               ...row,
               selected: context ? this.adminRowMatchesSelection(row, context) : false,
+              selectedEmail: false,
+              selectedLine: false,
             }));
             return {
               ...preview,
@@ -2115,7 +2142,25 @@
           selectedAdminRowsSummary() {
             const count = this.selectedAdminRows().length;
             if (!this.adminPreview || !this.adminPreview.rows || !this.adminPreview.rows.length) return "";
+            if (this.adminPreview.confirmAction === "adminConfirmNotification") {
+              const notifications = this.selectedAdminNotifications();
+              const emailCount = notifications.filter((item) => item.email).length;
+              const lineCount = notifications.filter((item) => item.line).length;
+              return notifications.length > 0 ? `已選取 ${notifications.length} 位，Email ${emailCount} 筆，LINE ${lineCount} 筆。` : "";
+            }
             return count > 0 ? `已選取 ${count} 項。` : "";
+          },
+
+          selectedAdminNotifications() {
+            if (!this.adminPreview || !this.adminPreview.rows) return [];
+            return this.adminPreview.rows
+              .filter((row) => row.selected && row.channels)
+              .map((row) => ({
+                id: row.id,
+                email: row.selectedEmail === true && row.channels.email && row.channels.email.selectable === true,
+                line: row.selectedLine === true && row.channels.line && row.channels.line.selectable === true,
+              }))
+              .filter((item) => item.email || item.line);
           },
 
           hasSelectableAdminRows() {
@@ -2141,6 +2186,12 @@
             if (this.activeAdminActionKey === "paymentNotice") {
               return row.type === "student" && row.selectable === true;
             }
+            if (["paymentNotify", "receiptNotify", "allowanceNotify"].includes(this.activeAdminActionKey)) {
+              return row.selectable === true && row.channels && (
+                (row.channels.email && row.channels.email.selectable === true) ||
+                (row.channels.line && row.channels.line.selectable === true)
+              );
+            }
             return row.selectable === true;
           },
 
@@ -2164,24 +2215,21 @@
               return [
                 { key: "tuitionWrite", label: "寫入學費結算" },
                 { key: "paymentNotice", label: "產生繳費單" },
-                { key: "paymentEmail", label: "寄送 Email" },
-                { key: "paymentLine", label: "LINE push" },
+                { key: "paymentNotify", label: "寄送通知" },
               ];
             }
             if (this.activeAdminTab === "receipt") {
               return [
                 { key: "receiptPayment", label: "套用收款資料" },
                 { key: "receiptDocument", label: "產生收據" },
-                { key: "receiptEmail", label: "寄送 Email" },
-                { key: "receiptLine", label: "LINE push" },
+                { key: "receiptNotify", label: "寄送通知" },
               ];
             }
             if (this.activeAdminTab === "voucher") {
               return [
                 { key: "salaryWrite", label: "寫入鐘點結算" },
                 { key: "allowanceDocument", label: "產生領據" },
-                { key: "allowanceEmail", label: "寄送 Email" },
-                { key: "allowanceLine", label: "LINE push" },
+                { key: "allowanceNotify", label: "寄送通知" },
               ];
             }
             return [];
@@ -2216,16 +2264,13 @@
             const featureByAction = {
               tuitionWrite: "學費試算",
               paymentNotice: "繳費單",
-              paymentEmail: "寄送繳費單 Email",
-              paymentLine: "寄送繳費單 LINE",
+              paymentNotify: "寄送繳費單通知",
               receiptPayment: "收據",
               receiptDocument: "收據",
-              receiptEmail: "寄送收據 Email",
-              receiptLine: "寄送收據 LINE",
+              receiptNotify: "寄送收據通知",
               salaryWrite: "鐘點試算",
               allowanceDocument: "領據",
-              allowanceEmail: "寄送領據 Email",
-              allowanceLine: "寄送領據 LINE",
+              allowanceNotify: "寄送領據通知",
             };
             return featureByAction[actionKey] || "";
           },
@@ -2263,6 +2308,10 @@
             if (!this.adminPreview || !this.adminPreview.rows) return;
             this.adminPreview.rows.forEach((row) => {
               row.selected = this.isAdminRowSelectable(row);
+              if (row.channels) {
+                row.selectedEmail = row.selected && row.channels.email && row.channels.email.selectable === true;
+                row.selectedLine = row.selected && row.channels.line && row.channels.line.selectable === true;
+              }
             });
           },
 
@@ -2270,7 +2319,29 @@
             if (!this.adminPreview || !this.adminPreview.rows) return;
             this.adminPreview.rows.forEach((row) => {
               if (!this.isAdminRowSelectable(row)) row.selected = false;
+              if (!row.selected && row.channels) {
+                row.selectedEmail = false;
+                row.selectedLine = false;
+              }
             });
+          },
+
+          syncAdminNotificationChannels(row) {
+            if (!row || !row.channels) return;
+            if (!row.selected) {
+              row.selectedEmail = false;
+              row.selectedLine = false;
+              return;
+            }
+            row.selectedEmail = row.channels.email && row.channels.email.selectable === true;
+            row.selectedLine = row.channels.line && row.channels.line.selectable === true;
+          },
+
+          syncAdminNotificationParent(row) {
+            if (!row || !row.channels) return;
+            row.selectedEmail = row.selectedEmail === true && row.channels.email && row.channels.email.selectable === true;
+            row.selectedLine = row.selectedLine === true && row.channels.line && row.channels.line.selectable === true;
+            row.selected = this.isAdminRowSelectable(row) && (row.selectedEmail || row.selectedLine);
           },
 
           currentAdminConfirmLabel() {
@@ -2304,6 +2375,8 @@
               }
             } else if (confirmAction === "adminConfirmGeneralReceiptEmail") {
               confirmText = "確認後只會寄送已產生的一般收據 PDF Email，並回寫一般收據紀錄的 Email 狀態；不會重新產生 PDF 或 LINE push。\n是否確認寄送？";
+            } else if (confirmAction === "adminConfirmNotification") {
+              confirmText = "確認後會依卡片中勾選的 Email / LINE 分別寄送通知，並各自回寫狀態；不會重新產生 PDF。\n是否確認寄送通知？";
             } else if (confirmAction === "adminConfirmLine") {
               if (featureName === "寄送繳費單 LINE") {
                 confirmText = "確認後會將繳費單 PDF 連結以 LINE push 傳給家長，並回寫 LINE 狀態；不會重新產生 PDF 或寄送 Email。\n是否確認推播？";
@@ -2368,6 +2441,7 @@
                 feature: featureName,
                 month: formattedMonth,
                 selectedIds: JSON.stringify(this.selectedAdminRowIds()),
+                selectedNotifications: JSON.stringify(this.selectedAdminNotifications()),
                 reason: voidReason,
                 channel: reissueChannel,
               });
