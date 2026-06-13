@@ -218,6 +218,27 @@
         overflow-wrap: anywhere;
         word-break: break-word;
       }
+      .admin-flow-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .admin-flow-tab {
+        min-height: 56px;
+        white-space: nowrap;
+      }
+      .admin-action-grid {
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+      }
+      .admin-row-card.is-disabled {
+        opacity: 0.72;
+      }
+      @media (min-width: 640px) {
+        .admin-flow-tabs {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        .admin-action-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
     </style>
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -487,13 +508,13 @@
                     <option :value="std" x-text="std"></option>
                   </template>
                 </select>
-                <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && options.students.length === 0">
+                <p class="mt-2 text-xs text-amber-300" x-show="!teacherProfile.isAdmin && optionsLoaded && options.students.length === 0">
                   目前沒有可登記的學生，請聯絡行政確認課程設定表。
                 </p>
                 <p class="mt-2 text-xs text-slate-500">一次可登記同一位學生最多 5 筆課程。</p>
               </label>
 
-              <p class="mt-2 text-xs text-amber-300" x-show="optionsLoaded && regForm.student && filteredSubjects().length === 0">
+              <p class="mt-2 text-xs text-amber-300" x-show="!teacherProfile.isAdmin && optionsLoaded && regForm.student && filteredSubjects().length === 0">
                 目前沒有可登記的課程，請聯絡行政確認課程設定表。
               </p>
               <p class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-500" x-show="batchLessonError()" x-text="batchLessonError()"></p>
@@ -715,35 +736,35 @@
             </div>
 
             <!-- 行政功能分頁 -->
-            <div class="grid grid-cols-2 gap-2 pt-2 sm:grid-cols-4">
+            <div class="admin-flow-tabs grid gap-2 pt-2">
               <button
                 type="button"
-                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
-                :class="activeAdminTab === 'calc' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                class="admin-flow-tab rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'calc' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
                 @click="setAdminTab('calc')"
               >
                 學費流程
               </button>
               <button
                 type="button"
-                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
-                :class="activeAdminTab === 'receipt' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                class="admin-flow-tab rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'receipt' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
                 @click="setAdminTab('receipt')"
               >
                 收據流程
               </button>
               <button
                 type="button"
-                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
-                :class="activeAdminTab === 'voucher' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                class="admin-flow-tab rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'voucher' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
                 @click="setAdminTab('voucher')"
               >
                 鐘點流程
               </button>
               <button
                 type="button"
-                class="rounded-xl border px-3 py-2 text-sm font-semibold transition"
-                :class="activeAdminTab === 'tools' ? 'border-amber-500 bg-amber-50 text-amber-600' : 'border-slate-800 bg-white text-slate-500'"
+                class="admin-flow-tab rounded-xl border px-3 py-2 text-sm font-semibold transition"
+                :class="activeAdminTab === 'tools' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
                 @click="setAdminTab('tools')"
               >
                 帳務工具
@@ -835,7 +856,6 @@
                 </div>
                 <div class="mt-3 rounded-xl border border-teal-200 bg-white p-3 text-xs text-slate-700" x-show="adminPreview && adminPreview.title === '收據'">
                   <p class="font-bold text-teal-700">收款資料套用</p>
-                  <p class="mt-1 leading-4 text-slate-500">套用後會寫入本月尚未產生收據 PDF 的學費結算資料。</p>
                   <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <label class="block">
                       <span class="font-semibold text-slate-600">收款方式</span>
@@ -859,14 +879,6 @@
                       <input type="date" class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model="receiptPaymentForm.paymentDate">
                     </label>
                   </div>
-                  <button
-                    type="button"
-                    class="mt-3 w-full rounded-xl border border-teal-600 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 disabled:opacity-50"
-                    :disabled="submitting"
-                    @click="runAdminFlowAction('receiptPayment')"
-                  >
-                    選擇要套用的學生
-                  </button>
                 </div>
                 <div class="mt-3 rounded-xl border border-teal-200 bg-white p-3 text-xs text-slate-700" x-show="adminPreview && adminPreview.title === '一般收據'">
                   <p class="font-bold text-teal-700">一般收據資料</p>
@@ -911,19 +923,38 @@
                     產生一般收據 PDF
                   </button>
                 </div>
+                <div class="mt-4" x-show="isAdminFlowTab() && adminPreview && adminPreview.title !== '一般收據'">
+                  <p class="mb-2 text-xs font-bold text-amber-700" x-text="adminSelectionHeading()"></p>
+                  <div class="admin-action-grid grid gap-2">
+                    <template x-for="action in adminFlowActions()" :key="action.key">
+                      <button
+                        type="button"
+                        class="rounded-xl border px-3 py-3 text-xs font-bold transition disabled:border-slate-200 disabled:text-slate-400"
+                        :class="activeAdminActionKey === action.key ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-teal-600 bg-white text-teal-800 hover:bg-teal-50'"
+                        :disabled="submitting || !canRunAdminFlowAction(action.key)"
+                        @click="runAdminFlowAction(action.key)"
+                        x-text="adminFlowActionLabel(action)"
+                      ></button>
+                    </template>
+                  </div>
+                </div>
                 <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.rows && adminPreview.rows.length">
-                  <div class="flex items-center justify-between gap-2">
-                    <p class="text-xs font-bold text-amber-700" x-text="adminSelectionHeading()"></p>
+                  <div class="flex items-center justify-end gap-2">
                     <button type="button" x-show="hasEligibleAdminRows()" class="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[10px] font-semibold text-amber-700" @click="selectAllAdminRows()">
                       全選本步驟可處理
                     </button>
                   </div>
                   <template x-for="row in (adminPreview ? adminPreview.rows : [])" :key="row.id">
-                    <label class="block rounded-lg border bg-white px-3 py-2"
-                      :class="isAdminRowSelectable(row) ? 'border-teal-200' : 'border-amber-100 opacity-70'">
+                    <label class="admin-row-card block rounded-lg border bg-white px-3 py-2"
+                      :class="isAdminRowSelectable(row) ? 'border-teal-200' : 'is-disabled border-amber-100'">
                       <div class="flex items-start gap-2">
                         <input type="checkbox" class="mt-1 h-4 w-4 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
+                          x-show="isAdminRowSelectable(row)"
                           x-model="row.selected" :disabled="!isAdminRowSelectable(row)" @change="syncAdminNotificationChannels(row)">
+                        <span
+                          class="mt-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[10px] font-bold text-white"
+                          x-show="!isAdminRowSelectable(row)"
+                        >×</span>
                         <div class="min-w-0 flex-1">
                           <div class="flex flex-wrap items-center justify-between gap-2">
                             <p class="font-bold text-slate-900" x-text="'● ' + row.name"></p>
@@ -931,11 +962,12 @@
                           </div>
                           <p class="mt-1 text-xs leading-5 text-slate-600" x-show="row.docId || row.status">
                             <span x-show="row.docId" x-text="'單號 ' + row.docId"></span>
-                            <span x-show="row.docId && row.status">｜</span>
-                            <span x-text="row.status || ''"></span>
+                            <span x-show="row.docId && adminRowStatusText(row)">｜</span>
+                            <span x-text="adminRowStatusText(row)"></span>
                           </p>
+                          <p class="mt-1 text-[11px] font-semibold text-slate-500" x-show="!isAdminRowSelectable(row) && inactiveAdminRowReason(row)" x-text="inactiveAdminRowReason(row)"></p>
                           <div class="admin-row-detail mt-1 space-y-1 text-[11px] leading-4 text-slate-500" x-show="row.details && row.details.length">
-                            <template x-for="line in formatAdminDetailLines(row.details)" :key="line">
+                            <template x-for="line in formatAdminDetailLines(row.details, row)" :key="line">
                               <p x-text="line"></p>
                             </template>
                           </div>
@@ -979,18 +1011,6 @@
                     </label>
                   </template>
                   <p class="text-[11px] leading-4 text-amber-700" x-show="selectedAdminRowsSummary()" x-text="selectedAdminRowsSummary()"></p>
-                </div>
-                <div class="mt-4 grid grid-cols-2 gap-2" x-show="isAdminFlowTab() && adminPreview && adminPreview.title !== '一般收據'">
-                  <template x-for="action in adminFlowActions()" :key="action.key">
-                    <button
-                      type="button"
-                      class="rounded-xl border px-3 py-3 text-xs font-bold transition disabled:border-slate-200 disabled:text-slate-400"
-                      :class="activeAdminActionKey === action.key ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-teal-600 bg-white text-teal-800 hover:bg-teal-50'"
-                      :disabled="submitting || !canRunAdminFlowAction(action.key)"
-                      @click="runAdminFlowAction(action.key)"
-                      x-text="adminFlowActionLabel(action)"
-                    ></button>
-                  </template>
                 </div>
                 <div class="mt-4 grid grid-cols-3 gap-2" x-show="isDocumentToolPreview()">
                   <template x-for="action in documentToolActions()" :key="action.key">
@@ -2105,16 +2125,80 @@
             return this.formatAdminDetailLines(details).join("；");
           },
 
-          formatAdminDetailLines(details) {
+          formatAdminDetailLines(details, row) {
             const seen = new Set();
             return (details || [])
               .flatMap((part) => this.formatAdminDetail(part).split("；"))
               .map((part) => part.trim())
               .filter((part) => {
+                if (!row || !row.channels) return true;
+                return !/^Email[:：]/.test(part) && !/^LINE[:：]/.test(part);
+              })
+              .filter((part) => {
                 if (!part || seen.has(part)) return false;
                 seen.add(part);
                 return true;
               });
+          },
+
+          adminRowStatusText(row) {
+            const status = String((row && row.status) || "");
+            if (!status) return "";
+            return status
+              .split("｜")
+              .map((part) => part.trim())
+              .filter((part) => part && part.indexOf("Email：") !== 0 && part.indexOf("LINE：") !== 0)
+              .filter((part, index, arr) => arr.indexOf(part) === index)
+              .join("｜");
+          },
+
+          inactiveAdminRowReason(row) {
+            if (!row) return "";
+            if (this.isAdminRowSelectable(row)) return "";
+            const warnings = row.warnings || [];
+            if (this.activeAdminActionKey === "tuitionWrite") {
+              if (row.type === "pending-plan") return "待核銷，尚不可寫入";
+              if (warnings.length) return warnings[0];
+              return "本步驟不可寫入";
+            }
+            if (this.activeAdminActionKey === "paymentNotice") {
+              if (row.pdfUrl || String(row.status || "").indexOf("已有 PDF") > -1) return "已產生繳費單";
+              if (warnings.length) return warnings[0];
+              return "本步驟不可產生";
+            }
+            if (this.activeAdminActionKey === "receiptPayment") {
+              if (row.pdfUrl) return "已產生收據，不可再套用收款資料";
+              if (warnings.length === 0) return "收款資料已完整";
+              return warnings[0];
+            }
+            if (this.activeAdminActionKey === "receiptDocument") {
+              if (row.pdfUrl) return "已產生收據";
+              if (warnings.length) return warnings[0];
+              return "本步驟不可產生";
+            }
+            if (this.activeAdminActionKey === "salaryWrite") {
+              if (warnings.length) return warnings[0];
+              return "本步驟不可寫入";
+            }
+            if (this.activeAdminActionKey === "allowanceDocument") {
+              if (row.pdfUrl) return "已產生領據";
+              if (warnings.length) return warnings[0];
+              return "本步驟不可產生";
+            }
+            if (this.isNotifyAction(this.activeAdminActionKey)) {
+              if (!row.channels) return "尚未產生 PDF 或沒有寄送資料";
+              const reasons = [];
+              if (row.channels.email && row.channels.email.warning) reasons.push(row.channels.email.warning);
+              if (row.channels.line && row.channels.line.warning) reasons.push(row.channels.line.warning);
+              if (reasons.length) return reasons.join("、");
+              return "Email/LINE 皆無待寄送項目";
+            }
+            if (this.isDocumentToolPreview()) {
+              if (!this.activeToolActionKey) return "請先選擇作廢、補發或重產";
+              if (warnings.length) return warnings[0];
+              return "本單據不符合此操作";
+            }
+            return warnings[0] || "";
           },
 
           selectedAdminRowIds() {
