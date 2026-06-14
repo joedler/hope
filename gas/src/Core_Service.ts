@@ -114,9 +114,10 @@ function handleLiffFormOptions(lineUserId?: string) {
 
     const students = Array.from(studentsSet);
     const subjects = Array.from(subjectsSet);
+    const isAdmin = ADMIN_LIST.indexOf(lineUserId || "") > -1;
     return {
       ok: true,
-      message: students.length === 0 || subjects.length === 0 ? "目前沒有可登記的學生或課程，請聯絡行政確認課程設定表。" : "",
+      message: !isAdmin && (students.length === 0 || subjects.length === 0) ? "目前沒有可登記的學生或課程，請聯絡行政確認課程設定表。" : "",
       options: {
         students,
         subjects,

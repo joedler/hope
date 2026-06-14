@@ -412,7 +412,8 @@ function saveGeneralReceiptState(state: any, operatorName: string) {
     state.method,
     state.pdfUrl,
     "待寄送",
-    operatorName
+    operatorName,
+    state.pid || ""
   ]);
 
   if (journalSheet) {

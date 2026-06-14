@@ -518,13 +518,14 @@
                 <p class="mt-2 text-xs text-amber-300" x-show="!teacherProfile.isAdmin && optionsLoaded && options.students.length === 0">
                   目前沒有可登記的學生，請聯絡行政確認課程設定表。
                 </p>
+                <p class="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-500" x-show="batchLessonError() === '請先選擇學生。'" x-text="batchLessonError()"></p>
                 <p class="mt-2 text-xs text-slate-500">一次可登記同一位學生最多 5 筆課程。</p>
               </label>
 
               <p class="mt-2 text-xs text-amber-300" x-show="!teacherProfile.isAdmin && optionsLoaded && regForm.student && filteredSubjects().length === 0">
                 目前沒有可登記的課程，請聯絡行政確認課程設定表。
               </p>
-              <p class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-500" x-show="batchLessonError()" x-text="batchLessonError()"></p>
+              <p class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-500" x-show="batchLessonError() && batchLessonError() !== '請先選擇學生。'" x-text="batchLessonError()"></p>
 
               <template x-for="(lesson, index) in regForm.lessons" :key="lesson.id">
                 <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4 space-y-3">
@@ -899,6 +900,10 @@
                       <input type="text" class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model.trim="generalReceiptForm.name" placeholder="請輸入姓名或單位">
                     </label>
                     <label class="block">
+                      <span class="font-semibold text-slate-600">身分證號/統一編號</span>
+                      <input type="text" class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model.trim="generalReceiptForm.pid" placeholder="捐款稅務申報使用">
+                    </label>
+                    <label class="block">
                       <span class="font-semibold text-slate-600">類別</span>
                       <select class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model="generalReceiptForm.category">
                         <option value="入會費">入會費</option>
@@ -929,8 +934,16 @@
                   >
                     產生一般收據 PDF
                   </button>
+                  <button
+                    type="button"
+                    class="mt-2 w-full rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 disabled:opacity-50"
+                    :disabled="submitting"
+                    @click="showAdminPreview('寄送一般收據 Email')"
+                  >
+                    寄送一般收據 Email
+                  </button>
                 </div>
-                <div class="mt-4" x-show="isAdminFlowTab() && adminPreview && adminPreview.title !== '一般收據'">
+                <div class="mt-4" x-show="isAdminFlowTab() && adminPreview && adminPreview.title !== '一般收據' && adminPreview.confirmAction !== 'adminConfirmGeneralReceiptEmail'">
                   <p class="mb-2 text-xs font-bold text-amber-700" x-text="adminSelectionHeading()"></p>
                   <div class="admin-action-grid grid gap-2">
                     <template x-for="action in adminFlowActions()" :key="action.key">
@@ -1036,7 +1049,7 @@
                 </div>
                 <button
                   type="button"
-                  x-show="canConfirmAdminPreview() && (!isAdminFlowTab() || activeAdminActionKey)"
+                  x-show="canConfirmAdminPreview() && (!isAdminFlowTab() || activeAdminActionKey || adminPreview.confirmAction === 'adminConfirmGeneralReceiptEmail')"
                   class="mt-3 w-full rounded-xl border border-teal-700 bg-teal-600 px-4 py-3 text-sm font-semibold text-white disabled:bg-slate-200 disabled:text-slate-400"
                   :disabled="submitting"
                   @click="confirmAdminPreview()"
@@ -1327,6 +1340,7 @@
           generalReceiptForm: {
             receiptDate: new Date().toISOString().substring(0, 10),
             name: "",
+            pid: "",
             amount: "",
             category: "捐款",
             method: "匯款",
@@ -2076,6 +2090,7 @@
               return this.selectedAdminRowIds().length > 0;
             }
             if (this.adminPreview.confirmAction === "adminConfirmNotification") return this.selectedAdminNotifications().length > 0;
+            if (this.adminPreview.confirmAction === "adminConfirmGeneralReceiptEmail") return this.selectedAdminRowIds().length > 0;
             if (this.adminPreview.canConfirm !== true) return false;
             if (this.adminPreview.confirmAction === "adminConfirmDocument" || this.adminPreview.confirmAction === "adminConfirmEmail" || this.adminPreview.confirmAction === "adminConfirmLine" || this.adminPreview.confirmAction === "adminVoidDocument" || this.adminPreview.confirmAction === "adminReissueDocument" || this.adminPreview.confirmAction === "adminRegenerateDocument") {
               return this.selectedAdminRowIds().length > 0;
@@ -2268,6 +2283,7 @@
             if (this.isDocumentToolPreview()) {
               return !!(this.activeToolActionKey && row.actions && row.actions[this.activeToolActionKey] === true);
             }
+            if (this.adminPreview && this.adminPreview.confirmAction === "adminConfirmGeneralReceiptEmail") return row.selectable === true;
             if (!this.isAdminFlowTab()) return row.selectable === true;
             if (!this.activeAdminActionKey) return false;
             if (row.actions && Object.prototype.hasOwnProperty.call(row.actions, this.activeAdminActionKey)) {
@@ -2824,6 +2840,7 @@
               `${month} 一般收據\n\n` +
               `日期：${this.generalReceiptForm.receiptDate}\n` +
               `姓名/單位：${this.generalReceiptForm.name}\n` +
+              `身分證號/統一編號：${this.generalReceiptForm.pid || "未填"}\n` +
               `類別：${this.generalReceiptForm.category}\n` +
               `收款方式：${this.generalReceiptForm.method}\n` +
               `金額：NT$ ${amount.toLocaleString("zh-TW")}\n\n` +
@@ -2838,6 +2855,7 @@
                 lineUserId: this.lineUserId,
                 receiptDate: this.generalReceiptForm.receiptDate,
                 name: this.generalReceiptForm.name,
+                pid: this.generalReceiptForm.pid,
                 amount: this.generalReceiptForm.amount,
                 category: this.generalReceiptForm.category,
                 method: this.generalReceiptForm.method,
@@ -2846,6 +2864,7 @@
               alert(result.message || "一般收據已產生。");
               this.adminMonth = this.generalReceiptForm.receiptDate.substring(0, 7);
               this.generalReceiptForm.name = "";
+              this.generalReceiptForm.pid = "";
               this.generalReceiptForm.amount = "";
               if (result.preview) {
                 this.adminPreview = this.hydrateAdminPreview({

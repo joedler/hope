@@ -554,6 +554,7 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
   const lineUserId = String(params.lineUserId || "").trim();
   const receiptDate = normalizeGeneralReceiptDate(params.receiptDate);
   const name = String(params.name || "").trim();
+  const pidInput = String(params.pid || "").trim();
   const amount = parseFloat(params.amount) || 0;
   const category = String(params.category || "").trim();
   const method = String(params.method || "").trim();
@@ -582,7 +583,7 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
     amount,
     category,
     method,
-    pid: memberInfo.pid,
+    pid: pidInput || memberInfo.pid,
     email: memberInfo.email,
     docId
   };
@@ -3779,6 +3780,7 @@ function buildGeneralReceiptEmailReadOnlyPreview(month: string) {
     const method = String(data[i][6] || "").trim();
     const pdfUrl = String(data[i][7] || "").trim();
     const emailStatus = String(data[i][8] || "").trim() || "待寄送";
+    const pid = String(data[i][10] || "").trim();
     const memberInfo = lookupGeneralMemberData(name, category);
     const email = memberInfo.email || "";
     if (emailStatus === "待寄送") pendingCount++;
@@ -3812,9 +3814,10 @@ function buildGeneralReceiptEmailReadOnlyPreview(month: string) {
       warnings,
       details: [
         "Email：" + (email || "未填"),
+        pid ? "身分證/統編：" + pid : "",
         "類別：" + (category || "未填"),
         "收款：" + (method || "未填") + " / " + (dateText || "未填")
-      ]
+      ].filter(function(part: string) { return part !== ""; })
     });
   }
   if (items.length === 0) items.push(`${month} 目前沒有一般收據 Email 資料。`);
@@ -3844,6 +3847,7 @@ function buildGeneralReceiptReadOnlyPreview(month: string) {
     const pdfUrl = String(data[i][7] || "").trim();
     const emailStatus = String(data[i][8] || "").trim();
     const operatorName = String(data[i][9] || "").trim();
+    const pid = String(data[i][10] || "").trim();
     recordCount++;
     totalAmount += amount;
     if (pdfUrl) generatedCount++;
@@ -3862,6 +3866,7 @@ function buildGeneralReceiptReadOnlyPreview(month: string) {
       warnings: pdfUrl ? [] : ["缺 PDF"],
       details: [
         "類別：" + (category || "未填"),
+        pid ? "身分證/統編：" + pid : "",
         "收款：" + (method || "未填") + " / " + (dateText || "未填"),
         emailStatus ? "Email：" + emailStatus : "",
         operatorName ? "操作人：" + operatorName : ""
@@ -4428,7 +4433,7 @@ function processDonationTaxExport(targetYear: string) {
       const dateStr = (dateRaw instanceof Date) ? Utilities.formatDate(dateRaw, Session.getScriptTimeZone(), "yyyy/MM/dd") : String(dateRaw);
       if (dateStr.indexOf(targetYear + "/") === 0) {
         const memberInfo = lookupGeneralMemberData(name, category);
-        const pid = memberInfo.pid;
+        const pid = String(data[i][10] || "").trim() || memberInfo.pid;
 
         if (!pid || pid === "") {
           skipCount++; if (missingIdNames.indexOf(name) === -1) missingIdNames.push(name);
