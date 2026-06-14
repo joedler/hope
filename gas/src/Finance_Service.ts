@@ -555,6 +555,7 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
   const receiptDate = normalizeGeneralReceiptDate(params.receiptDate);
   const name = String(params.name || "").trim();
   const pidInput = String(params.pid || "").trim();
+  const emailInput = String(params.email || "").trim();
   const amount = parseFloat(params.amount) || 0;
   const category = String(params.category || "").trim();
   const method = String(params.method || "").trim();
@@ -566,6 +567,7 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
   if (!receiptDate) return { ok: false, message: "請填寫一般收據日期。" };
   if (!name) return { ok: false, message: "請填寫姓名或單位名稱。" };
   if (!amount || amount <= 0) return { ok: false, message: "金額必須大於 0。" };
+  if (emailInput && emailInput.indexOf("@") < 0) return { ok: false, message: "Email 格式不正確。" };
   if (["入會費", "常年會費", "捐款", "入會費+常年會費"].indexOf(category) < 0) {
     return { ok: false, message: "請選擇一般收據類別。" };
   }
@@ -584,7 +586,7 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
     category,
     method,
     pid: pidInput || memberInfo.pid,
-    email: memberInfo.email,
+    email: emailInput || memberInfo.email,
     docId
   };
   const folder = DriveApp.getFolderById(FOLDER_ID_GEN_RECEIPT);
@@ -3724,7 +3726,9 @@ function buildGeneralReceiptAdminPreview(month: string) {
       summary: `${month} 一般收據：${result.recordCount} 筆，合計 ${formatCurrency(result.totalAmount)}，已有 PDF ${result.generatedCount} 份。`,
       items: result.items.slice(0, 12),
       rows: result.rows,
-      nextAction: "填寫下方一般收據資料後產生 PDF"
+      nextAction: "確認寄送一般收據 Email",
+      canConfirm: result.sendableCount > 0,
+      confirmAction: "adminConfirmGeneralReceiptEmail"
     };
   } catch (e) {
     return {
@@ -3781,8 +3785,9 @@ function buildGeneralReceiptEmailReadOnlyPreview(month: string) {
     const pdfUrl = String(data[i][7] || "").trim();
     const emailStatus = String(data[i][8] || "").trim() || "待寄送";
     const pid = String(data[i][10] || "").trim();
+    const emailFromRecord = String(data[i][11] || "").trim();
     const memberInfo = lookupGeneralMemberData(name, category);
-    const email = memberInfo.email || "";
+    const email = emailFromRecord || memberInfo.email || "";
     if (emailStatus === "待寄送") pendingCount++;
     if (emailStatus.indexOf("已寄送") > -1) sentCount++;
     const warnings: string[] = [];
@@ -3835,6 +3840,7 @@ function buildGeneralReceiptReadOnlyPreview(month: string) {
   let totalAmount = 0;
   let recordCount = 0;
   let generatedCount = 0;
+  let sendableCount = 0;
   for (let i = 1; i < data.length; i++) {
     const rowMonth = normalizeFinancialMonth(data[i][2], timeZone);
     if (rowMonth !== month) continue;
@@ -3848,33 +3854,43 @@ function buildGeneralReceiptReadOnlyPreview(month: string) {
     const emailStatus = String(data[i][8] || "").trim();
     const operatorName = String(data[i][9] || "").trim();
     const pid = String(data[i][10] || "").trim();
+    const emailFromRecord = String(data[i][11] || "").trim();
+    const memberInfo = lookupGeneralMemberData(name, category);
+    const email = emailFromRecord || memberInfo.email || "";
+    const warnings: string[] = [];
+    if (!pdfUrl) warnings.push("缺 PDF");
+    if (!email || email.indexOf("@") < 0) warnings.push("缺 Email");
+    if ((emailStatus || "待寄送") !== "待寄送") warnings.push(emailStatus ? "狀態不是待寄送" : "缺寄送狀態");
+    const selectable = !!pdfUrl && email.indexOf("@") > -1 && (emailStatus || "待寄送") === "待寄送";
+    if (selectable) sendableCount++;
     recordCount++;
     totalAmount += amount;
     if (pdfUrl) generatedCount++;
     items.push(`${name || "未填姓名"}\n類別：${category || "類別未填"}\n金額：${formatCurrency(amount)}\n編號：${docId || "未填"}\n收款：${method || "未填"} / ${dateText || "未填"}\n狀態：${pdfUrl ? "已有 PDF" : "尚未產生 PDF"}`);
     rows.push({
-      id: "general-receipt:" + (docId || i),
+      id: "general-receipt-email:" + (docId || i),
       type: "document",
       name: name || "未填姓名",
       amount,
       amountText: formatCurrency(amount),
       docId,
       pdfUrl,
-      status: pdfUrl ? "已有 PDF" : "尚未產生 PDF",
-      selectable: false,
-      selectedDefault: false,
-      warnings: pdfUrl ? [] : ["缺 PDF"],
+      status: pdfUrl ? ((emailStatus || "待寄送") + "｜已有 PDF") : "尚未產生 PDF",
+      selectable,
+      selectedDefault: selectable,
+      warnings,
       details: [
         "類別：" + (category || "未填"),
         pid ? "身分證/統編：" + pid : "",
+        "Email收件人：" + (email || "未填"),
         "收款：" + (method || "未填") + " / " + (dateText || "未填"),
-        emailStatus ? "Email：" + emailStatus : "",
+        "Email狀態：" + (emailStatus || "待寄送"),
         operatorName ? "操作人：" + operatorName : ""
       ].filter(function(part: string) { return part !== ""; })
     });
   }
   if (items.length === 0) items.push(`${month} 目前沒有一般收據紀錄。`);
-  return { items, rows, totalAmount, recordCount, generatedCount };
+  return { items, rows, totalAmount, recordCount, generatedCount, sendableCount };
 }
 
 function buildGeneratedDocumentsAdminPreview(month: string) {

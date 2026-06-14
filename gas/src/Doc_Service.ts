@@ -413,7 +413,8 @@ function saveGeneralReceiptState(state: any, operatorName: string) {
     state.pdfUrl,
     "待寄送",
     operatorName,
-    state.pid || ""
+    state.pid || "",
+    state.email || ""
   ]);
 
   if (journalSheet) {
@@ -1548,13 +1549,13 @@ function sendGeneralReceiptEmailForTarget(targetMonth: string, targetName: strin
   const sheet = ss.getSheetByName(SHEET_NAME_GEN_RECORD);
   if (!sheet) return "❌ 找不到一般收據紀錄分頁。";
   const data = sheet.getDataRange().getValues();
-  let targetRow = -1; let pdfUrl = ""; let category = ""; let currentEmailStatus = "";
+  let targetRow = -1; let pdfUrl = ""; let category = ""; let currentEmailStatus = ""; let emailFromRecord = "";
 
   for (let i = data.length - 1; i >= 1; i--) {
      const rowDateRaw = data[i][2];
      const rowMonth = (rowDateRaw instanceof Date) ? Utilities.formatDate(rowDateRaw, Session.getScriptTimeZone(), "yyyy/MM") : String(rowDateRaw).substring(0, 7);
      if (rowMonth === targetMonth && String(data[i][3]).trim() === targetName) {
-         targetRow = i + 1; category = data[i][5]; pdfUrl = data[i][7]; currentEmailStatus = data[i][8]; break;
+         targetRow = i + 1; category = data[i][5]; pdfUrl = data[i][7]; currentEmailStatus = data[i][8]; emailFromRecord = String(data[i][11] || "").trim(); break;
      }
   }
 
@@ -1562,7 +1563,7 @@ function sendGeneralReceiptEmailForTarget(targetMonth: string, targetName: strin
   if (String(currentEmailStatus || "").indexOf("已寄送") > -1) return "⚠️ 已寄送完成，系統阻擋重複寄送。";
 
   const memberInfo = lookupGeneralMemberData(targetName, category);
-  const email = memberInfo.email; let newStatus = "寄送失敗"; let reportMsg = "";
+  const email = emailFromRecord || memberInfo.email; let newStatus = "寄送失敗"; let reportMsg = "";
 
   if (email && email.indexOf("@") > -1) {
      try {

@@ -904,6 +904,10 @@
                       <input type="text" class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model.trim="generalReceiptForm.pid" placeholder="捐款稅務申報使用">
                     </label>
                     <label class="block">
+                      <span class="font-semibold text-slate-600">Email</span>
+                      <input type="email" class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model.trim="generalReceiptForm.email" placeholder="寄送一般收據使用">
+                    </label>
+                    <label class="block">
                       <span class="font-semibold text-slate-600">類別</span>
                       <select class="mt-1 w-full rounded-lg border border-teal-100 bg-white px-2 py-2 text-sm text-slate-800" x-model="generalReceiptForm.category">
                         <option value="入會費">入會費</option>
@@ -933,14 +937,6 @@
                     @click="submitGeneralReceipt()"
                   >
                     產生一般收據 PDF
-                  </button>
-                  <button
-                    type="button"
-                    class="mt-2 w-full rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 disabled:opacity-50"
-                    :disabled="submitting"
-                    @click="showAdminPreview('寄送一般收據 Email')"
-                  >
-                    寄送一般收據 Email
                   </button>
                 </div>
                 <div class="mt-4" x-show="isAdminFlowTab() && adminPreview && adminPreview.title !== '一般收據' && adminPreview.confirmAction !== 'adminConfirmGeneralReceiptEmail'">
@@ -1341,6 +1337,7 @@
             receiptDate: new Date().toISOString().substring(0, 10),
             name: "",
             pid: "",
+            email: "",
             amount: "",
             category: "捐款",
             method: "匯款",
@@ -2835,12 +2832,17 @@
               alert("請填寫收據日期、姓名/單位與有效金額。");
               return;
             }
+            if (this.generalReceiptForm.email && this.generalReceiptForm.email.indexOf("@") < 0) {
+              alert("Email 格式不正確，請確認後再送出。");
+              return;
+            }
             const month = this.generalReceiptForm.receiptDate.substring(0, 7).replace("-", "/");
             const confirmed = confirm(
               `${month} 一般收據\n\n` +
               `日期：${this.generalReceiptForm.receiptDate}\n` +
               `姓名/單位：${this.generalReceiptForm.name}\n` +
               `身分證號/統一編號：${this.generalReceiptForm.pid || "未填"}\n` +
+              `Email：${this.generalReceiptForm.email || "未填"}\n` +
               `類別：${this.generalReceiptForm.category}\n` +
               `收款方式：${this.generalReceiptForm.method}\n` +
               `金額：NT$ ${amount.toLocaleString("zh-TW")}\n\n` +
@@ -2856,6 +2858,7 @@
                 receiptDate: this.generalReceiptForm.receiptDate,
                 name: this.generalReceiptForm.name,
                 pid: this.generalReceiptForm.pid,
+                email: this.generalReceiptForm.email,
                 amount: this.generalReceiptForm.amount,
                 category: this.generalReceiptForm.category,
                 method: this.generalReceiptForm.method,
@@ -2865,6 +2868,7 @@
               this.adminMonth = this.generalReceiptForm.receiptDate.substring(0, 7);
               this.generalReceiptForm.name = "";
               this.generalReceiptForm.pid = "";
+              this.generalReceiptForm.email = "";
               this.generalReceiptForm.amount = "";
               if (result.preview) {
                 this.adminPreview = this.hydrateAdminPreview({
@@ -2875,8 +2879,8 @@
                   rows: result.preview.rows || [],
                   metrics: result.preview.metrics || [],
                   nextAction: result.preview.nextAction || "填寫一般收據資料後產生 PDF",
-                  canConfirm: false,
-                  confirmAction: "",
+                  canConfirm: result.preview.canConfirm === true,
+                  confirmAction: result.preview.confirmAction || "",
                 }, "一般收據已產生，請檢查最新預覽。");
               } else {
                 await this.showAdminPreview("一般收據");
