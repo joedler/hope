@@ -799,11 +799,6 @@
                 <div>
                   <h4 class="text-sm font-bold text-white">收據流程</h4>
                 </div>
-                <div class="grid grid-cols-1 gap-3">
-                  <button type="button" class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center text-sm font-bold text-white transition hover:border-amber-500/40 hover:text-amber-400" @click="showAdminPreview('一般收據')">
-                    一般收據
-                  </button>
-                </div>
               </div>
 
               <div x-show="activeAdminTab === 'voucher'" class="space-y-3">
@@ -819,13 +814,18 @@
                 <div class="admin-tool-tabs grid gap-3">
                   <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
                     :class="activeToolTab === 'overview' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
-                    @click="setToolTab('overview'); showAdminPreview('單據總覽')">
+                    @click="setToolTab('overview')">
                     單據總覽
                   </button>
                   <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
                     :class="activeToolTab === 'adjustment' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
                     @click="setToolTab('adjustment')">
                     帳務補救
+                  </button>
+                  <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
+                    :class="activeToolTab === 'generalReceipt' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
+                    @click="setToolTab('generalReceipt')">
+                    一般收據
                   </button>
                   <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
                     :class="activeToolTab === 'system' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
@@ -2068,11 +2068,16 @@
             if (defaultFeature) await this.showAdminPreview(defaultFeature);
           },
 
-          setToolTab(tab) {
+          async setToolTab(tab) {
             this.activeToolTab = tab;
             this.adminPreview = null;
             this.activeAdminActionKey = "";
             this.activeToolActionKey = "";
+            if (tab === "overview") {
+              await this.showAdminPreview("單據總覽");
+            } else if (tab === "generalReceipt") {
+              await this.showAdminPreview("一般收據");
+            }
           },
 
           adminFeaturePending(featureName) {
