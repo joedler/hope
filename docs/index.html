@@ -933,7 +933,7 @@
                   <button
                     type="button"
                     class="mt-3 w-full rounded-xl border border-teal-600 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 disabled:opacity-50"
-                    :disabled="submitting || !generalReceiptForm.receiptDate || !generalReceiptForm.name || !generalReceiptForm.amount"
+                    :disabled="submitting || !generalReceiptForm.receiptDate || !generalReceiptForm.name || !generalReceiptForm.email || !generalReceiptForm.amount"
                     @click="submitGeneralReceipt()"
                   >
                     產生一般收據 PDF
@@ -1758,6 +1758,10 @@
               });
             });
             return Object.keys(unique).length;
+          },
+
+          isValidEmail(value) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
           },
 
           async loadTuitionAdjustmentOptions() {
@@ -2828,11 +2832,11 @@
               return;
             }
             const amount = Number(this.generalReceiptForm.amount || 0);
-            if (!this.generalReceiptForm.receiptDate || !this.generalReceiptForm.name || !amount || amount <= 0) {
-              alert("請填寫收據日期、姓名/單位與有效金額。");
+            if (!this.generalReceiptForm.receiptDate || !this.generalReceiptForm.name || !this.generalReceiptForm.email || !amount || amount <= 0) {
+              alert("請填寫收據日期、姓名/單位、Email 與有效金額。");
               return;
             }
-            if (this.generalReceiptForm.email && this.generalReceiptForm.email.indexOf("@") < 0) {
+            if (!this.isValidEmail(this.generalReceiptForm.email)) {
               alert("Email 格式不正確，請確認後再送出。");
               return;
             }

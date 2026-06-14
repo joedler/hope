@@ -567,7 +567,7 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
   if (!receiptDate) return { ok: false, message: "請填寫一般收據日期。" };
   if (!name) return { ok: false, message: "請填寫姓名或單位名稱。" };
   if (!amount || amount <= 0) return { ok: false, message: "金額必須大於 0。" };
-  if (emailInput && emailInput.indexOf("@") < 0) return { ok: false, message: "Email 格式不正確。" };
+  if (!isValidGeneralReceiptEmail(emailInput)) return { ok: false, message: "請填寫正確的 Email。" };
   if (["入會費", "常年會費", "捐款", "入會費+常年會費"].indexOf(category) < 0) {
     return { ok: false, message: "請選擇一般收據類別。" };
   }
@@ -634,6 +634,10 @@ function handleLiffAdminConfirmGeneralReceiptEmail(params: any) {
     message: `${month} 一般收據 Email 執行完成：成功 ${selectedRows.length - failCount} 筆，失敗/跳過 ${failCount} 筆。\n` + resultMessages.join("\n"),
     preview: afterPreview
   };
+}
+
+function isValidGeneralReceiptEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 }
 
 function normalizeGeneralReceiptDate(value: any) {
