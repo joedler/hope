@@ -53,7 +53,7 @@ function handleLiffAdminTask(params: any) {
     }
 
     if (task === "一般收據") {
-      return { ok: false, message: "一般收據目前採 LINE 對話流程；請輸入：開一般收據 YYYY/MM/DD 姓名 金額，或：寄一般收據 YYYY/MM 姓名。" };
+      return { ok: false, message: "一般收據請從行政工作台的「帳務工具」→「一般收據」執行；LINE 對話指令仍保留作為備用入口。" };
     }
 
     if (task === "稅務專區") {
