@@ -321,3 +321,159 @@ function auditFormalSpreadsheetStructure() {
   };
 }
 
+function auditFormalDataSources() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
+  const studentSheet = ss.getSheetByName(SHEET_NAME_STUDENT);
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+
+  if (!courseSheet) errors.push("缺少課程設定表，無法檢查課程資料來源。");
+  if (!studentSheet) errors.push("缺少學生基本資料表，無法檢查學生 Email 與 LINE ID。");
+  if (!teacherSheet) errors.push("缺少講師名單，無法檢查講師 Email、LINE ID 與行政權限。");
+
+  const validEmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const knownStudents: any = {};
+  const knownTeachers: any = {};
+
+  if (studentSheet) {
+    const sourceStudentData = studentSheet.getDataRange().getValues();
+    for (let i = 1; i < sourceStudentData.length; i++) {
+      const studentName = String(sourceStudentData[i][0] || "").trim();
+      if (studentName) knownStudents[studentName] = true;
+    }
+  }
+  if (teacherSheet) {
+    const sourceTeacherData = teacherSheet.getDataRange().getValues();
+    for (let i = 1; i < sourceTeacherData.length; i++) {
+      const teacherName = String(sourceTeacherData[i][0] || "").trim();
+      if (teacherName) knownTeachers[teacherName] = true;
+    }
+  }
+
+  let validCourseCount = 0;
+  let duplicateCourseCount = 0;
+  if (courseSheet) {
+    const courseData = courseSheet.getDataRange().getValues();
+    const seenCourseKeys: any = {};
+    for (let i = 1; i < courseData.length; i++) {
+      const rowNo = i + 1;
+      const teacherName = String(courseData[i][1] || "").trim();
+      const studentName = String(courseData[i][2] || "").trim();
+      const courseName = String(courseData[i][3] || "").trim();
+      const fee = parseFloat(courseData[i][4]);
+      const ratio = parseFloat(courseData[i][5]);
+      const mode = String(courseData[i][6] || "").trim();
+      const hasAnyValue = teacherName || studentName || courseName || String(courseData[i][4] || "").trim() || mode;
+      if (!hasAnyValue) continue;
+
+      const rowErrors: string[] = [];
+      if (!teacherName) rowErrors.push("講師空白");
+      if (!studentName) rowErrors.push("學生空白");
+      if (!courseName) rowErrors.push("課程空白");
+      if (!fee || fee <= 0) rowErrors.push("單價需大於 0");
+      if (String(courseData[i][5] || "").trim() !== "" && (isNaN(ratio) || ratio < 0 || ratio > 1)) rowErrors.push("鐘點比例需介於 0 到 1");
+      if (mode !== "預收" && mode !== "後收") rowErrors.push("收費模式需為預收或後收");
+
+      if (rowErrors.length > 0) {
+        errors.push("課程設定表第 " + rowNo + " 列：" + rowErrors.join("、") + "。");
+      } else {
+        validCourseCount++;
+        if (teacherName && !knownTeachers[teacherName]) warnings.push("課程設定表第 " + rowNo + " 列講師未出現在講師名單，鐘點、領據或綁定可能受影響。");
+        if (studentName && !knownStudents[studentName]) warnings.push("課程設定表第 " + rowNo + " 列學生未出現在學生基本資料表，Email 或 LINE push 可能受影響。");
+        if (String(courseData[i][5] || "").trim() === "") warnings.push("課程設定表第 " + rowNo + " 列鐘點比例空白，鐘點試算可能為 0。");
+        const key = teacherName + "|" + studentName + "|" + courseName;
+        if (seenCourseKeys[key]) {
+          duplicateCourseCount++;
+          warnings.push("課程設定表第 " + rowNo + " 列與第 " + seenCourseKeys[key] + " 列講師/學生/課程相同，請確認是否為刻意重複。");
+        } else {
+          seenCourseKeys[key] = rowNo;
+        }
+      }
+    }
+    if (validCourseCount === 0) errors.push("課程設定表沒有可用課程列。");
+  }
+
+  let studentCount = 0;
+  let studentEmailCount = 0;
+  let studentLineCount = 0;
+  let invalidStudentEmailCount = 0;
+  if (studentSheet) {
+    const studentData = studentSheet.getDataRange().getValues();
+    for (let i = 1; i < studentData.length; i++) {
+      const rowNo = i + 1;
+      const studentName = String(studentData[i][0] || "").trim();
+      if (!studentName) continue;
+      studentCount++;
+      const email = String(studentData[i][1] || "").trim();
+      const lineId = String(studentData[i][3] || "").trim();
+      if (email && validEmailPattern.test(email)) studentEmailCount++;
+      if (email && !validEmailPattern.test(email)) {
+        invalidStudentEmailCount++;
+        warnings.push("學生基本資料表第 " + rowNo + " 列 Email 格式可能錯誤。");
+      }
+      if (lineId) studentLineCount++;
+    }
+    if (studentCount === 0) warnings.push("學生基本資料表目前沒有學生姓名資料。");
+    if (studentCount > 0 && studentEmailCount === 0) warnings.push("學生基本資料表沒有有效 Email；繳費單與收據 Email 將無法寄送。");
+    if (studentCount > 0 && studentLineCount === 0) warnings.push("學生基本資料表 D 欄沒有 LINE User ID；繳費單與收據 LINE push 將無法使用。");
+  }
+
+  let teacherCount = 0;
+  let teacherEmailCount = 0;
+  let teacherLineCount = 0;
+  let adminLineMatchedCount = 0;
+  let invalidTeacherEmailCount = 0;
+  if (teacherSheet) {
+    const teacherData = teacherSheet.getDataRange().getValues();
+    for (let i = 1; i < teacherData.length; i++) {
+      const rowNo = i + 1;
+      const teacherName = String(teacherData[i][0] || "").trim();
+      if (!teacherName) continue;
+      teacherCount++;
+      const lineId = String(teacherData[i][1] || "").trim();
+      const email = String(teacherData[i][2] || "").trim();
+      if (lineId) teacherLineCount++;
+      if (lineId && ADMIN_LIST.indexOf(lineId) > -1) adminLineMatchedCount++;
+      if (email && validEmailPattern.test(email)) teacherEmailCount++;
+      if (email && !validEmailPattern.test(email)) {
+        invalidTeacherEmailCount++;
+        warnings.push("講師名單第 " + rowNo + " 列 Email 格式可能錯誤。");
+      }
+    }
+    if (teacherCount === 0) errors.push("講師名單沒有講師姓名資料。");
+    if (teacherCount > 0 && teacherLineCount === 0) warnings.push("講師名單 B 欄沒有 LINE User ID；講師綁定、領據 LINE push 與行政權限會受影響。");
+    if (teacherCount > 0 && teacherEmailCount === 0) warnings.push("講師名單沒有有效 Email；領據 Email 將無法寄送。");
+    if (adminLineMatchedCount === 0) warnings.push("講師名單沒有任何 B 欄 LINE User ID 命中 ADMIN_LINE_USER_IDS；請確認行政人員是否已綁定。");
+  }
+
+  Logger.log("正式資料來源檢查：必要錯誤 " + errors.length + " 項。");
+  errors.forEach(function(item) { Logger.log("錯誤：" + item); });
+  Logger.log("正式資料來源檢查：提醒 " + warnings.length + " 項。");
+  warnings.forEach(function(item) { Logger.log("提醒：" + item); });
+  Logger.log("統計：可用課程 " + validCourseCount + " 筆，重複課程提醒 " + duplicateCourseCount + " 筆。");
+  Logger.log("統計：學生 " + studentCount + " 位，有效 Email " + studentEmailCount + " 位，LINE ID " + studentLineCount + " 位，Email 格式提醒 " + invalidStudentEmailCount + " 筆。");
+  Logger.log("統計：講師 " + teacherCount + " 位，有效 Email " + teacherEmailCount + " 位，LINE ID " + teacherLineCount + " 位，行政 LINE 命中 " + adminLineMatchedCount + " 位，Email 格式提醒 " + invalidTeacherEmailCount + " 筆。");
+  Logger.log("注意：本函式只輸出列號與統計，不輸出姓名、Email、LINE ID 或其他個資值。");
+
+  return {
+    ok: errors.length === 0,
+    errorCount: errors.length,
+    warningCount: warnings.length,
+    stats: {
+      validCourseCount,
+      studentCount,
+      studentEmailCount,
+      studentLineCount,
+      teacherCount,
+      teacherEmailCount,
+      teacherLineCount,
+      adminLineMatchedCount
+    },
+    errors,
+    warnings
+  };
+}
+
