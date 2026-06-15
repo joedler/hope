@@ -114,3 +114,48 @@ function forceAuth() {
   Logger.log("所有外部資源授權完成");
 }
 
+function auditProjectProperties() {
+  const requiredKeys = [
+    "LINE_CHANNEL_TOKEN",
+    "SPREADSHEET_ID",
+    "LEAVE_SHEET_ID",
+    "REPORT_SHEET_ID",
+    "SHEET_ID_MEMBER"
+  ];
+  const recommendedKeys = [
+    "TEMPLATE_ID_PAYMENT",
+    "TEMPLATE_ID_RECEIPT",
+    "TEMPLATE_ID_ALLOWANCE",
+    "TEMPLATE_ID_GENERAL_RECEIPT",
+    "PDF_FOLDER_PAYMENT_NOTICE",
+    "PDF_FOLDER_RECEIPT",
+    "PDF_FOLDER_ALLOWANCE",
+    "PDF_FOLDER_GENERAL_RECEIPT",
+    "ORG_TAX_ID",
+    "LINE_GROUP_ID",
+    "ADMIN_LINE_USER_IDS"
+  ];
+  const props = PropertiesService.getScriptProperties();
+  const missingRequired: string[] = [];
+  const missingRecommended: string[] = [];
+
+  requiredKeys.forEach(function(key) {
+    if (!props.getProperty(key)) missingRequired.push(key);
+  });
+  recommendedKeys.forEach(function(key) {
+    if (!props.getProperty(key)) missingRecommended.push(key);
+  });
+
+  Logger.log("正式版設定檢查：必要屬性缺少 " + missingRequired.length + " 項。");
+  if (missingRequired.length > 0) Logger.log("缺少必要屬性：" + missingRequired.join(", "));
+  Logger.log("正式版設定檢查：建議屬性缺少 " + missingRecommended.length + " 項。");
+  if (missingRecommended.length > 0) Logger.log("缺少建議屬性：" + missingRecommended.join(", "));
+  Logger.log("注意：本函式只輸出 key 名稱，不輸出 token、ID 或個資值。");
+
+  return {
+    ok: missingRequired.length === 0,
+    missingRequired,
+    missingRecommended
+  };
+}
+

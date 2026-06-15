@@ -50,6 +50,7 @@
 - `LINE_GROUP_ID` 仍有程式 fallback 群組 ID。
 - `ORG_TAX_ID` 仍有程式 fallback 協會統一編號。
 - `docs/config.js` 僅放公開入口設定；不可放 `LINE_CHANNEL_TOKEN`、Channel secret 或個人 LINE User ID。
+- 已新增 `auditProjectProperties()`，可在 GAS 編輯器執行，僅列出缺少的 key 名稱，不輸出 token、ID 或個資值。
 
 目前保留 fallback 的理由是避免測試環境屬性缺漏時立即中斷。正式切換前應逐項確認 Script Properties 已建立，並在下一階段將正式版重要 ID fallback 移除或改為明確錯誤。
 
@@ -80,9 +81,10 @@
 
 1. GAS Script Properties 已包含第一節所有必填 key。
 2. `docs/config.js` 的 `gasWebAppUrl`、`liffId`、`liffUrl`、`pagesUrl` 指向正式入口。
-3. Google Docs 範本權限允許 GAS 專案使用，`forceAuth()` 可完成四份範本授權。
-4. PDF 資料夾權限允許 GAS 建立檔案，`forceAuth()` 可讀取四個資料夾。
-5. `學生基本資料表` 已填入需要 LINE push 的家長 LINE User ID 與 Email。
-6. `講師名單` 已填入講師 LINE User ID 與 Email。
-7. 行政人員 LINE User ID 已放入 `ADMIN_LINE_USER_IDS` 或等效正式權限來源。
-8. 正式版若移除程式 fallback，需先在測試 GAS 執行一次完整流程驗收。
+3. 在 GAS 編輯器執行 `auditProjectProperties()`，確認必要屬性缺少 0 項。
+4. Google Docs 範本權限允許 GAS 專案使用，`forceAuth()` 可完成四份範本授權。
+5. PDF 資料夾權限允許 GAS 建立檔案，`forceAuth()` 可讀取四個資料夾。
+6. `學生基本資料表` 已填入需要 LINE push 的家長 LINE User ID 與 Email。
+7. `講師名單` 已填入講師 LINE User ID 與 Email。
+8. 行政人員 LINE User ID 已放入 `ADMIN_LINE_USER_IDS` 或等效正式權限來源。
+9. 正式版若移除程式 fallback，需先在測試 GAS 執行一次完整流程驗收。
