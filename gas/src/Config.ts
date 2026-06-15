@@ -95,9 +95,21 @@ function forceAuth() {
   UrlFetchApp.fetch("https://www.google.com");
   DriveApp.getRootFolder();
   SpreadsheetApp.openById(SHEET_ID).getSheets();
-  const authDocFile = DriveApp.getFileById(TEMPLATE_ID_GEN_RECEIPT).makeCopy("forceAuth_document_scope_check");
-  DocumentApp.openById(authDocFile.getId()).getBody().getText();
-  authDocFile.setTrashed(true);
+  const templateIds = [
+    TEMPLATE_ID_PAYMENT,
+    TEMPLATE_ID_RECEIPT,
+    TEMPLATE_ID_ALLOWANCE,
+    TEMPLATE_ID_GEN_RECEIPT
+  ];
+  for (let i = 0; i < templateIds.length; i++) {
+    const authDocFile = DriveApp.getFileById(templateIds[i]).makeCopy("forceAuth_document_scope_check");
+    DocumentApp.openById(authDocFile.getId()).getBody().getText();
+    authDocFile.setTrashed(true);
+  }
+  DriveApp.getFolderById(PDF_FOLDER_CONFIG.PAYMENT_NOTICE).getName();
+  DriveApp.getFolderById(PDF_FOLDER_CONFIG.RECEIPT).getName();
+  DriveApp.getFolderById(PDF_FOLDER_CONFIG.ALLOWANCE).getName();
+  DriveApp.getFolderById(FOLDER_ID_GEN_RECEIPT).getName();
   GmailApp.getAliases();
   Logger.log("所有外部資源授權完成");
 }
