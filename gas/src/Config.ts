@@ -242,6 +242,18 @@ function auditFormalSpreadsheetStructure() {
     "建立時間", "單據編號", "收據日期", "姓名/單位", "金額", "類別",
     "收款方式", "PDF連結", "Email狀態", "操作人", "身分證號/統一編號", "Email收件人"
   ];
+  const headerAliases: any = {};
+  headerAliases[SHEET_NAME_GEN_RECORD] = {
+    "建立時間": ["開立時間"],
+    "單據編號": ["收據編號"],
+    "收據日期": ["收款年月"],
+    "姓名/單位": ["姓名"],
+    "類別": ["收入類別"],
+    "收款方式": ["繳費方式"],
+    "PDF連結": ["PDF檔案連結"],
+    "Email狀態": ["Email寄送狀態"],
+    "身分證號/統一編號": ["身分證字號/統一編號"]
+  };
 
   const missingSheets: string[] = [];
   const errors: string[] = [];
@@ -265,8 +277,15 @@ function auditFormalSpreadsheetStructure() {
         return String(value || "").trim();
       });
       for (let i = 0; i < headers.length; i++) {
-        if (actual[i] !== headers[i]) {
-          errors.push(sheetName + " 第 " + (i + 1) + " 欄表頭不一致：應為「" + headers[i] + "」，目前為「" + (actual[i] || "空白") + "」。");
+        const expected = headers[i];
+        const aliases = (headerAliases[sheetName] && headerAliases[sheetName][expected]) || [];
+        if (actual[i] === expected) {
+          continue;
+        }
+        if (aliases.indexOf(actual[i]) > -1) {
+          warnings.push(sheetName + " 第 " + (i + 1) + " 欄使用舊表頭「" + actual[i] + "」，位置與語意可相容；建議日後改名為「" + expected + "」。");
+        } else {
+          errors.push(sheetName + " 第 " + (i + 1) + " 欄表頭不一致：應為「" + expected + "」，目前為「" + (actual[i] || "空白") + "」。");
         }
       }
     }
