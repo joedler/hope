@@ -196,3 +196,109 @@ function setupRecommendedProjectProperties() {
   };
 }
 
+function auditFormalSpreadsheetStructure() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const requiredSheets = [
+    SHEET_NAME_COURSE,
+    SHEET_NAME_STUDENT,
+    SHEET_NAME_TEACHER,
+    SHEET_NAME_RECORD,
+    SHEET_NAME_PLAN,
+    SHEET_NAME_FIN_FEE,
+    SHEET_NAME_FIN_PAY,
+    SHEET_NAME_TUITION_ADJUSTMENT,
+    SHEET_NAME_DOCUMENT_RECORD,
+    SHEET_NAME_GEN_RECORD,
+    "會計日記帳"
+  ];
+  const minimumColumns: any = {};
+  minimumColumns[SHEET_NAME_COURSE] = 7;
+  minimumColumns[SHEET_NAME_STUDENT] = 4;
+  minimumColumns[SHEET_NAME_TEACHER] = 14;
+  minimumColumns[SHEET_NAME_RECORD] = 11;
+  minimumColumns[SHEET_NAME_PLAN] = 12;
+  minimumColumns[SHEET_NAME_FIN_FEE] = 17;
+  minimumColumns[SHEET_NAME_FIN_PAY] = 15;
+
+  const exactHeaders: any = {};
+  exactHeaders[SHEET_NAME_FIN_PAY] = [
+    "結算月份", "講師姓名", "課程/學生", "課程日期/時間(金額)", "時數/費率",
+    "單科試算", "應付小計", "單據編號", "存檔時間", "備註",
+    "檔案連結", "Email狀態", "扣繳稅額", "補充保費", "實發金額"
+  ];
+  exactHeaders[SHEET_NAME_TUITION_ADJUSTMENT] = [
+    "建立時間", "調整月份", "學生姓名", "課程名稱", "原上課日期",
+    "開始時間", "結束時間", "時數", "單價", "調整金額",
+    "調整類型", "關聯原單號", "原因", "狀態", "操作人",
+    "備註", "原錯誤月份", "補收單號", "補收PDF", "補收單狀態"
+  ];
+  exactHeaders[SHEET_NAME_DOCUMENT_RECORD] = [
+    "建立時間", "處理月份", "單據類型", "對象類型", "對象姓名",
+    "單據編號", "來源表", "來源鍵值", "金額", "PDF連結",
+    "產生狀態", "Email狀態", "LINE狀態", "寄送時間", "作廢狀態",
+    "備註", "操作人"
+  ];
+  exactHeaders[SHEET_NAME_GEN_RECORD] = [
+    "建立時間", "單據編號", "收據日期", "姓名/單位", "金額", "類別",
+    "收款方式", "PDF連結", "Email狀態", "操作人", "身分證號/統一編號", "Email收件人"
+  ];
+
+  const missingSheets: string[] = [];
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  requiredSheets.forEach(function(sheetName) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      missingSheets.push(sheetName);
+      return;
+    }
+
+    const minCols = minimumColumns[sheetName] || 0;
+    if (minCols > 0 && sheet.getMaxColumns() < minCols) {
+      errors.push(sheetName + " 欄位數不足：目前 " + sheet.getMaxColumns() + " 欄，至少需要 " + minCols + " 欄。");
+    }
+
+    const headers = exactHeaders[sheetName];
+    if (headers) {
+      const actual = sheet.getRange(1, 1, 1, headers.length).getValues()[0].map(function(value) {
+        return String(value || "").trim();
+      });
+      for (let i = 0; i < headers.length; i++) {
+        if (actual[i] !== headers[i]) {
+          errors.push(sheetName + " 第 " + (i + 1) + " 欄表頭不一致：應為「" + headers[i] + "」，目前為「" + (actual[i] || "空白") + "」。");
+        }
+      }
+    }
+  });
+
+  if (missingSheets.length > 0) {
+    missingSheets.forEach(function(sheetName) {
+      errors.push("缺少必要分頁：" + sheetName);
+    });
+  }
+
+  const studentSheet = ss.getSheetByName(SHEET_NAME_STUDENT);
+  if (studentSheet && studentSheet.getMaxColumns() >= 4) {
+    warnings.push("已確認學生基本資料表至少有 D 欄；家長/學生 LINE User ID 應放 D 欄。");
+  }
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (teacherSheet && teacherSheet.getMaxColumns() >= 2) {
+    warnings.push("已確認講師名單至少有 B 欄；講師 LINE User ID 應放 B 欄。");
+  }
+
+  Logger.log("正式試算表結構檢查：必要錯誤 " + errors.length + " 項。");
+  errors.forEach(function(item) { Logger.log("錯誤：" + item); });
+  Logger.log("正式試算表結構檢查：提醒 " + warnings.length + " 項。");
+  warnings.forEach(function(item) { Logger.log("提醒：" + item); });
+  Logger.log("注意：本函式只檢查分頁、欄位數與表頭，不輸出試算表資料內容。");
+
+  return {
+    ok: errors.length === 0,
+    errorCount: errors.length,
+    warningCount: warnings.length,
+    errors,
+    warnings
+  };
+}
+

@@ -86,7 +86,8 @@
 4. 在 GAS 編輯器執行 `auditProjectProperties()`，確認必要屬性缺少 0 項，並確認建議屬性缺少項目是否符合預期。
 5. Google Docs 範本權限允許 GAS 專案使用，`forceAuth()` 可完成四份範本授權。
 6. PDF 資料夾權限允許 GAS 建立檔案，`forceAuth()` 可讀取四個資料夾。
-7. `學生基本資料表` 已填入需要 LINE push 的家長 LINE User ID 與 Email。
-8. `講師名單` 已填入講師 LINE User ID 與 Email。
-9. 行政人員 LINE User ID 已放入 `ADMIN_LINE_USER_IDS` 或等效正式權限來源。
+7. 正式 Google Sheets 分頁與核心表頭可用 `auditFormalSpreadsheetStructure()` 檢查；此函式只輸出缺少分頁、欄位數不足或表頭不一致，不輸出資料內容。
+8. `學生基本資料表` 已填入需要 LINE push 的家長 LINE User ID 與 Email。
+9. `講師名單` 已填入講師 LINE User ID 與 Email。
+10. 行政人員 LINE User ID 已放入 `ADMIN_LINE_USER_IDS` 或等效正式權限來源。
 10. 正式版若移除程式 fallback，需先在測試 GAS 執行一次完整流程驗收。
