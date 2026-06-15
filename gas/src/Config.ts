@@ -159,3 +159,40 @@ function auditProjectProperties() {
   };
 }
 
+function setupRecommendedProjectProperties() {
+  const props = PropertiesService.getScriptProperties();
+  const recommendedDefaults: any = {
+    TEMPLATE_ID_PAYMENT: TEMPLATE_ID_PAYMENT,
+    TEMPLATE_ID_RECEIPT: TEMPLATE_ID_RECEIPT,
+    TEMPLATE_ID_ALLOWANCE: TEMPLATE_ID_ALLOWANCE,
+    TEMPLATE_ID_GENERAL_RECEIPT: TEMPLATE_ID_GEN_RECEIPT,
+    PDF_FOLDER_PAYMENT_NOTICE: PDF_FOLDER_CONFIG.PAYMENT_NOTICE,
+    PDF_FOLDER_RECEIPT: PDF_FOLDER_CONFIG.RECEIPT,
+    PDF_FOLDER_ALLOWANCE: PDF_FOLDER_CONFIG.ALLOWANCE,
+    PDF_FOLDER_GENERAL_RECEIPT: FOLDER_ID_GEN_RECEIPT,
+    LINE_GROUP_ID: GROUP_ID,
+    ADMIN_LINE_USER_IDS: ADMIN_LIST.join("\n")
+  };
+  const addedKeys: string[] = [];
+  const keptKeys: string[] = [];
+
+  Object.keys(recommendedDefaults).forEach(function(key) {
+    if (props.getProperty(key)) {
+      keptKeys.push(key);
+      return;
+    }
+    props.setProperty(key, recommendedDefaults[key]);
+    addedKeys.push(key);
+  });
+
+  Logger.log("已補入建議屬性 " + addedKeys.length + " 項。");
+  if (addedKeys.length > 0) Logger.log("補入 key：" + addedKeys.join(", "));
+  Logger.log("已存在未覆蓋 " + keptKeys.length + " 項。");
+  Logger.log("注意：本函式只輸出 key 名稱，不輸出 token、ID 或個資值。");
+
+  return {
+    addedKeys,
+    keptKeys
+  };
+}
+
