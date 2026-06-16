@@ -971,7 +971,7 @@
                     </template>
                   </div>
                 </div>
-                <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.rows && adminPreview.rows.length">
+                <div class="mt-3 space-y-2" x-show="adminPreview && adminPreview.rows && adminPreview.rows.length" x-cloak>
                   <div class="flex items-center justify-end gap-2">
                     <button type="button" x-show="hasEligibleAdminRows()" class="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[10px] font-semibold text-amber-700" @click="selectAllAdminRows()">
                       全選本步驟可處理
@@ -2193,10 +2193,15 @@
             return (
               part.indexOf("狀態不是") > -1 ||
               part.indexOf("不可重複產生") > -1 ||
+              part.indexOf("不會重新產生") > -1 ||
+              part.indexOf("不會產生") > -1 ||
               part.indexOf("此月份已有") > -1 ||
               part.indexOf("本列為追加結算") > -1 ||
               part.indexOf("只會寫入尚未標記") > -1 ||
               part.indexOf("推播前會先同步") > -1 ||
+              part.indexOf("已產生領據 PDF") > -1 ||
+              part.indexOf("已產生繳費單 PDF") > -1 ||
+              part.indexOf("已產生收據 PDF") > -1 ||
               part.indexOf("來源：") === 0 ||
               part.indexOf("處理：") === 0
             );
@@ -2209,6 +2214,7 @@
               .split("｜")
               .map((part) => part.trim())
               .filter((part) => part && part.indexOf("Email：") !== 0 && part.indexOf("LINE：") !== 0)
+              .filter((part) => !this.isInternalAdminHint(part))
               .filter((part, index, arr) => arr.indexOf(part) === index)
               .join("｜");
           },
@@ -2282,7 +2288,8 @@
             const targetFallback = channelKey === "line" ? "未設定" : "未填";
             const target = channel.target || targetFallback;
             const status = channel.status || "無資料";
-            return `${target}｜${status}`;
+            const cleanStatus = this.isInternalAdminHint(status) ? "無資料" : status;
+            return `${target}｜${cleanStatus}`;
           },
 
           selectedAdminRowIds() {

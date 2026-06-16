@@ -1675,7 +1675,7 @@ function buildDocumentEmailReadOnlyPreview(month: string, docType: string, email
       (warnings.length ? "\n提醒：" + warnings.join("、") : "")
     );
     rows.push({
-      id: (targetType === "講師" ? "teacher:" : "student:") + targetName,
+      id: "email:" + docType + ":" + (docId || targetName),
       type: targetType === "講師" ? "teacher" : "student",
       name: targetName,
       amount,
@@ -1981,11 +1981,18 @@ function enrichRowsWithNotificationState(rows: any[], month: string, docType: st
   });
 
   rows.forEach(function(row: any) {
-    const key = String(row.docId || row.name || row.id || "").trim();
-    const found = map[key] || map[String(row.name || "").trim()];
+    const docKey = String(row.docId || "").trim();
+    if (!docKey) {
+      if (!row.actions) row.actions = {};
+      row.actions[actionKey] = false;
+      row.channels = null;
+      return;
+    }
+    const found = map[docKey];
     if (!found) {
       if (!row.actions) row.actions = {};
       row.actions[actionKey] = false;
+      row.channels = null;
       return;
     }
     row.channels = found.channels;
@@ -2084,6 +2091,7 @@ function addFallbackEmailPreviewRow(preview: any, params: any) {
   const amount = parseFloat(params.amount) || 0;
   const targetType = params.targetType || "學生";
   const sourceLabel = params.sourceLabel || "原結算表";
+  const docType = String(params.docType || sourceLabel || "單據").trim();
   const lineStatus = params.lineStatus || "未推播";
   const status = String(params.status || "待寄送").trim();
   const warnings: string[] = [];
@@ -2112,7 +2120,7 @@ function addFallbackEmailPreviewRow(preview: any, params: any) {
     (warnings.length ? "\n提醒：" + warnings.join("、") : "")
   );
   preview.rows.push({
-    id: (targetType === "講師" ? "teacher:" : "student:") + targetName,
+    id: "email-fallback:" + docType + ":" + (docId || targetName),
     type: targetType === "講師" ? "teacher" : "student",
     name: targetName,
     amount,
@@ -2559,7 +2567,7 @@ function buildExistingTuitionSettlementRowsFromSummary(studentsMap: any): any[] 
     const item = studentsMap[studentName];
     const total = item.total || item.courseAmountSum || 0;
     rows.push({
-      id: "student:" + studentName,
+      id: "student-summary:" + (item.docId || studentName),
       type: "student",
       name: studentName,
       amount: total,
@@ -2911,7 +2919,7 @@ function buildSalaryReadOnlyPreview(month: string) {
     items.push(lines.join("\n"));
     const selectable = item.total > 0 && item.missingRateCount <= 0;
     rows.push({
-      id: "teacher:" + teacherName,
+      id: "salary-preview:" + teacherName,
       type: "teacher",
       name: teacherName,
       selectionKey: teacherName,
@@ -2993,7 +3001,7 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
     );
     const canCreateAllowance = !!docId && gross > 0 && !pdfUrl;
     rows.push({
-      id: "teacher:" + teacherName,
+      id: "teacher-settlement:" + (docId || (i + 1)),
       type: "teacher",
       name: teacherName,
       amount: netAmount,
@@ -3191,7 +3199,7 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
     items.push(`${studentName}\n金額：${formatCurrency(item.total)}\n課程：${item.courses.length} 項\n單號：${item.docId || "未填"}\n狀態：${statusText}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
     const selectable = !!item.docId && !!item.total && !(item.pdfUrl || item.status.indexOf("已產") > -1);
     rows.push({
-      id: "student:" + studentName,
+      id: "payment-notice:" + (item.docId || studentName),
       type: "student",
       name: studentName,
       amount: item.total,
@@ -3309,7 +3317,7 @@ function buildReceiptReadOnlyPreview(month: string) {
     const paymentSelectable = !item.receiptUrl && !!item.docId && item.total > 0 && (!item.method || !item.category || !item.date);
     const receiptSelectable = !item.receiptUrl && !!item.docId && !!item.method && !!item.category && !!item.date && item.total > 0;
     rows.push({
-      id: "student:" + studentName,
+      id: "receipt:" + (item.docId || studentName),
       type: "student",
       name: studentName,
       amount: item.total,
@@ -3671,7 +3679,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
     const selectable = !pdfUrl && !!docId && gross > 0;
     items.push(`${teacherName}\n應付：${formatCurrency(gross)}\n扣繳：${formatCurrency(taxAmount)}\n補充保費：${formatCurrency(nhiAmount)}\n實發：${formatCurrency(net)}\n領據：${docId || "未填"}\n狀態：${stateText}${detail ? "\n明細：\n- " + detail.split("；").join("\n- ") : ""}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
     rows.push({
-      id: "teacher:" + teacherName,
+      id: "allowance:" + (docId || (i + 1)),
       type: "teacher",
       name: teacherName,
       amount: net,
