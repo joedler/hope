@@ -1397,7 +1397,8 @@ function handleLiffAdminUpdateReceiptPayment(params: any) {
     const studentName = String(data[i][1] || "").trim();
     const total = parseFloat(data[i][8]) || 0;
     const docId = String(data[i][9] || "").trim();
-    if (selectedIds.length > 0 && selectedIds.indexOf("student:" + studentName) < 0) continue;
+    const selectedKeys = ["student:" + studentName, "receipt:" + docId, docId].filter(function(key: string) { return key !== "" && key !== "receipt:"; });
+    if (selectedIds.length > 0 && !selectedKeys.some(function(key: string) { return selectedIds.indexOf(key) > -1; })) continue;
     if (!studentName || !docId || !total) continue;
     if (hasValidReceiptDocumentRecord(docId)) continue;
     sheet.getRange(i + 1, 13).setValue(method);
@@ -2980,12 +2981,7 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
     const taxAmount = parseFloat(data[i][12]) || 0;
     const nhiAmount = parseFloat(data[i][13]) || 0;
     const netAmount = parseFloat(data[i][14]) || gross;
-    const detail = [
-      String(data[i][2] || "").trim(),
-      String(data[i][3] || "").trim(),
-      String(data[i][4] || "").trim(),
-      String(data[i][5] || "").trim()
-    ].filter(function(part: string) { return part !== ""; }).join("\n");
+    const detailLines = buildSalarySettlementDisplayDetails(data[i][2], data[i][3], data[i][4], data[i][5]);
 
     teacherCount++;
     grossTotal += gross;
@@ -3021,7 +3017,7 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
         gross > 0 ? "" : "缺應付金額",
         pdfUrl ? "已產生領據 PDF，不可重複產生" : ""
       ].filter(function(part: string) { return part !== ""; }),
-      details: detail ? detail.split("\n") : []
+      details: detailLines
     });
   }
 
@@ -3033,6 +3029,29 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
 
   enrichRowsWithNotificationState(rows, month, "領據", "allowanceNotify");
   return { items, rows, grossTotal, netTotal, teacherCount, existingSettlementCount, postSettlementUnprocessedCount: postSettlementRecordRows.length, isExistingSettlement: true };
+}
+
+function buildSalarySettlementDisplayDetails(courseStudentText: any, dateTimeText: any, hoursRateText: any, singleCalcText: any): string[] {
+  const courseLines = String(courseStudentText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
+  const dateLines = String(dateTimeText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
+  const hourLines = String(hoursRateText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
+  const calcLines = String(singleCalcText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
+  const maxLength = Math.max(courseLines.length, dateLines.length, hourLines.length, calcLines.length);
+  const details: string[] = [];
+  for (let i = 0; i < maxLength; i++) {
+    const course = courseLines[i] || "";
+    const dateTime = dateLines[i] || "";
+    const hoursRate = hourLines[i] || "";
+    let singleCalc = calcLines[i] || "";
+    if (!singleCalc && dateTime) {
+      const match = dateTime.match(/\((\$?\s*[\d,]+|NT\$\s*[\d,]+)\)/);
+      if (match) singleCalc = match[1].replace(/\s+/g, " ");
+    }
+    if (course) details.push(course);
+    if (dateTime) details.push("時間：" + dateTime);
+    if (hoursRate || singleCalc) details.push("計算：" + [hoursRate, singleCalc].filter(function(part: string) { return part !== ""; }).join(" = "));
+  }
+  return details;
 }
 
 function appendSalaryPreviewItem(
@@ -3665,7 +3684,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
     const status = String(data[i][11] || "").trim();
     const taxAmount = parseFloat(data[i][12]) || 0;
     const nhiAmount = parseFloat(data[i][13]) || 0;
-    const detail = [data[i][2], data[i][3], data[i][4], data[i][5]].filter(function(part: any) { return String(part || "").trim() !== ""; }).join("；");
+    const detailLines = buildSalarySettlementDisplayDetails(data[i][2], data[i][3], data[i][4], data[i][5]);
     teacherCount++;
     grossTotal += gross;
     netTotal += net;
@@ -3677,7 +3696,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
     if (pdfUrl) warnings.push("已產生");
     const stateText = pdfUrl ? (status || "已有領據 PDF") : "尚未產生領據 PDF";
     const selectable = !pdfUrl && !!docId && gross > 0;
-    items.push(`${teacherName}\n應付：${formatCurrency(gross)}\n扣繳：${formatCurrency(taxAmount)}\n補充保費：${formatCurrency(nhiAmount)}\n實發：${formatCurrency(net)}\n領據：${docId || "未填"}\n狀態：${stateText}${detail ? "\n明細：\n- " + detail.split("；").join("\n- ") : ""}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
+    items.push(`${teacherName}\n應付：${formatCurrency(gross)}\n扣繳：${formatCurrency(taxAmount)}\n補充保費：${formatCurrency(nhiAmount)}\n實發：${formatCurrency(net)}\n領據：${docId || "未填"}\n狀態：${stateText}${detailLines.length ? "\n明細：\n- " + detailLines.join("\n- ") : ""}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
     rows.push({
       id: "allowance:" + (docId || (i + 1)),
       type: "teacher",
@@ -3695,7 +3714,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
         allowanceNotify: !!pdfUrl && status === "待寄送"
       },
       warnings,
-      details: detail ? detail.split("；") : []
+      details: detailLines
     });
   }
 
