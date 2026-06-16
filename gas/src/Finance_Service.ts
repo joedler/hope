@@ -194,9 +194,14 @@ function handleLiffAdminConfirmSettlement(params: any) {
       return { ok: false, message: `${month} 沒有選取可寫入的學費試算項目；待核銷預排不可寫入。` };
     }
   } else {
-    const existingSalaryCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_PAY, 0, month);
-    if (existingSalaryCount > 0) {
-      return { ok: false, message: `${month} 已有 ${existingSalaryCount} 筆鐘點結算資料，系統已阻擋重複寫入；若需更正請走作廢、重新產生或補發流程。` };
+    const salaryPreview: any = buildSalaryReadOnlyPreview(month);
+    const selectedIds = parseAdminSelectedIds(params.selectedIds);
+    const selectableRows = (salaryPreview.rows || []).filter(function(row: any) { return row.selectable; });
+    const selectedRows = selectedIds.length > 0
+      ? selectableRows.filter(function(row: any) { return selectedIds.indexOf(row.id) > -1; })
+      : selectableRows;
+    if (selectedRows.length === 0) {
+      return { ok: false, message: `${month} 沒有選取可寫入的鐘點試算項目。` };
     }
   }
   const beforeCount = countSheetRowsByMonthOnly(ss, targetSheetName, 0, month);
@@ -221,13 +226,46 @@ function handleLiffAdminConfirmSettlement(params: any) {
   if (feature === "學費試算") {
     const selectedIds = parseAdminSelectedIds(params.selectedIds);
     if (selectedIds.length > 0) {
-      cacheObj.selectedTuitionKeys = selectedIds.map(function(id: string) { return id.replace(/^tuition:/, ""); });
+      const tuitionPreview: any = buildTuitionReadOnlyPreview(month);
+      const selectedRows = (tuitionPreview.rows || []).filter(function(row: any) {
+        return row.selectable && selectedIds.indexOf(row.id) > -1;
+      });
+      cacheObj.selectedTuitionKeys = selectedRows.map(function(row: any) {
+        return String(row.selectionKey || row.id || "").replace(/^tuition:/, "");
+      }).filter(function(key: string) { return key !== ""; });
       cacheObj.save = (cacheObj.save || []).filter(function(row: any[]) {
         return cacheObj.selectedTuitionKeys.indexOf(buildTuitionSelectionKey(row[1], row[2])) > -1;
       });
       if (!cacheObj.save || cacheObj.save.length === 0) {
         CacheService.getScriptCache().remove(cacheKey);
         return { ok: false, message: `${month} 勾選項目沒有可寫入的學費結算資料；待核銷預排不可寫入。` };
+      }
+      CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheObj), 600);
+    }
+  } else {
+    const selectedIds = parseAdminSelectedIds(params.selectedIds);
+    if (selectedIds.length > 0) {
+      const salaryPreview: any = buildSalaryReadOnlyPreview(month);
+      const selectedRows = (salaryPreview.rows || []).filter(function(row: any) {
+        return row.selectable && selectedIds.indexOf(row.id) > -1;
+      });
+      const selectedTeachers = selectedRows.map(function(row: any) {
+        return String(row.selectionKey || row.name || "").trim();
+      }).filter(function(name: string) { return name !== ""; });
+      cacheObj.save = (cacheObj.save || []).filter(function(row: any[]) {
+        return selectedTeachers.indexOf(String(row[1] || "").trim()) > -1;
+      });
+      if (cacheObj.updateRowsByTeacher) {
+        const updateRows: number[] = [];
+        selectedTeachers.forEach(function(teacherName: string) {
+          const rows = cacheObj.updateRowsByTeacher[teacherName] || [];
+          for (let i = 0; i < rows.length; i++) updateRows.push(rows[i]);
+        });
+        cacheObj.updateRows = updateRows;
+      }
+      if (!cacheObj.save || cacheObj.save.length === 0) {
+        CacheService.getScriptCache().remove(cacheKey);
+        return { ok: false, message: `${month} 勾選項目沒有可寫入的鐘點結算資料。` };
       }
       CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheObj), 600);
     }
@@ -2406,6 +2444,7 @@ function buildTuitionReadOnlyPreview(month: string) {
           id: "tuition:" + buildTuitionSelectionKey(studentName, courseName),
           type: "tuition",
           name: studentName + " / " + courseName,
+          selectionKey: buildTuitionSelectionKey(studentName, courseName),
           amount: courseTotal,
           amountText: formatCurrency(courseTotal),
           docId: "",
@@ -2605,6 +2644,21 @@ function buildPostSettlementUnprocessedRecordRows(ss: GoogleAppsScript.Spreadshe
   if (!recordSheet) return [];
 
   const data = recordSheet.getDataRange().getValues();
+  const salaryRateMap: any = {};
+  if (settlementType === "salary") {
+    const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
+    if (courseSheet) {
+      const courseData = courseSheet.getDataRange().getValues();
+      for (let c = 1; c < courseData.length; c++) {
+        const studentName = String(courseData[c][2] || "").trim();
+        const courseName = String(courseData[c][3] || "").trim();
+        if (!studentName || !courseName) continue;
+        const fee = parseFloat(courseData[c][4]) || 0;
+        const ratio = parseFloat(courseData[c][5]) || 0;
+        salaryRateMap[studentName + "_" + courseName] = fee * ratio;
+      }
+    }
+  }
   const settlementColumn = settlementType === "salary" ? 10 : 9;
   const rows: any[] = [];
   for (let i = 1; i < data.length; i++) {
@@ -2620,26 +2674,30 @@ function buildPostSettlementUnprocessedRecordRows(ss: GoogleAppsScript.Spreadshe
     if (courseName.indexOf("取消") > -1) continue;
 
     const hours = parseFloat(data[i][5]) || 0;
-    const amount = parseFloat(data[i][6]) || 0;
+    const tuitionAmount = parseFloat(data[i][6]) || 0;
+    const salaryRate = salaryRateMap[studentName + "_" + courseName] || 0;
+    const salaryAmount = Math.round(hours * salaryRate);
+    const amount = settlementType === "salary" ? salaryAmount : tuitionAmount;
     const timeText = formatSheetMonthDay(data[i][2], timeZone) + " " + formatPreviewTime(data[i][3]) + "-" + formatPreviewTime(data[i][4]);
     if (settlementType === "salary") {
       rows.push({
-        id: "post-settlement-salary-record:" + (i + 1),
+        id: "teacher-additional:" + (i + 1),
         type: "teacher",
-        name: (teacherName || "未設定講師") + " / " + studentName,
-        amount: 0,
-        amountText: "待補發確認",
+        name: teacherName || "未設定講師",
+        selectionKey: teacherName || "未設定講師",
+        amount,
+        amountText: amount ? formatCurrency(amount) : "待追加確認",
         docId: "",
         pdfUrl: "",
-        status: "已結算後新增，請走鐘點補發/帳務補救",
-        selectable: false,
-        selectedDefault: false,
+        status: "本月新增未結算，可追加寫入鐘點結算",
+        selectable: true,
+        selectedDefault: true,
         actions: {
-          salaryWrite: false,
+          salaryWrite: true,
           allowanceDocument: false,
           allowanceNotify: false
         },
-        warnings: ["此月份已有鐘點結算，不能用一般鐘點試算重複寫入"],
+        warnings: ["此月份已有鐘點結算；本列為追加結算，只會寫入尚未標記鐘點結算的授課紀錄"],
         details: [
           "來源：授課紀錄尚未標記鐘點結算",
           "講師：" + (teacherName || "未設定"),
@@ -2647,34 +2705,36 @@ function buildPostSettlementUnprocessedRecordRows(ss: GoogleAppsScript.Spreadshe
           "課程：" + courseName,
           "時間：" + timeText,
           "時數：" + hours + "hr",
-          "處理：請用帳務補救建立補發紀錄，併入處理月份鐘點流程"
+          "處理：可勾選後追加寫入本月鐘點結算"
         ]
       });
     } else {
+      const selectionKey = buildTuitionSelectionKey(studentName, courseName);
       rows.push({
-        id: "post-settlement-tuition-record:" + (i + 1),
+        id: "tuition-additional:" + (i + 1),
         type: "tuition",
         name: studentName + " / " + courseName,
+        selectionKey,
         amount,
         amountText: amount ? formatCurrency(amount) : "待補救確認",
         docId: "",
         pdfUrl: "",
-        status: "已結算後新增，請走帳務補救",
-        selectable: false,
-        selectedDefault: false,
+        status: "本月新增未結算，可追加寫入學費結算",
+        selectable: true,
+        selectedDefault: true,
         actions: {
-          tuitionWrite: false,
+          tuitionWrite: true,
           paymentNotice: false,
           paymentNotify: false
         },
-        warnings: ["此月份已有學費結算，不能用一般學費試算重複寫入"],
+        warnings: ["此月份已有學費結算；本列為追加結算，只會寫入尚未標記學費結算的授課紀錄"],
         details: [
           "來源：授課紀錄尚未標記學費結算",
           "講師：" + (teacherName || "未設定"),
           "時間：" + timeText,
           "時數：" + hours + "hr",
           "金額：" + (amount ? formatCurrency(amount) : "待補救確認"),
-          "處理：請用帳務補救併入處理月份"
+          "處理：可勾選後追加寫入本月學費結算"
         ]
       });
     }
@@ -2854,6 +2914,7 @@ function buildSalaryReadOnlyPreview(month: string) {
       id: "teacher:" + teacherName,
       type: "teacher",
       name: teacherName,
+      selectionKey: teacherName,
       amount: taxAndNhi.netAmount,
       amountText: formatCurrency(taxAndNhi.netAmount),
       docId: "",
@@ -4923,7 +4984,7 @@ function handleSalaryCalculation(event: any, userMsg: string) {
   const tData = teacherSheet.getDataRange().getValues(); const taxConfigMap: any = {};
   for (let i = 1; i < tData.length; i++) { const tName = tData[i][0]; if (tName) { taxConfigMap[tName] = { formatCode: tData[i][11] || "9B", nationality: tData[i][12] || "本國人", nhiExempt: tData[i][13] || "否" }; } }
 
-  const salaryStats: any = {}; const rData = recordSheet.getDataRange().getValues(); const updateRows: number[] = [];
+  const salaryStats: any = {}; const rData = recordSheet.getDataRange().getValues(); const updateRows: number[] = []; const updateRowsByTeacher: any = {};
   for (let i = 1; i < rData.length; i++) {
     const rowMonth = (rData[i][2] instanceof Date) ? Utilities.formatDate(rData[i][2], timeZone, "yyyy/MM") : String(rData[i][2]).substring(0, 7);
     const settled = rData[i][10]; const courseName = rData[i][8];
@@ -4933,6 +4994,8 @@ function handleSalaryCalculation(event: any, userMsg: string) {
       const dText = (rData[i][2] instanceof Date) ? Utilities.formatDate(rData[i][2], timeZone, "MM/dd") : rData[i][2];
       appendSalarySaveItem(salaryStats, tName, sName, courseName, dText, rData[i][3], rData[i][4], hr, payRate, payAmount, "");
       updateRows.push(i + 1);
+      if (!updateRowsByTeacher[tName]) updateRowsByTeacher[tName] = [];
+      updateRowsByTeacher[tName].push(i + 1);
     }
   }
   appendSalaryAdjustmentsToSaveStats(ss, salaryStats, profitMap, queryMonth, timeZone);
@@ -4961,7 +5024,7 @@ function handleSalaryCalculation(event: any, userMsg: string) {
 
   if (!hasData) { replyLineMessage(replyToken, "💰 鐘點費試算 (" + queryMonth + ")\n無須結算資料。"); } else {
     report += "請確認是否寫入結算工作表？";
-    const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_PAY, save: saveData, updateTargetMonth: queryMonth, updateRows: updateRows, category: "鐘點費", prefix: "A" };
+    const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_PAY, save: saveData, updateTargetMonth: queryMonth, updateRows: updateRows, updateRowsByTeacher: updateRowsByTeacher, category: "鐘點費", prefix: "A" };
     CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheData), 600); replyConfirmationCard(replyToken, "鐘點費試算確認", report, cacheKey);
   }
 }
@@ -5166,8 +5229,20 @@ function getFinancialDuplicateKeys(rows: any[], category: string): string[] {
 }
 
 function getFinancialRowKey(row: any[], category: string): string {
-  if (category === "學費") return buildTuitionSelectionKey(row[1], row[2]); // B/C欄：學生姓名 + 課程名稱
-  if (category === "鐘點費") return String(row[1] || "").trim(); // B欄：講師姓名
+  if (category === "學費") {
+    return [
+      String(row[1] || "").trim(),
+      String(row[2] || "").trim(),
+      String(row[4] || "").trim()
+    ].join("::"); // B/C/E欄：學生 + 課程 + 課程日期時間明細
+  }
+  if (category === "鐘點費") {
+    return [
+      String(row[1] || "").trim(),
+      String(row[2] || "").trim(),
+      String(row[3] || "").trim()
+    ].join("::"); // B/C/D欄：講師 + 課程學生 + 課程日期時間明細
+  }
   return "";
 }
 
