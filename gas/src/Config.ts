@@ -477,3 +477,94 @@ function auditFormalDataSources() {
   };
 }
 
+function auditMonthlyAdditionalSettlement() {
+  const month = "2026/06";
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const timeZone = Session.getScriptTimeZone();
+  const recordSheet = ss.getSheetByName(SHEET_NAME_RECORD);
+  const feeSheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  const paySheet = ss.getSheetByName(SHEET_NAME_FIN_PAY);
+  const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
+
+  let lessonRows = 0;
+  let tuitionOpen = 0;
+  let salaryOpen = 0;
+  let bothOpen = 0;
+  let planPending = 0;
+  let planPendingSettled = 0;
+  let planPendingUnsettled = 0;
+
+  if (recordSheet) {
+    const data = recordSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const rowMonth = normalizeAuditMonth(data[i][2], timeZone);
+      if (rowMonth !== month) continue;
+      const courseName = String(data[i][8] || "").trim();
+      if (!courseName || courseName.indexOf("取消") > -1) continue;
+      lessonRows++;
+      const tuitionSettled = String(data[i][9] || "").trim();
+      const salarySettled = String(data[i][10] || "").trim();
+      if (!tuitionSettled) tuitionOpen++;
+      if (!salarySettled) salaryOpen++;
+      if (!tuitionSettled && !salarySettled) bothOpen++;
+    }
+  }
+
+  if (planSheet) {
+    const data = planSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const rowMonth = normalizeAuditMonth(data[i][2], timeZone);
+      if (rowMonth !== month) continue;
+      const status = String(data[i][9] || "").trim();
+      if (status !== "未核銷") continue;
+      planPending++;
+      const tuitionMonth = String(data[i][10] || "").trim();
+      if (tuitionMonth) planPendingSettled++;
+      else planPendingUnsettled++;
+    }
+  }
+
+  const feeCount = feeSheet ? countAuditRowsByMonth(feeSheet, 0, month, timeZone) : 0;
+  const payCount = paySheet ? countAuditRowsByMonth(paySheet, 0, month, timeZone) : 0;
+
+  Logger.log("追加結算檢查月份：" + month);
+  Logger.log("授課紀錄：本月有效授課 " + lessonRows + " 筆；學費未結算 " + tuitionOpen + " 筆；鐘點未結算 " + salaryOpen + " 筆；兩者皆未結算 " + bothOpen + " 筆。");
+  Logger.log("預排紀錄：本月未核銷 " + planPending + " 筆；已納入學費結算 " + planPendingSettled + " 筆；尚未納入學費結算 " + planPendingUnsettled + " 筆。");
+  Logger.log("結算表：學費結算表本月 " + feeCount + " 筆；鐘點結算表本月 " + payCount + " 筆。");
+  Logger.log("判斷：若學費未結算或鐘點未結算大於 0，LIFF 應顯示「本月新增未結算」追加項目；若 LIFF 沒顯示，請確認 Web App 部署版本是否已更新。");
+  Logger.log("注意：本函式只輸出統計，不輸出姓名、課程、Email、LINE ID 或單據 ID。");
+
+  return {
+    month,
+    lessonRows,
+    tuitionOpen,
+    salaryOpen,
+    bothOpen,
+    planPending,
+    planPendingSettled,
+    planPendingUnsettled,
+    feeCount,
+    payCount
+  };
+}
+
+function normalizeAuditMonth(value: any, timeZone: string): string {
+  if (value instanceof Date) return Utilities.formatDate(value, timeZone, "yyyy/MM");
+  const text = String(value || "").trim().replace(/-/g, "/");
+  if (text.match(/^\d{4}\/\d{2}/)) return text.substring(0, 7);
+  if (text.match(/^\d{4}\/\d{1}\//)) {
+    const parts = text.split("/");
+    return parts[0] + "/" + String(Number(parts[1])).padStart(2, "0");
+  }
+  return text;
+}
+
+function countAuditRowsByMonth(sheet: GoogleAppsScript.Spreadsheet.Sheet, columnIndex: number, month: string, timeZone: string): number {
+  const data = sheet.getDataRange().getValues();
+  let count = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (normalizeAuditMonth(data[i][columnIndex], timeZone) === month) count++;
+  }
+  return count;
+}
+
