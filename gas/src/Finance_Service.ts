@@ -4915,7 +4915,10 @@ function handleTuitionCalculation(event: any, userMsg: string) {
     }
   }
 
-  appendTuitionAdjustmentsToStats(ss, stats, configMap, baseMonthStr);
+  const existingTuitionSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_FEE, 0, baseMonthStr);
+  if (existingTuitionSettlementCount <= 0) {
+    appendTuitionAdjustmentsToStats(ss, stats, configMap, baseMonthStr);
+  }
 
   let report = "💰 學費試算單 (" + baseMonthStr + ")\n\n"; let saveData: any[] = []; let grandTotal = 0; let hasData = false; let hasPendingPlan = false;
   for (const sName in stats) {
@@ -4998,7 +5001,10 @@ function handleSalaryCalculation(event: any, userMsg: string) {
       updateRowsByTeacher[tName].push(i + 1);
     }
   }
-  appendSalaryAdjustmentsToSaveStats(ss, salaryStats, profitMap, queryMonth, timeZone);
+  const existingSalarySettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_PAY, 0, queryMonth);
+  if (existingSalarySettlementCount <= 0) {
+    appendSalaryAdjustmentsToSaveStats(ss, salaryStats, profitMap, queryMonth, timeZone);
+  }
 
   let report = "💰 鐘點費試算 (" + queryMonth + ")\n\n"; const saveData: any[] = []; let hasData = false;
   for (const tName in salaryStats) {
