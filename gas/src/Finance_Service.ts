@@ -2490,16 +2490,22 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
     items.push(`${month} 找不到可顯示的既有學費結算摘要。`);
   }
   const pendingItems = buildPendingTuitionPlanItems(ss, month);
+  const postSettlementRecordRows = buildPostSettlementUnprocessedRecordRows(ss, month, "tuition");
   for (let p = 0; p < pendingItems.length; p++) items.push(pendingItems[p]);
+  for (let u = 0; u < postSettlementRecordRows.length; u++) {
+    items.push(postSettlementRecordRows[u].name + "\n" + (postSettlementRecordRows[u].details || []).join("\n"));
+  }
   let rows: any[] = [];
   try {
     const noticePreview = buildPaymentNoticeReadOnlyPreview(month);
-    rows = (noticePreview.rows || []).concat(buildPendingTuitionPlanRows(ss, month));
+    rows = (noticePreview.rows || []).concat(buildPendingTuitionPlanRows(ss, month)).concat(postSettlementRecordRows);
   } catch (e) {
-    rows = buildExistingTuitionSettlementRowsFromSummary(studentsMap).concat(buildPendingTuitionPlanRows(ss, month));
+    rows = buildExistingTuitionSettlementRowsFromSummary(studentsMap)
+      .concat(buildPendingTuitionPlanRows(ss, month))
+      .concat(postSettlementRecordRows);
   }
   enrichRowsWithNotificationState(rows, month, "繳費單", "paymentNotify");
-  return { items, rows, grandTotal, studentCount, pendingCount: pendingItems.length, isExistingSettlement: true };
+  return { items, rows, grandTotal, studentCount, pendingCount: pendingItems.length + postSettlementRecordRows.length, isExistingSettlement: true };
 }
 
 function buildPendingTuitionPlanItems(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string): string[] {
@@ -2562,6 +2568,8 @@ function buildPendingTuitionPlanRows(ss: GoogleAppsScript.Spreadsheet.Spreadshee
     const hours = parseFloat(data[i][5]) || 0;
     const fee = feeMap[studentName + "_" + courseName] || 0;
     const amount = Math.round(hours * fee);
+    const billingMonth = normalizeFinancialMonth(data[i][10], timeZone) || String(data[i][10] || "").trim();
+    const billingText = billingMonth ? "學費結算：已納入 " + billingMonth + " 預收" : "學費結算：尚未納入";
     rows.push({
       id: "pending-plan:" + i,
       type: "pending-plan",
@@ -2570,7 +2578,7 @@ function buildPendingTuitionPlanRows(ss: GoogleAppsScript.Spreadsheet.Spreadshee
       amountText: formatCurrency(amount),
       docId: "",
       pdfUrl: "",
-      status: "待核銷，未寫入",
+      status: billingMonth ? "待核銷，已納入預收" : "待核銷，尚未納入學費結算",
       selectable: false,
       selectedDefault: false,
       actions: {
@@ -2578,14 +2586,98 @@ function buildPendingTuitionPlanRows(ss: GoogleAppsScript.Spreadsheet.Spreadshee
         paymentNotice: false,
         paymentNotify: false
       },
-      warnings: [],
+      warnings: billingMonth ? [] : ["尚未納入學費結算；若本月已結算，需改走帳務補救"],
       details: [
-        "狀態：待核銷，未寫入",
-        "時間：" + formatSheetMonthDay(data[i][2], timeZone) + " " + data[i][3] + "-" + data[i][4],
+        "狀態：" + (billingMonth ? "待核銷，已納入預收" : "待核銷，尚未納入學費結算"),
+        billingText,
+        "時間：" + formatSheetMonthDay(data[i][2], timeZone) + " " + formatPreviewTime(data[i][3]) + "-" + formatPreviewTime(data[i][4]),
         "時數：" + hours + "hr",
         "預估：" + formatCurrency(amount)
       ]
     });
+  }
+  return rows;
+}
+
+function buildPostSettlementUnprocessedRecordRows(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string, settlementType: string): any[] {
+  const timeZone = Session.getScriptTimeZone();
+  const recordSheet = ss.getSheetByName(SHEET_NAME_RECORD);
+  if (!recordSheet) return [];
+
+  const data = recordSheet.getDataRange().getValues();
+  const settlementColumn = settlementType === "salary" ? 10 : 9;
+  const rows: any[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const rowMonth = normalizeFinancialMonth(data[i][2], timeZone);
+    if (rowMonth !== month) continue;
+    const settledMonth = String(data[i][settlementColumn] || "").trim();
+    if (settledMonth) continue;
+
+    const teacherName = String(data[i][1] || "").trim();
+    const studentName = String(data[i][7] || "").trim();
+    const courseName = String(data[i][8] || "").trim();
+    if (!studentName || !courseName) continue;
+    if (courseName.indexOf("取消") > -1) continue;
+
+    const hours = parseFloat(data[i][5]) || 0;
+    const amount = parseFloat(data[i][6]) || 0;
+    const timeText = formatSheetMonthDay(data[i][2], timeZone) + " " + formatPreviewTime(data[i][3]) + "-" + formatPreviewTime(data[i][4]);
+    if (settlementType === "salary") {
+      rows.push({
+        id: "post-settlement-salary-record:" + (i + 1),
+        type: "teacher",
+        name: (teacherName || "未設定講師") + " / " + studentName,
+        amount: 0,
+        amountText: "待補發確認",
+        docId: "",
+        pdfUrl: "",
+        status: "已結算後新增，請走鐘點補發/帳務補救",
+        selectable: false,
+        selectedDefault: false,
+        actions: {
+          salaryWrite: false,
+          allowanceDocument: false,
+          allowanceNotify: false
+        },
+        warnings: ["此月份已有鐘點結算，不能用一般鐘點試算重複寫入"],
+        details: [
+          "來源：授課紀錄尚未標記鐘點結算",
+          "講師：" + (teacherName || "未設定"),
+          "學生：" + studentName,
+          "課程：" + courseName,
+          "時間：" + timeText,
+          "時數：" + hours + "hr",
+          "處理：請用帳務補救建立補發紀錄，併入處理月份鐘點流程"
+        ]
+      });
+    } else {
+      rows.push({
+        id: "post-settlement-tuition-record:" + (i + 1),
+        type: "tuition",
+        name: studentName + " / " + courseName,
+        amount,
+        amountText: amount ? formatCurrency(amount) : "待補救確認",
+        docId: "",
+        pdfUrl: "",
+        status: "已結算後新增，請走帳務補救",
+        selectable: false,
+        selectedDefault: false,
+        actions: {
+          tuitionWrite: false,
+          paymentNotice: false,
+          paymentNotify: false
+        },
+        warnings: ["此月份已有學費結算，不能用一般學費試算重複寫入"],
+        details: [
+          "來源：授課紀錄尚未標記學費結算",
+          "講師：" + (teacherName || "未設定"),
+          "時間：" + timeText,
+          "時數：" + hours + "hr",
+          "金額：" + (amount ? formatCurrency(amount) : "待補救確認"),
+          "處理：請用帳務補救併入處理月份"
+        ]
+      });
+    }
   }
   return rows;
 }
@@ -2864,8 +2956,14 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
     });
   }
 
+  const postSettlementRecordRows = buildPostSettlementUnprocessedRecordRows(ss, month, "salary");
+  for (let u = 0; u < postSettlementRecordRows.length; u++) {
+    items.push(postSettlementRecordRows[u].name + "\n" + (postSettlementRecordRows[u].details || []).join("\n"));
+    rows.push(postSettlementRecordRows[u]);
+  }
+
   enrichRowsWithNotificationState(rows, month, "領據", "allowanceNotify");
-  return { items, rows, grossTotal, netTotal, teacherCount, existingSettlementCount, isExistingSettlement: true };
+  return { items, rows, grossTotal, netTotal, teacherCount, existingSettlementCount, postSettlementUnprocessedCount: postSettlementRecordRows.length, isExistingSettlement: true };
 }
 
 function appendSalaryPreviewItem(
