@@ -978,7 +978,7 @@
                     </button>
                   </div>
                   <template x-for="row in (adminPreview ? adminPreview.rows : [])" :key="row.id">
-                    <label class="admin-row-card block rounded-lg border bg-white px-3 py-2"
+                    <div class="admin-row-card block rounded-lg border bg-white px-3 py-2"
                       :class="isAdminRowSelectable(row) ? 'border-teal-200' : 'is-disabled border-amber-100'">
                       <div class="flex items-start gap-2">
                         <input type="checkbox" class="mt-1 h-4 w-4 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
@@ -1014,34 +1014,33 @@
                           >
                             查看 PDF
                           </a>
-                          <div class="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2" x-show="row.channels">
-                            <label class="flex items-start gap-2 rounded-lg border border-teal-100 bg-teal-50 px-2 py-1.5">
+                          <div class="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2" x-show="shouldShowNotificationChannels(row)">
+                            <label class="flex items-start gap-2 rounded-lg border border-teal-100 bg-teal-50 px-2 py-1.5"
+                              :class="row.channels && row.channels.email && row.channels.email.selectable === true ? '' : 'opacity-70'">
                               <input type="checkbox" class="mt-0.5 h-3.5 w-3.5 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
                                 x-model="row.selectedEmail"
                                 :disabled="!row.channels || !row.channels.email || row.channels.email.selectable !== true || !isAdminRowSelectable(row)"
                                 @change="syncAdminNotificationParent(row)">
                               <span>
                                 <span class="font-semibold text-teal-800">Email</span>
-                                <span class="block text-slate-600" x-text="row.channels && row.channels.email ? ((row.channels.email.target || '未填') + '｜' + (row.channels.email.status || '無資料')) : ''"></span>
-                                <span class="block text-red-600" x-show="row.channels && row.channels.email && row.channels.email.warning" x-text="row.channels.email.warning"></span>
+                                <span class="block text-slate-600" x-text="channelStatusLine(row, 'email')"></span>
                               </span>
                             </label>
-                            <label class="flex items-start gap-2 rounded-lg border border-teal-100 bg-teal-50 px-2 py-1.5">
+                            <label class="flex items-start gap-2 rounded-lg border border-teal-100 bg-teal-50 px-2 py-1.5"
+                              :class="row.channels && row.channels.line && row.channels.line.selectable === true ? '' : 'opacity-70'">
                               <input type="checkbox" class="mt-0.5 h-3.5 w-3.5 rounded border-teal-300 text-teal-600 focus:ring-teal-500"
                                 x-model="row.selectedLine"
                                 :disabled="!row.channels || !row.channels.line || row.channels.line.selectable !== true || !isAdminRowSelectable(row)"
                                 @change="syncAdminNotificationParent(row)">
                               <span>
                                 <span class="font-semibold text-teal-800">LINE</span>
-                                <span class="block text-slate-600" x-text="row.channels && row.channels.line ? ((row.channels.line.target || '未設定') + '｜' + (row.channels.line.status || '無資料')) : ''"></span>
-                                <span class="block text-red-600" x-show="row.channels && row.channels.line && row.channels.line.warning" x-text="row.channels.line.warning"></span>
+                                <span class="block text-slate-600" x-text="channelStatusLine(row, 'line')"></span>
                               </span>
                             </label>
                           </div>
-                          <p class="mt-1 text-[11px] leading-4 text-red-600" x-show="row.warnings && row.warnings.length" x-text="'提醒：' + row.warnings.join('、')"></p>
                         </div>
                       </div>
-                    </label>
+                    </div>
                   </template>
                   <p class="text-[11px] leading-4 text-amber-700" x-show="selectedAdminRowsSummary()" x-text="selectedAdminRowsSummary()"></p>
                 </div>
@@ -2180,11 +2179,27 @@
                 if (!row || !row.channels) return true;
                 return !/^Email[:：]/.test(part) && !/^LINE[:：]/.test(part);
               })
+              .filter((part) => !this.isInternalAdminHint(part))
               .filter((part) => {
                 if (!part || seen.has(part)) return false;
                 seen.add(part);
                 return true;
               });
+          },
+
+          isInternalAdminHint(text) {
+            const part = String(text || "").trim();
+            if (!part) return false;
+            return (
+              part.indexOf("狀態不是") > -1 ||
+              part.indexOf("不可重複產生") > -1 ||
+              part.indexOf("此月份已有") > -1 ||
+              part.indexOf("本列為追加結算") > -1 ||
+              part.indexOf("只會寫入尚未標記") > -1 ||
+              part.indexOf("推播前會先同步") > -1 ||
+              part.indexOf("來源：") === 0 ||
+              part.indexOf("處理：") === 0
+            );
           },
 
           adminRowStatusText(row) {
@@ -2201,7 +2216,7 @@
           inactiveAdminRowReason(row) {
             if (!row) return "";
             if (this.isAdminRowSelectable(row)) return "";
-            const warnings = row.warnings || [];
+            const warnings = this.visibleAdminWarnings(row);
             if (this.activeAdminActionKey === "tuitionWrite") {
               if (row.type === "pending-plan") return "待核銷，尚不可寫入";
               if (warnings.length) return warnings[0];
@@ -2234,8 +2249,8 @@
             if (this.isNotifyAction(this.activeAdminActionKey)) {
               if (!row.channels) return "尚未產生 PDF 或沒有寄送資料";
               const reasons = [];
-              if (row.channels.email && row.channels.email.warning) reasons.push(row.channels.email.warning);
-              if (row.channels.line && row.channels.line.warning) reasons.push(row.channels.line.warning);
+              if (row.channels.email && row.channels.email.warning && !this.isInternalAdminHint(row.channels.email.warning)) reasons.push(row.channels.email.warning);
+              if (row.channels.line && row.channels.line.warning && !this.isInternalAdminHint(row.channels.line.warning)) reasons.push(row.channels.line.warning);
               if (reasons.length) return reasons.join("、");
               return "Email/LINE 皆無待寄送項目";
             }
@@ -2245,6 +2260,29 @@
               return "本單據不符合此操作";
             }
             return warnings[0] || "";
+          },
+
+          visibleAdminWarnings(row) {
+            return ((row && row.warnings) || [])
+              .map((warning) => String(warning || "").trim())
+              .filter((warning) => warning && !this.isInternalAdminHint(warning));
+          },
+
+          shouldShowNotificationChannels(row) {
+            return !!(
+              row &&
+              row.channels &&
+              this.isNotifyAction(this.activeAdminActionKey)
+            );
+          },
+
+          channelStatusLine(row, channelKey) {
+            if (!row || !row.channels || !row.channels[channelKey]) return "";
+            const channel = row.channels[channelKey];
+            const targetFallback = channelKey === "line" ? "未設定" : "未填";
+            const target = channel.target || targetFallback;
+            const status = channel.status || "無資料";
+            return `${target}｜${status}`;
           },
 
           selectedAdminRowIds() {
