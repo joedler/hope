@@ -2981,7 +2981,7 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
     const taxAmount = parseFloat(data[i][12]) || 0;
     const nhiAmount = parseFloat(data[i][13]) || 0;
     const netAmount = parseFloat(data[i][14]) || gross;
-    const detailLines = buildSalarySettlementDisplayDetails(data[i][2], data[i][3], data[i][4], data[i][5]);
+    const detailLines = buildSalarySettlementDisplayDetails(data[i][2], data[i][3], data[i][4], data[i][5], gross, netAmount);
 
     teacherCount++;
     grossTotal += gross;
@@ -3031,17 +3031,24 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
   return { items, rows, grossTotal, netTotal, teacherCount, existingSettlementCount, postSettlementUnprocessedCount: postSettlementRecordRows.length, isExistingSettlement: true };
 }
 
-function buildSalarySettlementDisplayDetails(courseStudentText: any, dateTimeText: any, hoursRateText: any, singleCalcText: any): string[] {
+function buildSalarySettlementDisplayDetails(courseStudentText: any, dateTimeText: any, hoursRateText: any, singleCalcText: any, grossTotal?: number, netTotal?: number): string[] {
   const courseLines = String(courseStudentText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
   const dateLines = String(dateTimeText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
   const hourLines = String(hoursRateText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
   const calcLines = String(singleCalcText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
   const maxLength = Math.max(courseLines.length, dateLines.length, hourLines.length, calcLines.length);
   const details: string[] = [];
+  if (maxLength > 3) {
+    const summary = ["明細：共 " + maxLength + " 筆"];
+    if (grossTotal !== undefined) summary.push("應付 " + formatCurrency(grossTotal));
+    if (netTotal !== undefined && netTotal !== grossTotal) summary.push("實發 " + formatCurrency(netTotal));
+    details.push(summary.join("，"));
+    return details;
+  }
   for (let i = 0; i < maxLength; i++) {
     const course = courseLines[i] || "";
     const dateTime = dateLines[i] || "";
-    const hoursRate = hourLines[i] || "";
+    const hoursRate = hourLines[i] || (hourLines.length === 1 && maxLength > 1 ? hourLines[0] : "");
     let singleCalc = calcLines[i] || "";
     if (!singleCalc && dateTime) {
       const match = dateTime.match(/\((\$?\s*[\d,]+|NT\$\s*[\d,]+)\)/);
@@ -3049,9 +3056,18 @@ function buildSalarySettlementDisplayDetails(courseStudentText: any, dateTimeTex
     }
     if (course) details.push(course);
     if (dateTime) details.push("時間：" + dateTime);
-    if (hoursRate || singleCalc) details.push("計算：" + [hoursRate, singleCalc].filter(function(part: string) { return part !== ""; }).join(" = "));
+    if (hoursRate) details.push("時數/費率：" + hoursRate);
+    if (singleCalc) details.push("小計：" + normalizeCurrencyText(singleCalc));
   }
   return details;
+}
+
+function normalizeCurrencyText(value: string) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (text.indexOf("NT$") === 0) return text;
+  if (text.indexOf("$") === 0) return "NT$ " + text.replace("$", "").trim();
+  return text;
 }
 
 function appendSalaryPreviewItem(
@@ -3684,7 +3700,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
     const status = String(data[i][11] || "").trim();
     const taxAmount = parseFloat(data[i][12]) || 0;
     const nhiAmount = parseFloat(data[i][13]) || 0;
-    const detailLines = buildSalarySettlementDisplayDetails(data[i][2], data[i][3], data[i][4], data[i][5]);
+    const detailLines = buildSalarySettlementDisplayDetails(data[i][2], data[i][3], data[i][4], data[i][5], gross, net);
     teacherCount++;
     grossTotal += gross;
     netTotal += net;
