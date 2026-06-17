@@ -2365,6 +2365,9 @@
             if (this.adminPreview && this.adminPreview.confirmAction === "adminConfirmGeneralReceiptEmail") return row.selectable === true;
             if (!this.isAdminFlowTab()) return row.selectable === true;
             if (!this.activeAdminActionKey) return false;
+            if (["fullTuitionFlow", "fullReceiptFlow", "fullSalaryFlow"].includes(this.activeAdminActionKey)) {
+              return this.isAdminRowEligibleForAction(row, this.activeAdminActionKey);
+            }
             if (row.actions && Object.prototype.hasOwnProperty.call(row.actions, this.activeAdminActionKey)) {
               return row.actions[this.activeAdminActionKey] === true;
             }
