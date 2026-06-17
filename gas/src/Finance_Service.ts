@@ -571,6 +571,229 @@ function handleLiffAdminConfirmNotification(params: any) {
   };
 }
 
+function handleLiffAdminConfirmFullFlow(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  const flowAction = String(params.flowAction || "").trim();
+  const month = normalizeAdminPreviewMonth(params.month);
+  const selectedIds = parseAdminSelectedIds(params.selectedIds);
+
+  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  if (!isAdmin) {
+    return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  }
+
+  if (flowAction === "fullTuitionFlow") {
+    return runTuitionFullFlow(params, month, selectedIds);
+  }
+  if (flowAction === "fullReceiptFlow") {
+    return runReceiptFullFlow(params, month, selectedIds);
+  }
+  if (flowAction === "fullSalaryFlow") {
+    return runSalaryFullFlow(params, month, selectedIds);
+  }
+  return { ok: false, message: "不支援的一鍵流程：" + flowAction };
+}
+
+function runTuitionFullFlow(params: any, month: string, selectedIds: string[]) {
+  const messages: string[] = [];
+  let successCount = 0;
+  const basePreview: any = buildTuitionReadOnlyPreview(month);
+  const targetNames = getFullFlowTargetNames(basePreview.rows || [], selectedIds);
+
+  const writeRows = filterRowsByTargetNames((basePreview.rows || []).filter(function(row: any) {
+    return row.actions && row.actions.tuitionWrite === true;
+  }), targetNames);
+  if (writeRows.length > 0) {
+    const writeResult = handleLiffAdminConfirmSettlement(extendParams(params, {
+      feature: "學費試算",
+      selectedIds: JSON.stringify(writeRows.map(function(row: any) { return row.id; }))
+    }));
+    messages.push("寫入學費結算：" + (writeResult.message || (writeResult.ok ? "完成" : "略過")));
+    if (writeResult.ok) successCount++;
+  } else {
+    messages.push("寫入學費結算：沒有符合條件的項目。");
+  }
+
+  const paymentPreview: any = buildPaymentNoticeReadOnlyPreview(month);
+  const paymentRows = filterRowsByTargetNames((paymentPreview.rows || []).filter(function(row: any) {
+    return row.actions && row.actions.paymentNotice === true;
+  }), targetNames);
+  for (let i = 0; i < paymentRows.length; i++) {
+    const msg = createPaymentNoticesBatch(month, paymentRows[i].name);
+    messages.push("產生繳費單：" + msg);
+    if (isSuccessMessage(msg)) successCount++;
+  }
+  if (paymentRows.length === 0) messages.push("產生繳費單：沒有符合條件的項目。");
+
+  const notifyResult = runDocumentNotificationStep(month, "繳費單", targetNames);
+  messages.push(notifyResult.message);
+  successCount += notifyResult.successCount;
+
+  return {
+    ok: successCount > 0,
+    message: `${month} 學費完整流程完成：成功/處理 ${successCount} 步。\n` + messages.join("\n"),
+    preview: buildTuitionAdminPreview(month)
+  };
+}
+
+function runReceiptFullFlow(params: any, month: string, selectedIds: string[]) {
+  const messages: string[] = [];
+  let successCount = 0;
+  const basePreview: any = buildReceiptReadOnlyPreview(month);
+  const targetNames = getFullFlowTargetNames(basePreview.rows || [], selectedIds);
+
+  const paymentRows = filterRowsByTargetNames((basePreview.rows || []).filter(function(row: any) {
+    return row.actions && row.actions.receiptPayment === true;
+  }), targetNames);
+  if (paymentRows.length > 0) {
+    const paymentResult = handleLiffAdminUpdateReceiptPayment(extendParams(params, {
+      selectedIds: JSON.stringify(paymentRows.map(function(row: any) { return row.id; }))
+    }));
+    messages.push("套用收款資料：" + (paymentResult.message || (paymentResult.ok ? "完成" : "略過")));
+    if (paymentResult.ok) successCount++;
+  } else {
+    messages.push("套用收款資料：沒有符合條件的項目。");
+  }
+
+  const receiptPreview: any = buildReceiptReadOnlyPreview(month);
+  const receiptRows = filterRowsByTargetNames((receiptPreview.rows || []).filter(function(row: any) {
+    return row.actions && row.actions.receiptDocument === true;
+  }), targetNames);
+  for (let i = 0; i < receiptRows.length; i++) {
+    const msg = createReceiptDocumentsBatch(month, receiptRows[i].name);
+    messages.push("產生收據：" + msg);
+    if (isSuccessMessage(msg)) successCount++;
+  }
+  if (receiptRows.length === 0) messages.push("產生收據：沒有符合條件的項目。");
+
+  const notifyResult = runDocumentNotificationStep(month, "收據", targetNames);
+  messages.push(notifyResult.message);
+  successCount += notifyResult.successCount;
+
+  return {
+    ok: successCount > 0,
+    message: `${month} 收據完整流程完成：成功/處理 ${successCount} 步。\n` + messages.join("\n"),
+    preview: buildReceiptAdminPreview(month)
+  };
+}
+
+function runSalaryFullFlow(params: any, month: string, selectedIds: string[]) {
+  const messages: string[] = [];
+  let successCount = 0;
+  const basePreview: any = buildSalaryReadOnlyPreview(month);
+  const targetNames = getFullFlowTargetNames(basePreview.rows || [], selectedIds);
+
+  const writeRows = filterRowsByTargetNames((basePreview.rows || []).filter(function(row: any) {
+    return row.actions && row.actions.salaryWrite === true;
+  }), targetNames);
+  if (writeRows.length > 0) {
+    const writeResult = handleLiffAdminConfirmSettlement(extendParams(params, {
+      feature: "鐘點試算",
+      selectedIds: JSON.stringify(writeRows.map(function(row: any) { return row.id; }))
+    }));
+    messages.push("寫入鐘點結算：" + (writeResult.message || (writeResult.ok ? "完成" : "略過")));
+    if (writeResult.ok) successCount++;
+  } else {
+    messages.push("寫入鐘點結算：沒有符合條件的項目。");
+  }
+
+  const allowancePreview: any = buildAllowanceReadOnlyPreview(month);
+  const allowanceRows = filterRowsByTargetNames((allowancePreview.rows || []).filter(function(row: any) {
+    return row.actions && row.actions.allowanceDocument === true;
+  }), targetNames);
+  for (let i = 0; i < allowanceRows.length; i++) {
+    const msg = createAllowanceDocumentsBatch(month, allowanceRows[i].name);
+    messages.push("產生領據：" + msg);
+    if (isSuccessMessage(msg)) successCount++;
+  }
+  if (allowanceRows.length === 0) messages.push("產生領據：沒有符合條件的項目。");
+
+  const notifyResult = runDocumentNotificationStep(month, "領據", targetNames);
+  messages.push(notifyResult.message);
+  successCount += notifyResult.successCount;
+
+  return {
+    ok: successCount > 0,
+    message: `${month} 鐘點完整流程完成：成功/處理 ${successCount} 步。\n` + messages.join("\n"),
+    preview: buildSalaryAdminPreview(month)
+  };
+}
+
+function runDocumentNotificationStep(month: string, docType: string, targetNames: string[]) {
+  const preview: any = buildDocumentNotificationReadOnlyPreview(month, docType);
+  const rows = filterRowsByTargetNames((preview.rows || []).filter(function(row: any) {
+    return row.selectable === true;
+  }), targetNames);
+  const messages: string[] = [];
+  let successCount = 0;
+  let skipCount = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.channels && row.channels.email && row.channels.email.selectable) {
+      const emailMsg = docType === "繳費單" ? sendPaymentNoticeEmailForTarget(month, row.name) :
+        docType === "收據" ? sendReceiptEmailForTarget(month, row.name) :
+        sendAllowanceEmailForTarget(month, row.name);
+      messages.push("Email " + emailMsg);
+      if (isSuccessMessage(emailMsg)) successCount++; else skipCount++;
+    }
+    if (row.channels && row.channels.line && row.channels.line.selectable) {
+      const lineMsg = sendDocumentLineForTarget(month, docType, row.docId);
+      messages.push("LINE " + lineMsg);
+      if (isSuccessMessage(lineMsg)) successCount++; else skipCount++;
+    }
+  }
+  if (rows.length === 0) {
+    return { successCount: 0, skipCount: 0, message: "寄送通知：沒有符合條件的項目。" };
+  }
+  return {
+    successCount,
+    skipCount,
+    message: `寄送通知：成功 ${successCount} 筆，失敗/跳過 ${skipCount} 筆。` + (messages.length ? "\n" + messages.join("\n") : "")
+  };
+}
+
+function getFullFlowTargetNames(rows: any[], selectedIds: string[]) {
+  const selectedRows = selectedIds.length > 0
+    ? rows.filter(function(row: any) { return fullFlowRowMatches(row, selectedIds); })
+    : rows;
+  const names: string[] = [];
+  selectedRows.forEach(function(row: any) {
+    const name = String(row.name || "").trim();
+    if (name && names.indexOf(name) < 0) names.push(name);
+  });
+  return names;
+}
+
+function filterRowsByTargetNames(rows: any[], targetNames: string[]) {
+  if (!targetNames || targetNames.length === 0) return rows;
+  return rows.filter(function(row: any) {
+    return targetNames.indexOf(String(row.name || "").trim()) > -1;
+  });
+}
+
+function fullFlowRowMatches(row: any, selectedIds: string[]) {
+  if (!row) return false;
+  const keys = [
+    String(row.id || "").trim(),
+    String(row.docId || "").trim(),
+    String(row.selectionKey || "").trim(),
+    String(row.name || "").trim()
+  ].filter(function(key: string) { return key !== ""; });
+  return keys.some(function(key: string) { return selectedIds.indexOf(key) > -1; });
+}
+
+function extendParams(params: any, patch: any) {
+  const next: any = {};
+  for (const key in params) next[key] = params[key];
+  for (const key in patch) next[key] = patch[key];
+  return next;
+}
+
+function isSuccessMessage(message: string) {
+  const text = String(message || "").trim();
+  return text !== "" && text.indexOf("❌") !== 0 && text.indexOf("⚠️") !== 0;
+}
+
 function parseAdminSelectedNotifications(raw: any) {
   if (!raw) return [];
   try {
@@ -2982,6 +3205,7 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
     const nhiAmount = parseFloat(data[i][13]) || 0;
     const netAmount = parseFloat(data[i][14]) || gross;
     const detailLines = buildSalarySettlementDisplayDetails(data[i][2], data[i][3], data[i][4], data[i][5], gross, netAmount);
+    const detailRows = buildSalarySettlementDetailRows(data[i][2], data[i][3], data[i][4], data[i][5], gross, netAmount);
 
     teacherCount++;
     grossTotal += gross;
@@ -3017,7 +3241,8 @@ function buildExistingSalarySettlementPreview(ss: GoogleAppsScript.Spreadsheet.S
         gross > 0 ? "" : "缺應付金額",
         pdfUrl ? "已產生領據 PDF，不可重複產生" : ""
       ].filter(function(part: string) { return part !== ""; }),
-      details: detailLines
+      details: detailLines,
+      detailRows
     });
   }
 
@@ -3068,6 +3293,37 @@ function normalizeCurrencyText(value: string) {
   if (text.indexOf("NT$") === 0) return text;
   if (text.indexOf("$") === 0) return "NT$ " + text.replace("$", "").trim();
   return text;
+}
+
+function buildSalarySettlementDetailRows(courseStudentText: any, dateTimeText: any, hoursRateText: any, singleCalcText: any, grossTotal?: number, netTotal?: number) {
+  const courseLines = String(courseStudentText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
+  const dateLines = String(dateTimeText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
+  const hourLines = String(hoursRateText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
+  const calcLines = String(singleCalcText || "").split("\n").map(function(part: string) { return part.trim(); }).filter(function(part: string) { return part !== ""; });
+  const maxLength = Math.max(courseLines.length, dateLines.length, hourLines.length, calcLines.length);
+  if (maxLength > 3) {
+    return [{
+      summary: "明細共 " + maxLength + " 筆",
+      total: grossTotal !== undefined ? formatCurrency(grossTotal) : "",
+      net: netTotal !== undefined && netTotal !== grossTotal ? formatCurrency(netTotal) : ""
+    }];
+  }
+  const rows: any[] = [];
+  for (let i = 0; i < maxLength; i++) {
+    const dateTime = dateLines[i] || "";
+    let amount = calcLines[i] || "";
+    if (!amount && dateTime) {
+      const match = dateTime.match(/\((\$?\s*[\d,]+|NT\$\s*[\d,]+)\)/);
+      if (match) amount = match[1].replace(/\s+/g, " ");
+    }
+    rows.push({
+      courseStudent: courseLines[i] || "",
+      dateTime,
+      hoursRate: hourLines[i] || (hourLines.length === 1 && maxLength > 1 ? hourLines[0] : ""),
+      amount: normalizeCurrencyText(amount)
+    });
+  }
+  return rows;
 }
 
 function appendSalaryPreviewItem(
@@ -3701,6 +3957,7 @@ function buildAllowanceReadOnlyPreview(month: string) {
     const taxAmount = parseFloat(data[i][12]) || 0;
     const nhiAmount = parseFloat(data[i][13]) || 0;
     const detailLines = buildSalarySettlementDisplayDetails(data[i][2], data[i][3], data[i][4], data[i][5], gross, net);
+    const detailRows = buildSalarySettlementDetailRows(data[i][2], data[i][3], data[i][4], data[i][5], gross, net);
     teacherCount++;
     grossTotal += gross;
     netTotal += net;
@@ -3730,7 +3987,8 @@ function buildAllowanceReadOnlyPreview(month: string) {
         allowanceNotify: !!pdfUrl && status === "待寄送"
       },
       warnings,
-      details: detailLines
+      details: detailLines,
+      detailRows
     });
   }
 

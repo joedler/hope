@@ -88,6 +88,10 @@ function doGet(e: any) {
         // 確認寄送通知，可同時處理 Email 與 LINE push
         result = handleLiffAdminConfirmNotification(e.parameter);
         break;
+      case "adminConfirmFullFlow":
+        // 確認執行三大流程的一鍵批次：寫入/套用、產生 PDF、寄送通知
+        result = handleLiffAdminConfirmFullFlow(e.parameter);
+        break;
       case "adminVoidDocument":
         // 確認作廢單據，只標記狀態，不刪除 PDF 或資料列
         result = handleLiffAdminVoidDocument(e.parameter);
@@ -448,6 +452,7 @@ declare function handleLiffAdminConfirmDocument(params: any): any;
 declare function handleLiffAdminConfirmEmail(params: any): any;
 declare function handleLiffAdminConfirmLine(params: any): any;
 declare function handleLiffAdminConfirmNotification(params: any): any;
+declare function handleLiffAdminConfirmFullFlow(params: any): any;
 declare function handleLiffAdminVoidDocument(params: any): any;
 declare function handleLiffAdminReissueDocument(params: any): any;
 declare function handleLiffAdminRegenerateDocument(params: any): any;

@@ -999,7 +999,20 @@
                             <span x-text="adminRowStatusText(row)"></span>
                           </p>
                           <p class="mt-1 text-[11px] font-semibold text-slate-500" x-show="!isAdminRowSelectable(row) && inactiveAdminRowReason(row)" x-text="inactiveAdminRowReason(row)"></p>
-                          <div class="admin-row-detail mt-1 space-y-1 text-[11px] leading-4 text-slate-500" x-show="row.details && row.details.length">
+                          <div class="admin-row-detail mt-2 space-y-2 text-[11px] leading-4 text-slate-500" x-show="row.detailRows && row.detailRows.length">
+                            <template x-for="(detail, index) in row.detailRows" :key="row.id + ':detail:' + index">
+                              <div class="rounded-lg bg-slate-50 px-2 py-1.5">
+                                <p class="font-semibold text-slate-700" x-show="detail.summary" x-text="detail.summary"></p>
+                                <p x-show="detail.total" x-text="'總額：' + detail.total"></p>
+                                <p x-show="detail.net" x-text="'實發：' + detail.net"></p>
+                                <p class="font-semibold text-slate-700" x-show="detail.courseStudent" x-text="detail.courseStudent"></p>
+                                <p x-show="detail.dateTime" x-text="'時間：' + detail.dateTime"></p>
+                                <p x-show="detail.hoursRate" x-text="'時數/費率：' + detail.hoursRate"></p>
+                                <p x-show="detail.amount" x-text="'小計：' + detail.amount"></p>
+                              </div>
+                            </template>
+                          </div>
+                          <div class="admin-row-detail mt-1 space-y-1 text-[11px] leading-4 text-slate-500" x-show="(!row.detailRows || !row.detailRows.length) && row.details && row.details.length">
                             <template x-for="line in formatAdminDetailLines(row.details, row)" :key="line">
                               <p x-text="line"></p>
                             </template>
@@ -2424,6 +2437,7 @@
           adminFlowActions() {
             if (this.activeAdminTab === "calc") {
               return [
+                { key: "fullTuitionFlow", label: "完成學費流程" },
                 { key: "tuitionWrite", label: "寫入學費結算" },
                 { key: "paymentNotice", label: "產生繳費單" },
                 { key: "paymentNotify", label: "寄送通知" },
@@ -2431,6 +2445,7 @@
             }
             if (this.activeAdminTab === "receipt") {
               return [
+                { key: "fullReceiptFlow", label: "完成收據流程" },
                 { key: "receiptPayment", label: "套用收款資料" },
                 { key: "receiptDocument", label: "產生收據" },
                 { key: "receiptNotify", label: "寄送通知" },
@@ -2438,6 +2453,7 @@
             }
             if (this.activeAdminTab === "voucher") {
               return [
+                { key: "fullSalaryFlow", label: "完成鐘點流程" },
                 { key: "salaryWrite", label: "寫入鐘點結算" },
                 { key: "allowanceDocument", label: "產生領據" },
                 { key: "allowanceNotify", label: "寄送通知" },
@@ -2473,6 +2489,21 @@
 
           isAdminRowEligibleForAction(row, actionKey) {
             if (!row) return false;
+            if (actionKey === "fullTuitionFlow") {
+              return this.isAdminRowEligibleForAction(row, "tuitionWrite") ||
+                this.isAdminRowEligibleForAction(row, "paymentNotice") ||
+                this.isAdminRowEligibleForAction(row, "paymentNotify");
+            }
+            if (actionKey === "fullReceiptFlow") {
+              return this.isAdminRowEligibleForAction(row, "receiptPayment") ||
+                this.isAdminRowEligibleForAction(row, "receiptDocument") ||
+                this.isAdminRowEligibleForAction(row, "receiptNotify");
+            }
+            if (actionKey === "fullSalaryFlow") {
+              return this.isAdminRowEligibleForAction(row, "salaryWrite") ||
+                this.isAdminRowEligibleForAction(row, "allowanceDocument") ||
+                this.isAdminRowEligibleForAction(row, "allowanceNotify");
+            }
             if (row.actions && Object.prototype.hasOwnProperty.call(row.actions, actionKey)) {
               return row.actions[actionKey] === true;
             }
@@ -2489,6 +2520,9 @@
           },
 
           adminFlowTargetFeature(actionKey) {
+            if (actionKey === "fullTuitionFlow") return this.adminPreview ? this.adminPreview.title : "";
+            if (actionKey === "fullReceiptFlow") return this.adminPreview ? this.adminPreview.title : "";
+            if (actionKey === "fullSalaryFlow") return this.adminPreview ? this.adminPreview.title : "";
             const featureByAction = {
               tuitionWrite: "學費試算",
               paymentNotice: "繳費單",
@@ -2505,11 +2539,14 @@
 
           adminFlowConfirmAction(actionKey) {
             const actionMap = {
+              fullTuitionFlow: "adminConfirmFullFlow",
               tuitionWrite: "adminConfirmSettlement",
               paymentNotice: "adminConfirmDocument",
               paymentNotify: "adminConfirmNotification",
+              fullReceiptFlow: "adminConfirmFullFlow",
               receiptDocument: "adminConfirmDocument",
               receiptNotify: "adminConfirmNotification",
+              fullSalaryFlow: "adminConfirmFullFlow",
               salaryWrite: "adminConfirmSettlement",
               allowanceDocument: "adminConfirmDocument",
               allowanceNotify: "adminConfirmNotification",
@@ -2624,6 +2661,8 @@
             let confirmText = "是否確認執行？";
             if (isSettlement) {
               confirmText = "確認後會重新試算並寫入結算表，且會執行重複寫入防呆。\n是否確認寫入？";
+            } else if (confirmAction === "adminConfirmFullFlow") {
+              confirmText = "確認後會依目前勾選資料依序執行：寫入或套用資料、產生 PDF、寄送 Email / LINE。每一步都會重新檢查狀態並回寫結果；不符合條件者會略過。\n是否確認執行完整流程？";
             } else if (confirmAction === "adminConfirmEmail") {
               if (featureName === "寄送繳費單 Email") {
                 confirmText = "確認後會寄送繳費單 PDF Email，並回寫 Email 寄送狀態；不會產生新 PDF 或 LINE push。\n是否確認寄送？";
@@ -2701,6 +2740,7 @@
                 month: formattedMonth,
                 selectedIds: JSON.stringify(this.selectedAdminRowIds()),
                 selectedNotifications: JSON.stringify(this.selectedAdminNotifications()),
+                flowAction: this.activeAdminActionKey || "",
                 reason: voidReason,
                 channel: reissueChannel,
               });
