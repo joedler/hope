@@ -758,7 +758,7 @@ function getFullFlowTargetNames(rows: any[], selectedIds: string[]) {
     : rows;
   const names: string[] = [];
   selectedRows.forEach(function(row: any) {
-    const name = String(row.name || "").trim();
+    const name = normalizeFullFlowTargetName(row);
     if (name && names.indexOf(name) < 0) names.push(name);
   });
   return names;
@@ -767,8 +767,16 @@ function getFullFlowTargetNames(rows: any[], selectedIds: string[]) {
 function filterRowsByTargetNames(rows: any[], targetNames: string[]) {
   if (!targetNames || targetNames.length === 0) return rows;
   return rows.filter(function(row: any) {
-    return targetNames.indexOf(String(row.name || "").trim()) > -1;
+    return targetNames.indexOf(normalizeFullFlowTargetName(row)) > -1;
   });
+}
+
+function normalizeFullFlowTargetName(row: any) {
+  const rawName = String((row && row.name) || "").trim();
+  if (!rawName) return "";
+  if (rawName.indexOf(" / ") > -1) return rawName.split(" / ")[0].trim();
+  if (rawName.indexOf("／") > -1) return rawName.split("／")[0].trim();
+  return rawName;
 }
 
 function fullFlowRowMatches(row: any, selectedIds: string[]) {
