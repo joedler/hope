@@ -646,6 +646,13 @@ function runReceiptFullFlow(params: any, month: string, selectedIds: string[]) {
     return row.actions && row.actions.receiptPayment === true;
   }), targetNames);
   if (paymentRows.length > 0) {
+    if (!String(params.method || "").trim() || !String(params.category || "").trim() || !String(params.paymentDate || "").trim()) {
+      return {
+        ok: false,
+        message: `${month} 完成收據流程需要先填寫收款方式、收據類別與收款日期，才能一併套用收款資料。`,
+        preview: buildReceiptAdminPreview(month)
+      };
+    }
     const paymentResult = handleLiffAdminUpdateReceiptPayment(extendParams(params, {
       selectedIds: JSON.stringify(paymentRows.map(function(row: any) { return row.id; }))
     }));

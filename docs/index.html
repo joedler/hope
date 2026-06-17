@@ -2644,6 +2644,15 @@
               await this.applyReceiptPaymentInfo();
               return;
             }
+            if (this.isAdminFlowTab() && this.activeAdminActionKey === "fullReceiptFlow") {
+              const needsPaymentInfo = (this.adminPreview && this.adminPreview.rows || []).some((row) => {
+                return row.selected === true && row.actions && row.actions.receiptPayment === true;
+              });
+              if (needsPaymentInfo && (!this.receiptPaymentForm.method || !this.receiptPaymentForm.category || !this.receiptPaymentForm.paymentDate)) {
+                alert("請先填寫收款方式、收據類別與收款日期，完整收據流程才可一併套用收款資料。");
+                return;
+              }
+            }
             const displayFeatureName = this.adminPreview.title;
             const featureName = this.isAdminFlowTab() && this.activeAdminActionKey
               ? (this.adminFlowTargetFeature(this.activeAdminActionKey) || displayFeatureName)
@@ -2741,6 +2750,9 @@
                 selectedIds: JSON.stringify(this.selectedAdminRowIds()),
                 selectedNotifications: JSON.stringify(this.selectedAdminNotifications()),
                 flowAction: this.activeAdminActionKey || "",
+                method: this.receiptPaymentForm.method,
+                category: this.receiptPaymentForm.category,
+                paymentDate: this.receiptPaymentForm.paymentDate,
                 reason: voidReason,
                 channel: reissueChannel,
               });
