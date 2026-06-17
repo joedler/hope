@@ -74,6 +74,43 @@ var ADMIN_LIST: string[] = getOptionalListProperty("ADMIN_LINE_USER_IDS", [
   "U8d812c4a0b5e44b34fcc2c1d86b08e87"   // 小白
 ]);
 
+function isAdminRoleValue(roleValue: any): boolean {
+  const role = String(roleValue || "").trim().toLowerCase();
+  return role === "管理員" || role === "行政" || role === "admin" || role === "administrator";
+}
+
+function isInactiveStaffStatus(statusValue: any): boolean {
+  const status = String(statusValue || "").trim().toLowerCase();
+  return status === "離職" || status === "停用" || status === "inactive" || status === "disabled";
+}
+
+function isAdminLineUser(lineUserId: any): boolean {
+  const cleanLineUserId = String(lineUserId || "").trim();
+  if (!cleanLineUserId) return false;
+
+  const propertyAdminList = (ADMIN_LIST || []).map(function(id: any) {
+    return String(id || "").trim();
+  });
+  if (propertyAdminList.indexOf(cleanLineUserId) > -1) return true;
+
+  try {
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+    if (!teacherSheet) return false;
+    const data = teacherSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const rowLineUserId = String(data[i][1] || "").trim();
+      if (rowLineUserId !== cleanLineUserId) continue;
+      const role = data[i][9]; // J 欄：類別
+      const status = data[i][10]; // K 欄：狀態
+      return isAdminRoleValue(role) && !isInactiveStaffStatus(status);
+    }
+  } catch (e) {
+    return false;
+  }
+  return false;
+}
+
 // 一般收據專用試算表與範本 ID
 var TEMPLATE_ID_GEN_RECEIPT: string = getOptionalProperty("TEMPLATE_ID_GENERAL_RECEIPT", "1cIMvNBr_j8que87efpJwNF9wqK03uiz8pXVAG7sQXIY"); // 一般收據範本
 var FOLDER_ID_GEN_RECEIPT: string = getOptionalProperty("PDF_FOLDER_GENERAL_RECEIPT", "17jkNW3fslGa_4nc4MSghFkGsrh3Iwd_E");
@@ -436,7 +473,7 @@ function auditFormalDataSources() {
       const lineId = String(teacherData[i][1] || "").trim();
       const email = String(teacherData[i][2] || "").trim();
       if (lineId) teacherLineCount++;
-      if (lineId && ADMIN_LIST.indexOf(lineId) > -1) adminLineMatchedCount++;
+      if (lineId && isAdminLineUser(lineId)) adminLineMatchedCount++;
       if (email && validEmailPattern.test(email)) teacherEmailCount++;
       if (email && !validEmailPattern.test(email)) {
         invalidTeacherEmailCount++;
@@ -567,4 +604,5 @@ function countAuditRowsByMonth(sheet: GoogleAppsScript.Spreadsheet.Sheet, column
   }
   return count;
 }
+
 

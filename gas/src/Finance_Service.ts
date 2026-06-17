@@ -12,7 +12,7 @@ function handleLiffAdminTask(params: any) {
   const month = params.month; // YYYY/MM (例如 "2026/05")
 
   // 1. 驗證管理員權限
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -71,7 +71,7 @@ function handleLiffAdminPreview(params: any) {
   const feature = String(params.feature || "").trim();
   const month = normalizeAdminPreviewMonth(params.month);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -173,7 +173,7 @@ function handleLiffAdminConfirmSettlement(params: any) {
   const feature = String(params.feature || "").trim();
   const month = normalizeAdminPreviewMonth(params.month);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -297,7 +297,7 @@ function handleLiffAdminConfirmDocument(params: any) {
   const feature = String(params.feature || "").trim();
   const month = normalizeAdminPreviewMonth(params.month);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -415,7 +415,7 @@ function handleLiffAdminConfirmEmail(params: any) {
   const feature = String(params.feature || "").trim();
   const month = normalizeAdminPreviewMonth(params.month);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -463,7 +463,7 @@ function handleLiffAdminConfirmLine(params: any) {
   const feature = String(params.feature || "").trim();
   const month = normalizeAdminPreviewMonth(params.month);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -507,7 +507,7 @@ function handleLiffAdminConfirmNotification(params: any) {
   const feature = String(params.feature || "").trim();
   const month = normalizeAdminPreviewMonth(params.month);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -577,7 +577,7 @@ function handleLiffAdminConfirmFullFlow(params: any) {
   const month = normalizeAdminPreviewMonth(params.month);
   const selectedIds = parseAdminSelectedIds(params.selectedIds);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -836,7 +836,7 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
   const category = String(params.category || "").trim();
   const method = String(params.method || "").trim();
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -885,7 +885,7 @@ function handleLiffAdminConfirmGeneralReceiptEmail(params: any) {
   const month = normalizeAdminPreviewMonth(params.month);
   const selectedIds = parseAdminSelectedIds(params.selectedIds);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -1040,7 +1040,7 @@ function handleLiffAdminVoidDocument(params: any) {
   const reason = String(params.reason || "").trim();
   const selectedIds = parseAdminSelectedIds(params.selectedIds);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -1170,7 +1170,7 @@ function handleLiffAdminReissueDocument(params: any) {
   const channel = normalizeReissueChannel(params.channel);
   const selectedIds = parseAdminSelectedIds(params.selectedIds);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -1295,7 +1295,7 @@ function handleLiffAdminRegenerateDocument(params: any) {
   const reason = String(params.reason || "").trim();
   const selectedIds = parseAdminSelectedIds(params.selectedIds);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -1611,7 +1611,7 @@ function handleLiffAdminUpdateReceiptPayment(params: any) {
   const paymentDate = String(params.paymentDate || "").replace(/-/g, "/").trim();
   const selectedIds = parseAdminSelectedIds(params.selectedIds);
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) {
     return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
   }
@@ -4737,7 +4737,7 @@ function handleAnnualTaxSummaryCommand(event: any, userMsg: string) {
   const replyToken = event.replyToken;
   const userId = event.source.userId;
 
-  const isAdmin = ADMIN_LIST.indexOf(userId) > -1;
+  const isAdmin = isAdminLineUser(userId);
   if (!isAdmin) { replyLineMessage(replyToken, "❌ 權限不足：限行政人員使用。"); return; }
 
   const parts = userMsg.trim().split(/\s+/);
@@ -4873,7 +4873,7 @@ function handleDonationTaxExportCommand(event: any, userMsg: string) {
   const replyToken = event.replyToken;
   const userId = event.source.userId;
 
-  const isAdmin = ADMIN_LIST.indexOf(userId) > -1;
+  const isAdmin = isAdminLineUser(userId);
   if (!isAdmin) { replyLineMessage(replyToken, "❌ 權限不足：限行政人員使用。"); return; }
 
   const parts = userMsg.trim().split(/\s+/);
@@ -4962,7 +4962,7 @@ function handleTaxExemptionDashboardCommand(event: any, userMsg: string) {
   const replyToken = event.replyToken;
   const userId = event.source.userId;
 
-  const isAdmin = ADMIN_LIST.indexOf(userId) > -1;
+  const isAdmin = isAdminLineUser(userId);
   if (!isAdmin) { replyLineMessage(replyToken, "❌ 權限不足：限行政人員使用。"); return; }
 
   const parts = userMsg.trim().split(/\s+/);
@@ -5154,7 +5154,7 @@ function createTaxDashboardFlexCard(data: any) {
 
 function handleTuitionCalculation(event: any, userMsg: string) {
   const replyToken = event.replyToken; const userId = event.source.userId;
-  const isAdmin = ADMIN_LIST.indexOf(userId) > -1;
+  const isAdmin = isAdminLineUser(userId);
   if (!isAdmin) { replyLineMessage(replyToken, "❌ 權限不足：限行政人員使用。"); return; }
 
   const parts = userMsg.split(" "); let baseMonthStr = ""; const timeZone = Session.getScriptTimeZone();
@@ -5288,7 +5288,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
 
 function handleSalaryCalculation(event: any, userMsg: string) {
   const replyToken = event.replyToken; const userId = event.source.userId;
-  const isAdmin = ADMIN_LIST.indexOf(userId) > -1;
+  const isAdmin = isAdminLineUser(userId);
   if (!isAdmin) { replyLineMessage(replyToken, "❌ 權限不足：限行政人員使用。"); return; }
 
   const parts = userMsg.split(" "); let queryMonth = ""; const timeZone = Session.getScriptTimeZone();
@@ -5598,4 +5598,5 @@ declare function handlePaymentDocCommand(event: any, userMsg: string): void;
 declare function createPaymentNoticesBatch(targetMonth: string, targetName: string): string;
 declare function replyLineMessage(token: string, msg: string): void;
 declare function replyConfirmationCard(token: string, title: string, report: string, key: string): void;
+
 

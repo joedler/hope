@@ -510,7 +510,7 @@ function handlePaymentQueryCommand(event: any, userMsg: string) {
 function handleTuitionAdjustmentCommand(event: any, userMsg: string) {
   const replyToken = event.replyToken;
   const userId = event.source.userId;
-  const isAdmin = ADMIN_LIST.indexOf(userId) > -1;
+  const isAdmin = isAdminLineUser(userId);
   if (!isAdmin) { replyLineMessage(replyToken, "❌ 權限不足：限行政人員使用。"); return; }
 
   const parts = userMsg.trim().split(/\s+/);
@@ -604,7 +604,7 @@ function handleTuitionAdjustmentCommand(event: any, userMsg: string) {
 
 function handleLiffTuitionAdjustment(params: any) {
   const lineUserId = String(params.lineUserId || "").trim();
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) return { ok: false, message: "權限不足：限行政人員使用。" };
 
   const type = String(params.adjustmentType || "").trim();
@@ -719,7 +719,7 @@ function findDuplicateTuitionAdjustment(sheet: any, target: any): number {
 
 function handleLiffTuitionAdjustmentOptions(params: any) {
   const lineUserId = String(params.lineUserId || "").trim();
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) return { ok: false, message: "權限不足：限行政人員使用。" };
 
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -819,7 +819,7 @@ function ensureTuitionAdjustmentSheet() {
 
 function handleLiffAdjustmentPaymentPreview(params: any) {
   const lineUserId = String(params.lineUserId || "").trim();
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) return { ok: false, message: "權限不足：限行政人員使用。" };
 
   const month = String(params.month || params.processingMonth || "").replace("-", "/").trim();
@@ -831,7 +831,7 @@ function handleLiffAdjustmentPaymentPreview(params: any) {
 
 function handleLiffGenerateAdjustmentPayment(params: any) {
   const lineUserId = String(params.lineUserId || "").trim();
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
   if (!isAdmin) return { ok: false, message: "權限不足：限行政人員使用。" };
 
   const month = String(params.month || params.processingMonth || "").replace("-", "/").trim();
@@ -1099,7 +1099,7 @@ function handlePaymentDocCommand(event: any, userMsg: string) {
   const replyToken = event.replyToken;
   const userId = event.source.userId;
   const targetId = event.source.groupId || userId;
-  const isAdmin = ADMIN_LIST.indexOf(userId) > -1;
+  const isAdmin = isAdminLineUser(userId);
   if (!isAdmin) { replyLineMessage(replyToken, "❌ 權限不足"); return; }
 
   const parts = userMsg.split(" ");
@@ -1665,3 +1665,4 @@ function generateGeneralReceiptPDF(state: any, folder: any) {
   const pdfBlob = newFile.getAs(PDF_MIME_TYPE); pdfBlob.setName(fileName); const pdfFile = folder.createFile(pdfBlob); newFile.setTrashed(true); 
   return { url: pdfFile.getUrl(), id: pdfFile.getId() };
 }
+

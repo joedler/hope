@@ -242,6 +242,8 @@
 - 必填屬性：`LINE_CHANNEL_TOKEN`、`SPREADSHEET_ID`、`LEAVE_SHEET_ID`、`REPORT_SHEET_ID`、`SHEET_ID_MEMBER`。缺少時系統應直接報錯，不可使用正式資料 fallback。
 - 建議屬性化且目前保留 fallback：`LINE_GROUP_ID`、`ADMIN_LINE_USER_IDS`、`ORG_TAX_ID`、`TEMPLATE_ID_PAYMENT`、`TEMPLATE_ID_RECEIPT`、`TEMPLATE_ID_ALLOWANCE`、`TEMPLATE_ID_GENERAL_RECEIPT`、`PDF_FOLDER_PAYMENT_NOTICE`、`PDF_FOLDER_RECEIPT`、`PDF_FOLDER_ALLOWANCE`、`PDF_FOLDER_GENERAL_RECEIPT`。
 - `ADMIN_LINE_USER_IDS` 可用換行、逗號或分號分隔多位行政人員 LINE User ID。
+- 行政權限以 `講師名單` B 欄 LINE User ID 搭配 J 欄 `類別` 為主要來源；J 欄為 `管理員` 或 `行政` 且 K 欄狀態不是離職/停用者，可進入行政作業。
+- `ADMIN_LINE_USER_IDS` 作為緊急白名單與備援來源；若 Script Properties 未同步，不應覆蓋試算表 J 欄的正式權限設定。
 - 後續正式版替換或建立新測試專案時，優先調整 GAS Script Properties，不應修改程式碼中的 ID。
 - 過渡期採「屬性優先、fallback 保護」；確認正式屬性全數補齊且穩定後，才評估移除 fallback。
 

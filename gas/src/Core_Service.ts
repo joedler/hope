@@ -59,7 +59,7 @@ function handleLiffMe(lineUserId: string) {
     sickLeaveRemaining = leaveQuota.sick;
   } catch (e) {}
 
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
 
   return {
     ok: true,
@@ -114,7 +114,7 @@ function handleLiffFormOptions(lineUserId?: string) {
 
     const students = Array.from(studentsSet);
     const subjects = Array.from(subjectsSet);
-    const isAdmin = ADMIN_LIST.indexOf(lineUserId || "") > -1;
+    const isAdmin = isAdminLineUser(lineUserId || "");
     return {
       ok: true,
       message: !isAdmin && (students.length === 0 || subjects.length === 0) ? "目前沒有可登記的學生或課程，請聯絡行政確認課程設定表。" : "",
@@ -366,7 +366,7 @@ function handleLiffVerifySchedule(params: any) {
 
   const recordTeacher = planSheet.getRange(rowId, 2).getValue();
   const recordStatus = String(planSheet.getRange(rowId, 10).getValue()).trim();
-  const isAdmin = ADMIN_LIST.indexOf(lineUserId) > -1;
+  const isAdmin = isAdminLineUser(lineUserId);
 
   if (recordTeacher !== userName && !isAdmin) {
     return { ok: false, message: "無權限操作此預排紀錄。" };
@@ -863,4 +863,5 @@ function formatTimeStr(timeVal: any): string {
 // 宣告外部參考
 declare function replyLineMessage(token: string, msg: string): void;
 declare function getTeacherLeaveQuota(teacherName: string): { casual: number; sick: number };
+
 

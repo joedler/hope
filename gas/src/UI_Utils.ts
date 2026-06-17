@@ -510,7 +510,7 @@ function handleAdminMenu(event: any, mode: string) {
   for (let i = 1; i < limit; i++) {
     const tName = data[i][0];
     const tId = data[i][1];
-    if (tId && tId.indexOf("U") === 0 && ADMIN_LIST.indexOf(tId) === -1) {
+    if (tId && tId.indexOf("U") === 0 && !isAdminLineUser(tId)) {
       if (mode === "verify" && pendingTeachers.indexOf(tName) === -1) continue;
       bubbles.push({
         "type": "bubble",
@@ -1106,4 +1106,5 @@ function createReportFlexCard(data: any, type: string) {
     }
   };
 }
+
 
