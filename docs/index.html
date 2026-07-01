@@ -834,6 +834,11 @@
                     @click="setToolTab('system')">
                     系統工具
                   </button>
+                  <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
+                    :class="activeToolTab === 'courseProxy' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
+                    @click="setToolTab('courseProxy')">
+                    課程代操作
+                  </button>
                 </div>
                 <div x-show="activeToolTab === 'system'" class="grid grid-cols-2 gap-2 rounded-xl border border-teal-100 bg-teal-50 p-3">
                   <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="setToolTab('overview')">
@@ -842,6 +847,99 @@
                   <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showMyLineId()">
                     查我的 ID
                   </button>
+                </div>
+                <div x-show="activeToolTab === 'courseProxy'" class="space-y-3 rounded-xl border border-teal-100 bg-teal-50 p-3 text-slate-800">
+                  <label class="block">
+                    <span class="text-xs font-semibold text-slate-500">講師</span>
+                    <select class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-amber-500" x-model="adminCourseProxy.targetTeacher" @change="onAdminProxyTeacherChange()">
+                      <option value="">-- 選擇要代操作的講師 --</option>
+                      <template x-for="teacher in adminCourseProxy.teachers" :key="teacher.id">
+                        <option :value="teacher.id" x-text="teacher.name"></option>
+                      </template>
+                    </select>
+                  </label>
+                  <div class="grid grid-cols-3 gap-2">
+                    <button type="button" class="rounded-xl border px-2 py-2 text-xs font-bold transition" :class="adminCourseProxy.action === 'normal' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-200 bg-white text-teal-700'" @click="adminCourseProxy.action = 'normal'; adminCourseProxy.preview = null">代新增授課</button>
+                    <button type="button" class="rounded-xl border px-2 py-2 text-xs font-bold transition" :class="adminCourseProxy.action === 'pre' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-200 bg-white text-teal-700'" @click="adminCourseProxy.action = 'pre'; adminCourseProxy.preview = null">代預排課程</button>
+                    <button type="button" class="rounded-xl border px-2 py-2 text-xs font-bold transition" :class="adminCourseProxy.action === 'verify' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-200 bg-white text-teal-700'" @click="adminCourseProxy.action = 'verify'; adminCourseProxy.preview = null">代核銷預排</button>
+                  </div>
+                  <div x-show="adminCourseProxy.action !== 'verify'" class="space-y-3">
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-500">學生</span>
+                      <select class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-amber-500" x-model="adminCourseProxy.student" @change="onAdminProxyStudentChange()">
+                        <option value="">-- 選擇學生 --</option>
+                        <template x-for="student in adminCourseProxy.options.students" :key="student">
+                          <option :value="student" x-text="student"></option>
+                        </template>
+                      </select>
+                    </label>
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-500">課程</span>
+                      <select class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-amber-500" x-model="adminCourseProxy.subject" @change="adminCourseProxy.preview = null">
+                        <option value="">-- 選擇課程 --</option>
+                        <template x-for="subject in adminProxySubjects()" :key="subject">
+                          <option :value="subject" x-text="subject"></option>
+                        </template>
+                      </select>
+                    </label>
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-500">日期</span>
+                      <input type="date" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-amber-500" x-model="adminCourseProxy.date" @change="adminCourseProxy.preview = null">
+                    </label>
+                    <div class="grid grid-cols-2 gap-2">
+                      <template x-for="field in ['startTime', 'endTime']" :key="'proxy-time-' + field">
+                        <label class="block">
+                          <span class="text-xs font-semibold text-slate-500" x-text="field === 'startTime' ? '開始' : '結束'"></span>
+                          <div class="relative mt-1">
+                            <button type="button" class="flex w-full items-center justify-between rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-left text-sm font-semibold text-slate-900 outline-none transition focus:border-amber-500" @click.prevent.stop="openAdminProxyTimePicker(field)">
+                              <span x-text="timeDisplay(adminCourseProxy[field])"></span>
+                              <svg class="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                            </button>
+                            <template x-if="isAdminProxyTimePickerOpen(field)">
+                              <div class="time-picker-panel absolute left-0 z-30 mt-2 rounded-xl border border-slate-800 bg-white p-3 shadow-lg" @click.stop @click.outside="closeTimePicker()">
+                                <div class="time-picker-hours-grid grid gap-2">
+                                  <template x-for="hour in timePickerHours" :key="'proxy-hour-' + field + '-' + hour">
+                                    <button type="button" class="time-picker-option rounded-lg border px-2 py-2 text-sm font-semibold" :class="selectedPickerHour() === hour ? 'border-amber-600 bg-amber-600 text-white' : 'border-slate-800 bg-white text-slate-500'" @click="setPickerHour(hour)" x-text="hour"></button>
+                                  </template>
+                                </div>
+                                <div class="time-picker-minute-grid mt-3 grid gap-2">
+                                  <template x-for="minute in timePickerMinutes" :key="'proxy-minute-' + field + '-' + minute">
+                                    <button type="button" class="time-picker-option rounded-lg border px-2 py-2 text-sm font-semibold" :class="selectedPickerMinute() === minute ? 'border-amber-600 bg-amber-600 text-white' : 'border-slate-800 bg-white text-slate-500'" @click="setPickerMinute(minute)" x-text="minute"></button>
+                                  </template>
+                                </div>
+                              </div>
+                            </template>
+                          </div>
+                        </label>
+                      </template>
+                    </div>
+                  </div>
+                  <div x-show="adminCourseProxy.action === 'verify'" class="space-y-3">
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-500">待核銷預排</span>
+                      <select class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-amber-500" x-model="adminCourseProxy.verifyRowId" @change="adminCourseProxy.preview = null">
+                        <option value="">-- 選擇預排紀錄 --</option>
+                        <template x-for="item in adminCourseProxy.schedules" :key="item.rowId">
+                          <option :value="item.rowId" :disabled="item.canVerify === false" x-text="`${item.date} ${item.startTime}-${item.endTime}｜${item.student}｜${item.subject}${item.canVerify === false ? '（尚不可核銷）' : ''}`"></option>
+                        </template>
+                      </select>
+                    </label>
+                    <div class="grid grid-cols-2 gap-2">
+                      <button type="button" class="rounded-xl border px-2 py-2 text-xs font-bold transition" :class="adminCourseProxy.verifyResult === 'yes' ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-teal-200 bg-white text-slate-600'" @click="adminCourseProxy.verifyResult = 'yes'; adminCourseProxy.preview = null">有上課</button>
+                      <button type="button" class="rounded-xl border px-2 py-2 text-xs font-bold transition" :class="adminCourseProxy.verifyResult === 'no' ? 'border-red-400 bg-red-50 text-red-700' : 'border-teal-200 bg-white text-slate-600'" @click="adminCourseProxy.verifyResult = 'no'; adminCourseProxy.preview = null">未上課</button>
+                    </div>
+                  </div>
+                  <button type="button" class="w-full rounded-xl border border-teal-700 bg-teal-600 px-4 py-3 text-sm font-semibold text-white disabled:bg-slate-200 disabled:text-slate-400" :disabled="submitting || !canPreviewAdminCourseProxy()" @click="previewAdminCourseProxy()">預覽代操作</button>
+                  <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800" x-show="adminCourseProxy.preview">
+                    <p class="font-bold" x-text="adminCourseProxy.preview ? adminCourseProxy.preview.title : ''"></p>
+                    <p class="mt-1" x-text="adminCourseProxy.preview ? adminCourseProxy.preview.summary : ''"></p>
+                    <ul class="mt-2 space-y-1">
+                      <template x-for="item in (adminCourseProxy.preview ? adminCourseProxy.preview.items : [])" :key="item">
+                        <li x-text="item"></li>
+                      </template>
+                    </ul>
+                    <button type="button" class="mt-3 w-full rounded-xl border border-amber-500 bg-white px-3 py-2 text-sm font-bold text-amber-700 disabled:text-slate-400" :disabled="submitting || !adminCourseProxy.preview || adminCourseProxy.preview.canConfirm !== true" @click="confirmAdminCourseProxy()" x-text="adminCourseProxy.preview ? (adminCourseProxy.preview.nextAction || '確認執行') : '確認執行'"></button>
+                  </div>
                 </div>
               </div>
 
@@ -1361,6 +1459,25 @@
             subjects: [],
             coursesByStudent: {},
           },
+          adminCourseProxy: {
+            teachers: [],
+            options: {
+              students: [],
+              subjects: [],
+              coursesByStudent: {},
+            },
+            schedules: [],
+            targetTeacher: "",
+            action: "normal",
+            student: "",
+            subject: "",
+            date: new Date().toISOString().substring(0, 10),
+            startTime: "13:00",
+            endTime: "14:00",
+            verifyRowId: "",
+            verifyResult: "yes",
+            preview: null,
+          },
           adjustmentOptions: {
             students: [],
             coursesByStudent: {},
@@ -1413,6 +1530,7 @@
                   this.loadOptions(),
                   this.loadRecentRegisteredLessons(),
                   this.loadTuitionAdjustmentOptions(),
+                  this.loadAdminCourseProxyOptions(),
                   this.loadUnverifiedSchedules(),
                 ]);
               }
@@ -1550,6 +1668,135 @@
             return coursesByStudent[selectedStudent] || [];
           },
 
+          async loadAdminCourseProxyOptions() {
+            if (!this.teacherProfile || !this.teacherProfile.isAdmin) return;
+            if (!this.config.gasWebAppUrl) {
+              this.adminCourseProxy.teachers = [
+                { id: "demo-teacher", name: "示範講師", lineUserId: "demo-teacher" },
+              ];
+              this.adminCourseProxy.options = {
+                students: ["示範學生"],
+                subjects: ["示範課程"],
+                coursesByStudent: { "示範學生": ["示範課程"] },
+              };
+              this.adminCourseProxy.schedules = [];
+              return;
+            }
+            const result = await this.callApi({
+              action: "adminCourseProxyOptions",
+              lineUserId: this.lineUserId,
+              targetTeacher: this.adminCourseProxy.targetTeacher,
+            });
+            if (!result.ok) throw new Error(result.message || "載入課程代操作資料失敗。");
+            this.adminCourseProxy.teachers = result.teachers || [];
+            this.adminCourseProxy.options = result.options || { students: [], subjects: [], coursesByStudent: {} };
+            this.adminCourseProxy.schedules = result.schedules || [];
+          },
+
+          async onAdminProxyTeacherChange() {
+            this.adminCourseProxy.student = "";
+            this.adminCourseProxy.subject = "";
+            this.adminCourseProxy.verifyRowId = "";
+            this.adminCourseProxy.preview = null;
+            await this.loadAdminCourseProxyOptions();
+          },
+
+          adminProxySubjects() {
+            if (!this.adminCourseProxy.student) return [];
+            const coursesByStudent = this.adminCourseProxy.options.coursesByStudent || {};
+            return coursesByStudent[this.adminCourseProxy.student] || [];
+          },
+
+          onAdminProxyStudentChange() {
+            this.adminCourseProxy.subject = "";
+            this.adminCourseProxy.preview = null;
+          },
+
+          selectedAdminProxySchedule() {
+            const rowId = String(this.adminCourseProxy.verifyRowId || "");
+            return (this.adminCourseProxy.schedules || []).find((item) => String(item.rowId) === rowId) || null;
+          },
+
+          canPreviewAdminCourseProxy() {
+            if (!this.adminCourseProxy.targetTeacher) return false;
+            if (this.adminCourseProxy.action === "verify") return !!this.adminCourseProxy.verifyRowId;
+            return !!(this.adminCourseProxy.student && this.adminCourseProxy.subject && this.adminCourseProxy.date && this.adminCourseProxy.startTime && this.adminCourseProxy.endTime);
+          },
+
+          adminCourseProxyPayload() {
+            return {
+              lineUserId: this.lineUserId,
+              targetTeacher: this.adminCourseProxy.targetTeacher,
+              proxyAction: this.adminCourseProxy.action,
+              student: this.adminCourseProxy.student,
+              subject: this.adminCourseProxy.subject,
+              date: this.adminCourseProxy.date,
+              startTime: this.adminCourseProxy.startTime,
+              endTime: this.adminCourseProxy.endTime,
+              rowId: this.adminCourseProxy.verifyRowId,
+              isVerified: this.adminCourseProxy.verifyResult,
+            };
+          },
+
+          async previewAdminCourseProxy() {
+            if (!this.canPreviewAdminCourseProxy()) return;
+            if (!this.config.gasWebAppUrl) {
+              this.adminCourseProxy.preview = {
+                title: "課程代操作預覽",
+                summary: "缺少 GAS Web App URL，僅顯示本機預覽。",
+                items: ["請部署 GAS 後再執行確認。"],
+                canConfirm: false,
+              };
+              return;
+            }
+            this.submitting = true;
+            this.operationMessage = "正在檢查課程代操作...";
+            try {
+              const result = await this.callApi({
+                action: "adminCourseProxyPreview",
+                ...this.adminCourseProxyPayload(),
+              });
+              if (!result.ok) throw new Error(result.message || "課程代操作預覽失敗。");
+              this.adminCourseProxy.preview = result.preview || null;
+            } catch (error) {
+              this.message = error.message;
+              alert(error.message);
+            } finally {
+              this.submitting = false;
+              this.operationMessage = "";
+            }
+          },
+
+          async confirmAdminCourseProxy() {
+            const preview = this.adminCourseProxy.preview;
+            if (!preview || preview.canConfirm !== true) return;
+            const confirmed = confirm(
+              `${preview.title}\n\n${preview.summary || ""}\n\n${(preview.items || []).join("\n")}\n\n確認執行？`
+            );
+            if (!confirmed) return;
+            this.submitting = true;
+            this.operationMessage = "正在執行課程代操作...";
+            try {
+              const result = await this.callApi({
+                action: "adminCourseProxyConfirm",
+                ...this.adminCourseProxyPayload(),
+              });
+              if (!result.ok) throw new Error(result.message || "課程代操作執行失敗。");
+              alert(result.message || "課程代操作完成。");
+              this.adminCourseProxy.preview = null;
+              await this.loadAdminCourseProxyOptions();
+              await this.loadUnverifiedSchedules();
+              await this.loadRecentRegisteredLessons();
+              await this.loadMe();
+            } catch (error) {
+              this.message = error.message;
+              alert(error.message);
+            } finally {
+              this.submitting = false;
+              this.operationMessage = "";
+            }
+          },
+
           timeDisplay(value) {
             const parts = String(value || "").split(":");
             if (parts.length !== 2) return "--:--";
@@ -1565,6 +1812,10 @@
 
           openAdjustmentTimePicker(field) {
             this.activeTimePicker = { type: "adjustment", field };
+          },
+
+          openAdminProxyTimePicker(field) {
+            this.activeTimePicker = { type: "adminProxy", field };
           },
 
           closeTimePicker() {
@@ -1584,10 +1835,19 @@
               this.activeTimePicker.field === field;
           },
 
+          isAdminProxyTimePickerOpen(field) {
+            return this.activeTimePicker &&
+              this.activeTimePicker.type === "adminProxy" &&
+              this.activeTimePicker.field === field;
+          },
+
           activeTimeValue() {
             if (!this.activeTimePicker) return "00:00";
             if (this.activeTimePicker.type === "adjustment") {
               return this.adjustmentForm[this.activeTimePicker.field] || "00:00";
+            }
+            if (this.activeTimePicker.type === "adminProxy") {
+              return this.adminCourseProxy[this.activeTimePicker.field] || "00:00";
             }
             const lesson = this.regForm.lessons.find((item) => item.id === this.activeTimePicker.id);
             return lesson ? (lesson[this.activeTimePicker.field] || "00:00") : "00:00";
@@ -1616,6 +1876,11 @@
             if (this.activeTimePicker.type === "adjustment") {
               this.adjustmentForm[this.activeTimePicker.field] = normalized;
               this.recalculateAdjustmentHours();
+              return;
+            }
+            if (this.activeTimePicker.type === "adminProxy") {
+              this.adminCourseProxy[this.activeTimePicker.field] = normalized;
+              this.adminCourseProxy.preview = null;
               return;
             }
             const lesson = this.regForm.lessons.find((item) => item.id === this.activeTimePicker.id);
@@ -1915,6 +2180,7 @@
                 await this.loadOptions();
                 await this.loadRecentRegisteredLessons();
                 await this.loadTuitionAdjustmentOptions();
+                await this.loadAdminCourseProxyOptions();
                 await this.loadUnverifiedSchedules();
                 return;
               }
@@ -2093,6 +2359,9 @@
               await this.showAdminPreview("單據總覽");
             } else if (tab === "generalReceipt") {
               await this.showAdminPreview("一般收據");
+            } else if (tab === "courseProxy") {
+              this.adminCourseProxy.preview = null;
+              await this.loadAdminCourseProxyOptions();
             }
           },
 

@@ -415,8 +415,56 @@ function handleLiffVerifySchedule(params: any) {
     // 標記為「取消」
     planSheet.getRange(rowId, 10).setValue("取消");
   }
+  planSheet.getRange(rowId, 13).setValue(recordTeacher === userName ? userName : `代核銷:${userName}`);
 
   return { ok: true };
+}
+
+// (5b) 行政代操作：讀取講師清單、指定講師課程選項與待核銷清單
+function handleLiffAdminCourseProxyOptions(params: any) {
+  const operatorLineUserId = String(params.lineUserId || "").trim();
+  if (!isAdminLineUser(operatorLineUserId)) {
+    return { ok: false, message: "權限不足：限行政人員使用課程代操作。" };
+  }
+
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (!teacherSheet) return { ok: false, message: "找不到講師名單。" };
+
+  const targetKey = String(params.targetTeacher || "").trim();
+  const target = targetKey ? findTeacherForCourseProxy_(teacherSheet.getDataRange().getValues(), targetKey) : null;
+
+  return {
+    ok: true,
+    teachers: listCourseProxyTeachers_(teacherSheet.getDataRange().getValues()),
+    selectedTeacher: target,
+    options: target ? getCourseOptionsForTeacher_(ss, target) : { students: [], subjects: [], coursesByStudent: {} },
+    schedules: target ? getUnverifiedSchedulesForTeacher_(ss, target.name) : []
+  };
+}
+
+// (5c) 行政代操作：預覽代登、代預排或代核銷
+function handleLiffAdminCourseProxyPreview(params: any) {
+  const operatorLineUserId = String(params.lineUserId || "").trim();
+  if (!isAdminLineUser(operatorLineUserId)) {
+    return { ok: false, message: "權限不足：限行政人員使用課程代操作。" };
+  }
+  const actionType = String(params.proxyAction || "").trim();
+  if (actionType === "verify") return previewAdminProxyVerify_(params, operatorLineUserId);
+  if (actionType === "normal" || actionType === "pre") return previewAdminProxyRegister_(params, operatorLineUserId);
+  return { ok: false, message: "不支援的代操作類型。" };
+}
+
+// (5d) 行政代操作：確認執行
+function handleLiffAdminCourseProxyConfirm(params: any) {
+  const operatorLineUserId = String(params.lineUserId || "").trim();
+  if (!isAdminLineUser(operatorLineUserId)) {
+    return { ok: false, message: "權限不足：限行政人員使用課程代操作。" };
+  }
+  const actionType = String(params.proxyAction || "").trim();
+  if (actionType === "verify") return confirmAdminProxyVerify_(params, operatorLineUserId);
+  if (actionType === "normal" || actionType === "pre") return confirmAdminProxyRegister_(params, operatorLineUserId);
+  return { ok: false, message: "不支援的代操作類型。" };
 }
 
 // (6) handleLiffUnbind : 解除 LINE 綁定
@@ -835,6 +883,315 @@ function getDateFingerprint(value: any, timeZone: string): string {
     }
   } catch (e) {}
   return "";
+}
+
+function listCourseProxyTeachers_(teacherData: any[][]): any[] {
+  const teachers: any[] = [];
+  for (let i = 1; i < teacherData.length; i++) {
+    const name = String(teacherData[i][0] || "").trim();
+    const lineUserId = String(teacherData[i][1] || "").trim();
+    const role = String(teacherData[i][9] || "").trim();
+    const status = teacherData[i][10];
+    if (!name || isInactiveStaffStatus(status)) continue;
+    if (isAdminRoleValue(role)) continue;
+    teachers.push({
+      id: lineUserId || name,
+      lineUserId,
+      name
+    });
+  }
+  return teachers;
+}
+
+function findTeacherForCourseProxy_(teacherData: any[][], targetKey: string): any {
+  const cleanTarget = String(targetKey || "").trim();
+  if (!cleanTarget) return null;
+  for (let i = 1; i < teacherData.length; i++) {
+    const name = String(teacherData[i][0] || "").trim();
+    const lineUserId = String(teacherData[i][1] || "").trim();
+    const status = teacherData[i][10];
+    if (isInactiveStaffStatus(status)) continue;
+    if (cleanTarget === lineUserId || cleanTarget === name) {
+      return { id: lineUserId || name, lineUserId, name };
+    }
+  }
+  return null;
+}
+
+function getCourseOptionsForTeacher_(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, teacher: any): any {
+  const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
+  if (!courseSheet) return { students: [], subjects: [], coursesByStudent: {} };
+  const data = courseSheet.getDataRange().getValues();
+  const studentsSet = new Set<string>();
+  const subjectsSet = new Set<string>();
+  const coursesByStudent: any = {};
+
+  for (let i = 1; i < data.length; i++) {
+    const rowTeacher = String(data[i][0] || "").trim();
+    if (!isCourseOwner(rowTeacher, teacher.lineUserId, teacher.name)) continue;
+    const studentName = String(data[i][2] || "").trim();
+    const subjectName = String(data[i][3] || "").trim();
+    if (studentName) studentsSet.add(studentName);
+    if (subjectName) subjectsSet.add(subjectName);
+    if (studentName && subjectName) {
+      if (!coursesByStudent[studentName]) coursesByStudent[studentName] = [];
+      if (coursesByStudent[studentName].indexOf(subjectName) === -1) coursesByStudent[studentName].push(subjectName);
+    }
+  }
+
+  return {
+    students: Array.from(studentsSet),
+    subjects: Array.from(subjectsSet),
+    coursesByStudent
+  };
+}
+
+function getUnverifiedSchedulesForTeacher_(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, teacherName: string): any[] {
+  const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
+  if (!planSheet) return [];
+  const data = planSheet.getDataRange().getValues();
+  const schedules: any[] = [];
+  const timeZone = Session.getScriptTimeZone();
+  const now = new Date();
+
+  for (let i = 1; i < data.length; i++) {
+    const rowTeacher = String(data[i][1] || "").trim();
+    const rowStatus = String(data[i][9] || "").trim();
+    if (rowTeacher !== teacherName || rowStatus !== "未核銷") continue;
+    const lessonEnd = buildLessonEndDate(data[i][2], data[i][4], timeZone);
+    const canVerify = !lessonEnd || lessonEnd.getTime() <= now.getTime();
+    schedules.push({
+      rowId: i + 1,
+      student: String(data[i][7] || "").trim(),
+      subject: String(data[i][8] || "").trim(),
+      date: data[i][2] instanceof Date ? Utilities.formatDate(data[i][2], timeZone, "yyyy/MM/dd") : String(data[i][2] || ""),
+      startTime: formatTimeStr(data[i][3]),
+      endTime: formatTimeStr(data[i][4]),
+      hours: data[i][5],
+      canVerify,
+      verifyMessage: canVerify ? "" : "課程尚未結束，暫不可核銷。"
+    });
+  }
+  return schedules;
+}
+
+function getCourseProxyTarget_(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, targetKey: string): any {
+  const teacherSheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (!teacherSheet) return null;
+  return findTeacherForCourseProxy_(teacherSheet.getDataRange().getValues(), targetKey);
+}
+
+function previewAdminProxyRegister_(params: any, operatorLineUserId: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const target = getCourseProxyTarget_(ss, String(params.targetTeacher || ""));
+  if (!target) return { ok: false, message: "請先選擇要代操作的講師。" };
+  const check = validateCourseProxyRegistration_(ss, params, target);
+  if (!check.ok) return check;
+  const operatorName = getTeacherNameByLineUserId(operatorLineUserId) || "行政人員";
+  const modeLabel = String(params.proxyAction) === "pre" ? "代預排課程" : "代新增授課";
+  return {
+    ok: true,
+    preview: {
+      title: modeLabel,
+      summary: `請確認是否由 ${operatorName} 幫 ${target.name} 講師執行${modeLabel}。`,
+      items: [
+        `講師：${target.name}`,
+        `學生：${params.student}`,
+        `課程：${params.subject}`,
+        `時間：${String(params.date || "").replace(/-/g, "/")} ${params.startTime}-${params.endTime}`,
+        `時數：${check.hours} 小時`,
+        `金額：${check.totalPay}`
+      ],
+      nextAction: `確認${modeLabel}`,
+      canConfirm: true,
+      confirmAction: "adminCourseProxyConfirm"
+    }
+  };
+}
+
+function confirmAdminProxyRegister_(params: any, operatorLineUserId: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const target = getCourseProxyTarget_(ss, String(params.targetTeacher || ""));
+  if (!target) return { ok: false, message: "請先選擇要代操作的講師。" };
+  const check = validateCourseProxyRegistration_(ss, params, target);
+  if (!check.ok) return check;
+
+  const isPlan = String(params.proxyAction) === "pre";
+  const sheet = ss.getSheetByName(isPlan ? SHEET_NAME_PLAN : SHEET_NAME_RECORD);
+  if (!sheet) return { ok: false, message: "找不到寫入分頁。" };
+  const timeZone = Session.getScriptTimeZone();
+  const now = new Date();
+  const operatorName = getTeacherNameByLineUserId(operatorLineUserId) || "行政人員";
+  const rowData: any[] = [
+    now,
+    target.name,
+    check.writeDate,
+    check.cleanStart,
+    check.cleanEnd,
+    check.hours,
+    check.totalPay,
+    params.student,
+    params.subject
+  ];
+  if (isPlan) {
+    rowData.push("未核銷");
+    rowData.push("");
+    rowData.push("");
+  } else {
+    rowData.push("");
+    rowData.push("");
+  }
+  rowData.push(`代操作:${operatorName}`);
+  sheet.appendRow(rowData);
+  return {
+    ok: true,
+    message: `已完成${isPlan ? "代預排課程" : "代新增授課"}：${target.name} / ${params.student} / ${params.subject} / ${Utilities.formatDate(new Date(check.writeDate), timeZone, "yyyy/MM/dd")} ${params.startTime}-${params.endTime}`
+  };
+}
+
+function validateCourseProxyRegistration_(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, params: any, target: any) {
+  const isPlan = String(params.proxyAction) === "pre";
+  const studentName = String(params.student || "").trim();
+  const subjectName = String(params.subject || "").trim();
+  const dateStr = String(params.date || "").trim();
+  const startTimeStr = String(params.startTime || "").trim();
+  const endTimeStr = String(params.endTime || "").trim();
+  if (!studentName || !subjectName || !dateStr || !startTimeStr || !endTimeStr) {
+    return { ok: false, message: "請完整填寫講師、學生、課程、日期與時間。" };
+  }
+
+  const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
+  if (!courseSheet) return { ok: false, message: "找不到課程設定分頁。" };
+  const courseData = courseSheet.getDataRange().getValues();
+  let unitFee = 0;
+  for (let i = 1; i < courseData.length; i++) {
+    const rowOwner = String(courseData[i][0] || "").trim();
+    const rowStudent = String(courseData[i][2] || "").trim();
+    const rowSubject = String(courseData[i][3] || "").trim();
+    if (isCourseOwner(rowOwner, target.lineUserId, target.name) && rowStudent === studentName && rowSubject === subjectName) {
+      unitFee = parseFloat(courseData[i][4]) || 0;
+      break;
+    }
+  }
+  if (unitFee <= 0) {
+    return { ok: false, message: `找不到「${target.name} / ${studentName} / ${subjectName}」的課程設定或鐘點單價。` };
+  }
+
+  const timeZone = Session.getScriptTimeZone();
+  const formattedDateStr = dateStr.replace(/-/g, "/");
+  const cleanStart = startTimeStr.replace(/:/g, "");
+  const cleanEnd = endTimeStr.replace(/:/g, "");
+  const startNum = parseTime(cleanStart);
+  const endNum = parseTime(cleanEnd);
+  const duration = Math.round((endNum - startNum) * 100) / 100;
+  const totalPay = Math.round(duration * unitFee);
+  if (duration <= 0) return { ok: false, message: "上課結束時間必須晚於開始時間。" };
+  if (duration > 4) return { ok: false, message: "課程時數超過 4 小時，請確認是否填錯。" };
+
+  const inputDate = new Date(formattedDateStr);
+  const lessonStartDate = buildLessonDateTime(formattedDateStr, cleanStart, timeZone);
+  const lessonEndDate = buildLessonDateTime(formattedDateStr, cleanEnd, timeZone);
+  if (!lessonStartDate || !lessonEndDate) return { ok: false, message: "日期或時間格式錯誤。" };
+  const currentTime = new Date();
+  if (!isPlan && lessonEndDate.getTime() > currentTime.getTime()) {
+    return { ok: false, message: "授課登記限已完成課程，不能登錄未來時間。" };
+  }
+  if (isPlan && lessonStartDate.getTime() < currentTime.getTime()) {
+    return { ok: false, message: "預排課程不能選擇已過去的時間。" };
+  }
+
+  const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
+  const recordSheet = ss.getSheetByName(SHEET_NAME_RECORD);
+  const planHistory = planSheet ? planSheet.getDataRange().getValues() : [];
+  const recordHistory = recordSheet ? recordSheet.getDataRange().getValues() : [];
+  const conflicts = findScheduleConflicts(
+    planHistory.concat(recordHistory),
+    {
+      teacher: target.name,
+      student: studentName,
+      subject: subjectName,
+      dateFingerprint: Utilities.formatDate(inputDate, timeZone, "yyyyMMdd"),
+      start: startNum,
+      end: endNum
+    },
+    timeZone
+  );
+  if (conflicts.length > 0) return { ok: false, message: "🚫 登記失敗：\n" + conflicts.join("\n") };
+
+  return {
+    ok: true,
+    hours: duration,
+    totalPay,
+    cleanStart,
+    cleanEnd,
+    writeDate: Utilities.formatDate(inputDate, timeZone, "yyyy/MM/dd")
+  };
+}
+
+function previewAdminProxyVerify_(params: any, operatorLineUserId: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const target = getCourseProxyTarget_(ss, String(params.targetTeacher || ""));
+  if (!target) return { ok: false, message: "請先選擇要代操作的講師。" };
+  const item = getProxyVerifySchedule_(ss, parseInt(params.rowId, 10), target.name);
+  if (!item.ok) return item;
+  const operatorName = getTeacherNameByLineUserId(operatorLineUserId) || "行政人員";
+  const resultLabel = String(params.isVerified) === "yes" ? "有上課，轉入授課紀錄" : "未上課，取消預排";
+  return {
+    ok: true,
+    preview: {
+      title: "代核銷預排",
+      summary: `請確認是否由 ${operatorName} 幫 ${target.name} 講師核銷預排。`,
+      items: [
+        `講師：${target.name}`,
+        `學生：${item.student}`,
+        `課程：${item.subject}`,
+        `時間：${item.date} ${item.startTime}-${item.endTime}`,
+        `核銷結果：${resultLabel}`
+      ],
+      nextAction: "確認代核銷",
+      canConfirm: true,
+      confirmAction: "adminCourseProxyConfirm"
+    }
+  };
+}
+
+function confirmAdminProxyVerify_(params: any, operatorLineUserId: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const target = getCourseProxyTarget_(ss, String(params.targetTeacher || ""));
+  if (!target) return { ok: false, message: "請先選擇要代操作的講師。" };
+  const item = getProxyVerifySchedule_(ss, parseInt(params.rowId, 10), target.name);
+  if (!item.ok) return item;
+  const result = handleLiffVerifySchedule({
+    lineUserId: operatorLineUserId,
+    rowId: params.rowId,
+    isVerified: params.isVerified
+  });
+  if (!result.ok) return result;
+  return { ok: true, message: `已完成代核銷：${target.name} / ${item.student} / ${item.subject}` };
+}
+
+function getProxyVerifySchedule_(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, rowId: number, targetTeacherName: string) {
+  const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
+  if (!planSheet) return { ok: false, message: "找不到預排工作表。" };
+  if (!rowId || rowId < 2 || rowId > planSheet.getLastRow()) return { ok: false, message: "預排資料列不存在。" };
+  const rowValues = planSheet.getRange(rowId, 1, 1, 13).getValues()[0];
+  const recordTeacher = String(rowValues[1] || "").trim();
+  const recordStatus = String(rowValues[9] || "").trim();
+  if (recordTeacher !== targetTeacherName) return { ok: false, message: "此預排紀錄不屬於指定講師。" };
+  if (recordStatus !== "未核銷") return { ok: false, message: `此預排紀錄目前狀態為「${recordStatus || "空白"}」，不可重複核銷。` };
+  const timeZone = Session.getScriptTimeZone();
+  const lessonEnd = buildLessonEndDate(rowValues[2], rowValues[4], timeZone);
+  if (lessonEnd && lessonEnd.getTime() > new Date().getTime()) {
+    return { ok: false, message: "此預排課程尚未到下課時間，不可提前核銷。" };
+  }
+  return {
+    ok: true,
+    student: String(rowValues[7] || "").trim(),
+    subject: String(rowValues[8] || "").trim(),
+    date: rowValues[2] instanceof Date ? Utilities.formatDate(rowValues[2], timeZone, "yyyy/MM/dd") : String(rowValues[2] || ""),
+    startTime: formatTimeStr(rowValues[3]),
+    endTime: formatTimeStr(rowValues[4])
+  };
 }
 
 // 輔助函式：時間解析與格式化

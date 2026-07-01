@@ -56,6 +56,18 @@ function doGet(e: any) {
         // 執行核銷
         result = handleLiffVerifySchedule(e.parameter);
         break;
+      case "adminCourseProxyOptions":
+        // 行政代操作：講師、學生、課程與待核銷資料
+        result = handleLiffAdminCourseProxyOptions(e.parameter);
+        break;
+      case "adminCourseProxyPreview":
+        // 行政代操作：預覽代登、代預排或代核銷，不寫入
+        result = handleLiffAdminCourseProxyPreview(e.parameter);
+        break;
+      case "adminCourseProxyConfirm":
+        // 行政代操作：確認後才寫入或核銷
+        result = handleLiffAdminCourseProxyConfirm(e.parameter);
+        break;
       case "leave":
         // 提交請假申請
         result = handleLiffLeave(e.parameter);
@@ -444,6 +456,9 @@ declare function handleLiffRegister(params: any): any;
 declare function handleLiffGetUnverified(userId: string): any;
 declare function handleLiffGetRecentRegistered(userId: string, limit?: any): any;
 declare function handleLiffVerifySchedule(params: any): any;
+declare function handleLiffAdminCourseProxyOptions(params: any): any;
+declare function handleLiffAdminCourseProxyPreview(params: any): any;
+declare function handleLiffAdminCourseProxyConfirm(params: any): any;
 declare function handleLiffLeave(params: any): any;
 declare function handleLiffAdminTask(params: any): any;
 declare function handleLiffAdminPreview(params: any): any;
