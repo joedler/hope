@@ -1687,7 +1687,13 @@
               lineUserId: this.lineUserId,
               targetTeacher: this.adminCourseProxy.targetTeacher,
             });
-            if (!result.ok) throw new Error(result.message || "載入課程代操作資料失敗。");
+            if (!result.ok) {
+              this.adminCourseProxy.teachers = [];
+              this.adminCourseProxy.options = { students: [], subjects: [], coursesByStudent: {} };
+              this.adminCourseProxy.schedules = [];
+              this.message = result.message || "課程代操作後端尚未部署，請稍後再試。";
+              return;
+            }
             this.adminCourseProxy.teachers = result.teachers || [];
             this.adminCourseProxy.options = result.options || { students: [], subjects: [], coursesByStudent: {} };
             this.adminCourseProxy.schedules = result.schedules || [];
