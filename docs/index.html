@@ -891,7 +891,19 @@
                         <label class="block">
                           <span class="text-xs font-semibold text-slate-500" x-text="field === 'startTime' ? '開始' : '結束'"></span>
                           <div class="relative mt-1">
-                            <button type="button" class="flex w-full items-center justify-between rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-left text-sm font-semibold text-slate-900 outline-none transition focus:border-amber-500" @click.prevent.stop="openAdminProxyTimePicker(field)">
+                            <input
+                              type="time"
+                              lang="en-GB"
+                              step="900"
+                              class="time-native-input time-native-mobile w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 pr-10 text-sm text-slate-900 outline-none transition focus:border-amber-500"
+                              x-model="adminCourseProxy[field]"
+                              @change="adminCourseProxy.preview = null"
+                            >
+                            <span class="time-native-mobile pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-900" x-text="timeDisplay(adminCourseProxy[field])"></span>
+                            <span class="time-native-mobile time-clock-icon pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                              <svg class="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                            </span>
+                            <button type="button" class="time-custom-desktop w-full items-center justify-between rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-left text-sm font-semibold text-slate-900 outline-none transition focus:border-amber-500" @click.prevent.stop="openAdminProxyTimePicker(field)">
                               <span x-text="timeDisplay(adminCourseProxy[field])"></span>
                               <svg class="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
                             </button>
