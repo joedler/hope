@@ -2687,6 +2687,7 @@ function buildTuitionReadOnlyPreview(month: string) {
         const detailText = detailParts.length > 0 ? `\n  明細：\n  - ${detailParts.join("\n  - ")}` : "";
         courseSummaries.push(`${courseName}（${item.mode}）\n  ${formula}\n  小計 ${formatCurrency(courseTotal)}${detailText}`);
         const selectable = item.pendingPlanBase <= 0 && courseTotal !== 0;
+        const rowDetails = [item.mode, formula].concat(detailParts);
         rows.push({
           id: "tuition:" + buildTuitionSelectionKey(studentName, courseName),
           type: "tuition",
@@ -2704,7 +2705,7 @@ function buildTuitionReadOnlyPreview(month: string) {
             paymentNotify: false
           },
           warnings: item.pendingPlanBase > 0 ? ["尚有待核銷預排，暫不可寫入"] : [],
-          details: [item.mode, formula]
+          details: rowDetails
         });
         if (item.pendingPlanBase > 0) pendingCount++;
       }
