@@ -120,6 +120,14 @@ function doGet(e: any) {
         // 產生一般收據 PDF 並寫入一般收據紀錄
         result = handleLiffAdminCreateGeneralReceipt(e.parameter);
         break;
+      case "adminCreateNonTeachingCompensation":
+        // 建立非授課報酬、產生領據 PDF 並寫入單據紀錄
+        result = handleLiffAdminCreateNonTeachingCompensation(e.parameter);
+        break;
+      case "adminEnsureNonTeachingCompensation":
+        // 進入功能時建立必要分頁，不產生報酬或單據
+        result = handleLiffAdminEnsureNonTeachingCompensation(e.parameter);
+        break;
       case "adminConfirmGeneralReceiptEmail":
         // 確認寄送一般收據 Email
         result = handleLiffAdminConfirmGeneralReceiptEmail(e.parameter);
@@ -472,6 +480,8 @@ declare function handleLiffAdminVoidDocument(params: any): any;
 declare function handleLiffAdminReissueDocument(params: any): any;
 declare function handleLiffAdminRegenerateDocument(params: any): any;
 declare function handleLiffAdminCreateGeneralReceipt(params: any): any;
+declare function handleLiffAdminCreateNonTeachingCompensation(params: any): any;
+declare function handleLiffAdminEnsureNonTeachingCompensation(params: any): any;
 declare function handleLiffAdminConfirmGeneralReceiptEmail(params: any): any;
 declare function handleLiffAdminUpdateReceiptPayment(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;

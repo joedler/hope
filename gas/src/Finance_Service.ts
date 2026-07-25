@@ -880,6 +880,135 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
   };
 }
 
+function ensureNonTeachingCompensationSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(SHEET_NAME_NON_TEACHING_PAY);
+  const headers = [
+    "報酬月份", "領款人", "報酬類別", "工作說明", "應付金額", "所得格式代號",
+    "扣繳稅額", "補充保費", "實付金額", "領據編號", "領據PDF", "寄送狀態",
+    "簽領狀態", "簽回檔案", "付款狀態", "付款日期", "備註/操作人"
+  ];
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME_NON_TEACHING_PAY);
+    sheet.appendRow(headers);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function nextNonTeachingCompensationDocId(sheet: any, month: string): string {
+  const prefix = "W_" + month.replace("/", "_") + "_";
+  const data = sheet.getDataRange().getValues();
+  let maxNo = 0;
+  for (let i = 1; i < data.length; i++) {
+    const docId = String(data[i][9] || "").trim();
+    if (docId.indexOf(prefix) !== 0) continue;
+    const seq = parseInt(docId.substring(prefix.length), 10) || 0;
+    if (seq > maxNo) maxNo = seq;
+  }
+  return prefix + ("000" + (maxNo + 1)).slice(-3);
+}
+
+function getNonTeachingPayeeInfo(name: string) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  const result: any = { email: "", lineUserId: "", pid: "", addr: "" };
+  if (!sheet) return result;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0] || "").trim() !== name) continue;
+    result.lineUserId = String(data[i][1] || "").trim();
+    result.email = String(data[i][2] || "").trim();
+    result.pid = String(data[i][3] || "").trim();
+    result.addr = String(data[i][4] || "").trim();
+    break;
+  }
+  return result;
+}
+
+function getAdminOperatorLabel(lineUserId: string): string {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME_TEACHER);
+  if (!sheet) return "行政";
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1] || "").trim() !== lineUserId) continue;
+    return String(data[i][0] || "").trim() || "行政";
+  }
+  return "行政";
+}
+
+function handleLiffAdminEnsureNonTeachingCompensation(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  if (!isAdminLineUser(lineUserId)) return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+  ensureNonTeachingCompensationSheet();
+  const templateId = ensureNonTeachingCompensationTemplateId();
+  return {
+    ok: true,
+    message: "非授課報酬表與領據範本已準備完成。",
+    templateUrl: "https://docs.google.com/document/d/" + templateId + "/edit"
+  };
+}
+
+function handleLiffAdminCreateNonTeachingCompensation(params: any) {
+  const lineUserId = String(params.lineUserId || "").trim();
+  if (!isAdminLineUser(lineUserId)) return { ok: false, message: "❌ 權限不足：限行政人員使用。" };
+
+  const month = normalizeAdminPreviewMonth(params.month);
+  const name = String(params.name || "").trim();
+  const category = String(params.category || "").trim();
+  const detail = String(params.detail || "").trim();
+  const incomeCode = String(params.incomeCode || "50").trim();
+  const amount = Number(params.amount || 0);
+  const taxAmount = Number(params.taxAmount || 0);
+  const nhiAmount = Number(params.nhiAmount || 0);
+  if (!name) return { ok: false, message: "請填寫領款人。" };
+  if (!category) return { ok: false, message: "請填寫報酬類別。" };
+  if (!(amount > 0)) return { ok: false, message: "應付金額必須大於 0。" };
+  if (taxAmount < 0 || nhiAmount < 0 || taxAmount + nhiAmount > amount) {
+    return { ok: false, message: "扣繳稅額與補充保費不可為負數，合計也不可超過應付金額。" };
+  }
+
+  const sheet = ensureNonTeachingCompensationSheet();
+  const docId = nextNonTeachingCompensationDocId(sheet, month);
+  const netAmount = amount - taxAmount - nhiAmount;
+  const payee = getNonTeachingPayeeInfo(name);
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd");
+  const state: any = {
+    month, name, category, detail, incomeCode, amount, taxAmount, nhiAmount, netAmount,
+    docId, date: today, pid: payee.pid, addr: payee.addr
+  };
+  const folder = DriveApp.getFolderById(PDF_FOLDER_CONFIG.ALLOWANCE);
+  const pdfResult = generateNonTeachingCompensationPDF(state, folder);
+  const operator = getAdminOperatorLabel(lineUserId);
+  sheet.appendRow([
+    month, name, category, detail, amount, incomeCode, taxAmount, nhiAmount, netAmount,
+    docId, pdfResult.url, "待寄送", "待簽", "", "待付款", "", operator
+  ]);
+  recordDocumentEntry({
+    month,
+    docType: "非授課報酬領據",
+    targetType: "講師",
+    targetName: name,
+    docId,
+    sourceSheet: SHEET_NAME_NON_TEACHING_PAY,
+    sourceKey: docId,
+    amount: netAmount,
+    pdfUrl: pdfResult.url,
+    generateStatus: "已產生",
+    emailStatus: "待寄送",
+    lineStatus: "未推播",
+    note: category + (detail ? " / " + detail : ""),
+    operator
+  });
+  return {
+    ok: true,
+    message: `${month} 非授課報酬領據已產生。\n領款人：${name}\n類別：${category}\n應付：${formatCurrency(amount)}\n實付：${formatCurrency(netAmount)}\n編號：${docId}`,
+    pdfUrl: pdfResult.url,
+    docId
+  };
+}
+
 function handleLiffAdminConfirmGeneralReceiptEmail(params: any) {
   const lineUserId = String(params.lineUserId || "").trim();
   const month = normalizeAdminPreviewMonth(params.month);

@@ -831,6 +831,11 @@
                     一般收據
                   </button>
                   <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
+                    :class="activeToolTab === 'nonTeaching' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
+                    @click="setToolTab('nonTeaching')">
+                    非授課報酬
+                  </button>
+                  <button type="button" class="admin-tool-tab rounded-xl border px-3 py-2 text-center text-sm font-semibold transition"
                     :class="activeToolTab === 'system' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-teal-100 bg-white text-slate-600 hover:border-teal-300'"
                     @click="setToolTab('system')">
                     系統工具
@@ -848,6 +853,47 @@
                   <button type="button" class="rounded-xl border border-teal-200 bg-white px-3 py-3 text-xs font-bold text-teal-800" @click="showMyLineId()">
                     查我的 ID
                   </button>
+                </div>
+                <div x-show="activeToolTab === 'nonTeaching'" class="space-y-3 rounded-xl border border-teal-100 bg-teal-50 p-3 text-slate-800">
+                  <p class="text-xs leading-5 text-slate-500">自由填寫類別與金額；確認後會寫入非授課報酬表並產生領據 PDF，不會自動寄送。</p>
+                  <label class="block">
+                    <span class="text-xs font-semibold text-slate-500">報酬月份</span>
+                    <input type="month" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm" x-model="nonTeachingForm.month">
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-semibold text-slate-500">領款人</span>
+                    <input type="text" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm" x-model.trim="nonTeachingForm.name" placeholder="請輸入姓名">
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-semibold text-slate-500">報酬類別</span>
+                    <input type="text" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm" x-model.trim="nonTeachingForm.category" placeholder="例如：行政協助">
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-semibold text-slate-500">工作說明（選填）</span>
+                    <textarea class="mt-1 min-h-20 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm" x-model.trim="nonTeachingForm.detail" placeholder="簡要說明本次工作內容"></textarea>
+                  </label>
+                  <div class="grid grid-cols-2 gap-2">
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-500">應付金額</span>
+                      <input type="number" min="1" step="1" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm" x-model="nonTeachingForm.amount">
+                    </label>
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-500">所得格式代號</span>
+                      <input type="text" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm" x-model.trim="nonTeachingForm.incomeCode">
+                    </label>
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-500">扣繳稅額</span>
+                      <input type="number" min="0" step="1" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm" x-model="nonTeachingForm.taxAmount">
+                    </label>
+                    <label class="block">
+                      <span class="text-xs font-semibold text-slate-500">補充保費</span>
+                      <input type="number" min="0" step="1" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm" x-model="nonTeachingForm.nhiAmount">
+                    </label>
+                  </div>
+                  <p class="rounded-lg bg-white px-3 py-2 text-sm font-bold text-teal-800">實付金額：NT$ <span x-text="nonTeachingNetAmount().toLocaleString('zh-TW')"></span></p>
+                  <button type="button" class="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-bold text-white disabled:bg-slate-300"
+                    :disabled="submitting || !nonTeachingForm.month || !nonTeachingForm.name || !nonTeachingForm.category || Number(nonTeachingForm.amount || 0) <= 0"
+                    @click="submitNonTeachingCompensation()">預覽並產生領據</button>
                 </div>
                 <div x-show="activeToolTab === 'courseProxy'" class="space-y-3 rounded-xl border border-teal-100 bg-teal-50 p-3 text-slate-800">
                   <label class="block">
@@ -1466,6 +1512,16 @@
             amount: "",
             category: "捐款",
             method: "匯款",
+          },
+          nonTeachingForm: {
+            month: new Date().toISOString().substring(0, 7),
+            name: "",
+            category: "",
+            detail: "",
+            amount: "",
+            incomeCode: "50",
+            taxAmount: 0,
+            nhiAmount: 0,
           },
           options: {
             students: [],
@@ -2378,6 +2434,9 @@
               await this.showAdminPreview("單據總覽");
             } else if (tab === "generalReceipt") {
               await this.showAdminPreview("一般收據");
+            } else if (tab === "nonTeaching") {
+              this.adminPreview = null;
+              await this.ensureNonTeachingCompensation();
             } else if (tab === "courseProxy") {
               this.adminCourseProxy.preview = null;
               await this.loadAdminCourseProxyOptions();
@@ -3297,6 +3356,99 @@
               } else {
                 await this.showAdminPreview("一般收據");
               }
+            } catch (error) {
+              this.message = error.message;
+              alert(error.message);
+            } finally {
+              this.submitting = false;
+              this.operationMessage = "";
+            }
+          },
+
+          nonTeachingNetAmount() {
+            return Math.max(0,
+              Number(this.nonTeachingForm.amount || 0) -
+              Number(this.nonTeachingForm.taxAmount || 0) -
+              Number(this.nonTeachingForm.nhiAmount || 0)
+            );
+          },
+
+          async ensureNonTeachingCompensation() {
+            if (!this.config.gasWebAppUrl || !this.lineUserId) return;
+            this.submitting = true;
+            this.operationMessage = "正在準備非授課報酬表...";
+            try {
+              const result = await this.callApi({
+                action: "adminEnsureNonTeachingCompensation",
+                lineUserId: this.lineUserId,
+              });
+              if (!result.ok) throw new Error(result.message || "非授課報酬表建立失敗。");
+            } catch (error) {
+              this.message = error.message;
+              alert(error.message);
+            } finally {
+              this.submitting = false;
+              this.operationMessage = "";
+            }
+          },
+
+          async submitNonTeachingCompensation() {
+            if (!this.config.gasWebAppUrl) {
+              alert("缺少 GAS Web App URL，無法建立非授課報酬。");
+              return;
+            }
+            const form = this.nonTeachingForm;
+            const amount = Number(form.amount || 0);
+            const taxAmount = Number(form.taxAmount || 0);
+            const nhiAmount = Number(form.nhiAmount || 0);
+            if (!form.month || !form.name || !form.category || amount <= 0) {
+              alert("請填寫月份、領款人、報酬類別及正確金額。");
+              return;
+            }
+            if (taxAmount < 0 || nhiAmount < 0 || taxAmount + nhiAmount > amount) {
+              alert("扣繳稅額與補充保費不可為負數，合計也不可超過應付金額。");
+              return;
+            }
+            const confirmed = confirm(
+              `非授課報酬預覽\n\n` +
+              `月份：${form.month.replace("-", "/")}\n` +
+              `領款人：${form.name}\n` +
+              `類別：${form.category}\n` +
+              `工作說明：${form.detail || "未填"}\n` +
+              `所得格式代號：${form.incomeCode || "50"}\n` +
+              `應付金額：NT$ ${amount.toLocaleString("zh-TW")}\n` +
+              `扣繳稅額：NT$ ${taxAmount.toLocaleString("zh-TW")}\n` +
+              `補充保費：NT$ ${nhiAmount.toLocaleString("zh-TW")}\n` +
+              `實付金額：NT$ ${this.nonTeachingNetAmount().toLocaleString("zh-TW")}\n\n` +
+              "確認後會寫入非授課報酬表並產生領據 PDF；不會自動寄送。"
+            );
+            if (!confirmed) return;
+            this.submitting = true;
+            this.operationMessage = "正在建立非授課報酬與領據 PDF...";
+            try {
+              const result = await this.callApi({
+                action: "adminCreateNonTeachingCompensation",
+                lineUserId: this.lineUserId,
+                month: form.month.replace("-", "/"),
+                name: form.name,
+                category: form.category,
+                detail: form.detail,
+                amount,
+                incomeCode: form.incomeCode || "50",
+                taxAmount,
+                nhiAmount,
+              });
+              if (!result.ok) throw new Error(result.message || "非授課報酬建立失敗。");
+              alert(result.message || "非授課報酬領據已產生。");
+              if (result.pdfUrl && confirm("領據已產生，是否立即開啟 PDF 檢查？")) {
+                window.open(result.pdfUrl, "_blank", "noopener");
+              }
+              form.name = "";
+              form.category = "";
+              form.detail = "";
+              form.amount = "";
+              form.taxAmount = 0;
+              form.nhiAmount = 0;
             } catch (error) {
               this.message = error.message;
               alert(error.message);

@@ -1367,6 +1367,83 @@ function generateAllowancePDF(state: any, folder: any) {
   return { url: pdfFile.getUrl(), id: pdfFile.getId() };
 }
 
+function ensureNonTeachingCompensationTemplateId(): string {
+  const props = PropertiesService.getScriptProperties();
+  const configuredId = String(props.getProperty("TEMPLATE_ID_NON_TEACHING") || TEMPLATE_ID_NON_TEACHING || "").trim();
+  if (configuredId) return configuredId;
+
+  const doc = DocumentApp.create("空空BOT_非授課報酬領據範本");
+  const body = doc.getBody();
+  body.clear();
+  body.appendParagraph("臺灣撐出空間教育關懷協會")
+    .setHeading(DocumentApp.ParagraphHeading.HEADING1)
+    .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  body.appendParagraph("非授課報酬領據")
+    .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+    .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  body.appendParagraph("領據編號：{{單據編號}}");
+  body.appendParagraph("日期：{{日期}}");
+  body.appendParagraph("茲收到臺灣撐出空間教育關懷協會支付下列非授課工作報酬：");
+  const table = body.appendTable([
+    ["領款人", "{{領款人}}"],
+    ["身分證字號", "{{身分證字號}}"],
+    ["地址", "{{地址}}"],
+    ["報酬月份", "{{報酬月份}}"],
+    ["報酬類別", "{{報酬類別}}"],
+    ["工作說明", "{{工作說明}}"],
+    ["所得格式代號", "{{所得格式代號}}"],
+    ["應付金額", "{{應付金額}}"],
+    ["扣繳稅額", "{{扣繳稅額}}"],
+    ["補充保費", "{{補充保費}}"],
+    ["實領金額", "{{實領金額}}"],
+    ["實領金額大寫", "{{實領金額大寫}}"]
+  ]);
+  table.setBorderWidth(1);
+  body.appendParagraph("\n領款人簽章：____________________________");
+  body.appendParagraph("\n簽領日期：中華民國 ______ 年 ______ 月 ______ 日");
+  doc.saveAndClose();
+  props.setProperty("TEMPLATE_ID_NON_TEACHING", doc.getId());
+  return doc.getId();
+}
+
+function generateNonTeachingCompensationPDF(state: any, folder: any) {
+  const templateId = ensureNonTeachingCompensationTemplateId();
+  const templateFile = DriveApp.getFileById(templateId);
+  const fileName = buildDocPdfFileName(state.docId, "非授課報酬領據", state.name);
+  const existing = findExistingFileByNames(folder, [fileName]);
+  if (existing) return { url: existing.getUrl(), id: existing.getId() };
+
+  const newFile = templateFile.makeCopy(fileName.replace(/\.pdf$/i, ""), folder);
+  const newDoc = DocumentApp.openById(newFile.getId());
+  const body = newDoc.getBody();
+  const replacements: any = {
+    "{{單據編號}}": state.docId,
+    "{{日期}}": state.date,
+    "{{領款人}}": state.name,
+    "{{身分證字號}}": state.pid || "",
+    "{{地址}}": state.addr || "",
+    "{{報酬月份}}": state.month,
+    "{{報酬類別}}": state.category,
+    "{{工作說明}}": state.detail || "",
+    "{{所得格式代號}}": state.incomeCode || "50",
+    "{{應付金額}}": formatMoney(state.amount),
+    "{{扣繳稅額}}": formatMoney(state.taxAmount),
+    "{{補充保費}}": formatMoney(state.nhiAmount),
+    "{{實領金額}}": formatMoney(state.netAmount),
+    "{{實領金額大寫}}": digitToChinese(state.netAmount)
+  };
+  for (const key in replacements) {
+    body.replaceText(key.replace(/([()[\]{}*+?^$|#\s])/g, "\\$1"), String(replacements[key] || ""));
+  }
+  body.replaceText("\\{\\{.*?\\}\\}", "");
+  newDoc.saveAndClose();
+  const pdfBlob = newFile.getAs(PDF_MIME_TYPE);
+  pdfBlob.setName(fileName);
+  const pdfFile = folder.createFile(pdfBlob);
+  newFile.setTrashed(true);
+  return { url: pdfFile.getUrl(), id: pdfFile.getId() };
+}
+
 function generateReceiptPDF(state: any, folder: any) {
   const templateFile = DriveApp.getFileById(TEMPLATE_ID_RECEIPT);
   const fileName = buildDocPdfFileName(state.docId, "收據", state.name); 

@@ -60,6 +60,7 @@ var SHEET_NAME_FIN_FEE: string = "學費結算表";
 var SHEET_NAME_FIN_PAY: string = "鐘點結算表";
 var SHEET_NAME_TUITION_ADJUSTMENT: string = "學費調整紀錄表";
 var SHEET_NAME_DOCUMENT_RECORD: string = "單據紀錄表";
+var SHEET_NAME_NON_TEACHING_PAY: string = "非授課報酬表";
 
 // 群組 ID (推播用)
 var GROUP_ID: string = getOptionalProperty("LINE_GROUP_ID", "C0227dd553381f2503d344481ae1b4453");
@@ -115,6 +116,7 @@ function isAdminLineUser(lineUserId: any): boolean {
 var TEMPLATE_ID_GEN_RECEIPT: string = getOptionalProperty("TEMPLATE_ID_GENERAL_RECEIPT", "1cIMvNBr_j8que87efpJwNF9wqK03uiz8pXVAG7sQXIY"); // 一般收據範本
 var FOLDER_ID_GEN_RECEIPT: string = getOptionalProperty("PDF_FOLDER_GENERAL_RECEIPT", "17jkNW3fslGa_4nc4MSghFkGsrh3Iwd_E");
 var SHEET_NAME_GEN_RECORD: string = "一般收據紀錄"; // 核心試算表中的紀錄分頁
+var TEMPLATE_ID_NON_TEACHING: string = getOptionalProperty("TEMPLATE_ID_NON_TEACHING", "");
 
 // 一次性設定 Script 屬性的初始化工具，供首次部署新客戶時執行
 function setupProjectProperties() {
@@ -138,6 +140,7 @@ function forceAuth() {
     TEMPLATE_ID_ALLOWANCE,
     TEMPLATE_ID_GEN_RECEIPT
   ];
+  if (TEMPLATE_ID_NON_TEACHING) templateIds.push(TEMPLATE_ID_NON_TEACHING);
   for (let i = 0; i < templateIds.length; i++) {
     const authDocFile = DriveApp.getFileById(templateIds[i]).makeCopy("forceAuth_document_scope_check");
     DocumentApp.openById(authDocFile.getId()).getBody().getText();
@@ -164,6 +167,7 @@ function auditProjectProperties() {
     "TEMPLATE_ID_RECEIPT",
     "TEMPLATE_ID_ALLOWANCE",
     "TEMPLATE_ID_GENERAL_RECEIPT",
+    "TEMPLATE_ID_NON_TEACHING",
     "PDF_FOLDER_PAYMENT_NOTICE",
     "PDF_FOLDER_RECEIPT",
     "PDF_FOLDER_ALLOWANCE",
