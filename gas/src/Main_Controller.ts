@@ -121,12 +121,30 @@ function doGet(e: any) {
         result = handleLiffAdminCreateGeneralReceipt(e.parameter);
         break;
       case "adminCreateNonTeachingCompensation":
-        // 建立非授課報酬、產生領據 PDF 並寫入單據紀錄
-        result = handleLiffAdminCreateNonTeachingCompensation(e.parameter);
+        // 相容舊前端：只確認寫入結算，不再直接產生 PDF
+        result = handleLiffAdminConfirmNonTeachingSettlement(e.parameter);
         break;
       case "adminEnsureNonTeachingCompensation":
         // 進入功能時建立必要分頁，不產生報酬或單據
         result = handleLiffAdminEnsureNonTeachingCompensation(e.parameter);
+        break;
+      case "adminPreviewNonTeachingCompensation":
+        result = handleLiffAdminPreviewNonTeachingCompensation(e.parameter);
+        break;
+      case "adminConfirmNonTeachingSettlement":
+        result = handleLiffAdminConfirmNonTeachingSettlement(e.parameter);
+        break;
+      case "adminGetNonTeachingWorkflow":
+        result = handleLiffAdminGetNonTeachingWorkflow(e.parameter);
+        break;
+      case "adminGenerateNonTeachingDocuments":
+        result = handleLiffAdminGenerateNonTeachingDocuments(e.parameter);
+        break;
+      case "adminSendNonTeachingNotifications":
+        result = handleLiffAdminSendNonTeachingNotifications(e.parameter);
+        break;
+      case "adminUpdateNonTeachingStatus":
+        result = handleLiffAdminUpdateNonTeachingStatus(e.parameter);
         break;
       case "adminConfirmGeneralReceiptEmail":
         // 確認寄送一般收據 Email
@@ -482,6 +500,12 @@ declare function handleLiffAdminRegenerateDocument(params: any): any;
 declare function handleLiffAdminCreateGeneralReceipt(params: any): any;
 declare function handleLiffAdminCreateNonTeachingCompensation(params: any): any;
 declare function handleLiffAdminEnsureNonTeachingCompensation(params: any): any;
+declare function handleLiffAdminPreviewNonTeachingCompensation(params: any): any;
+declare function handleLiffAdminConfirmNonTeachingSettlement(params: any): any;
+declare function handleLiffAdminGetNonTeachingWorkflow(params: any): any;
+declare function handleLiffAdminGenerateNonTeachingDocuments(params: any): any;
+declare function handleLiffAdminSendNonTeachingNotifications(params: any): any;
+declare function handleLiffAdminUpdateNonTeachingStatus(params: any): any;
 declare function handleLiffAdminConfirmGeneralReceiptEmail(params: any): any;
 declare function handleLiffAdminUpdateReceiptPayment(params: any): any;
 declare function handleLiffTuitionAdjustment(params: any): any;
