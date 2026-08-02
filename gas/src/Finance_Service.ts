@@ -2903,12 +2903,16 @@ function buildTuitionAdminPreview(month: string) {
     }
     if ((result as any).isExistingSettlement) {
       const rows = (result as any).rows || [];
+      const hasUnsettledRows = rows.some(function(row: any) {
+        return row.actions && row.actions.tuitionWrite === true;
+      });
       return {
-        summary: `${month} 已寫入學費結算：${result.studentCount} 位學生，總額 ${formatCurrency(result.grandTotal)}。`,
+        summary: `${month} 已有部分學費結算；已完成項目維持原結果，尚未結算項目依各自收費模式試算。總額 ${formatCurrency(result.grandTotal)}。`,
         items,
         rows,
-        nextAction: "已寫入，請勿重複試算",
-        canConfirm: false
+        nextAction: hasUnsettledRows ? "確認寫入已勾選的未結算項目" : "已完成項目不可重複寫入",
+        canConfirm: hasUnsettledRows,
+        confirmAction: hasUnsettledRows ? "adminConfirmSettlement" : ""
       };
     }
     const pendingCount = (result as any).pendingCount || 0;
@@ -2931,7 +2935,7 @@ function buildTuitionAdminPreview(month: string) {
   }
 }
 
-function buildTuitionReadOnlyPreview(month: string) {
+function buildTuitionReadOnlyPreview(month: string, options?: any) {
   const timeZone = Session.getScriptTimeZone();
   const splitDt = month.split("/");
   const nextDate = new Date(parseInt(splitDt[0], 10), parseInt(splitDt[1], 10), 1);
@@ -2943,9 +2947,13 @@ function buildTuitionReadOnlyPreview(month: string) {
   if (!recordSheet || !planSheet || !courseSheet) throw new Error("找不到授課紀錄、預排紀錄或課程設定表。");
 
   const existingSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_FEE, 0, month);
-  if (existingSettlementCount > 0) {
+  if (existingSettlementCount > 0 && !(options && options.calculateUnsettledOnly)) {
     return buildExistingTuitionSettlementPreview(ss, month, existingSettlementCount);
   }
+
+  const existingTuitionKeys = existingSettlementCount > 0
+    ? buildExistingTuitionSettlementKeyMap(ss, month)
+    : {};
 
   const configMap: any = {};
   const courseData = courseSheet.getDataRange().getValues();
@@ -2987,6 +2995,7 @@ function buildTuitionReadOnlyPreview(month: string) {
     if (rowMonth !== month || settled) continue;
     const studentName = String(recordData[i][7] || "").trim();
     const courseName = String(recordData[i][8] || "").trim();
+    if (existingTuitionKeys[buildTuitionSelectionKey(studentName, courseName)]) continue;
     const hours = parseFloat(recordData[i][5]) || 0;
     const conf = configMap[studentName + "_" + courseName] || { fee: 0, mode: "後收", teacher: recordData[i][1] };
     initStats(studentName, courseName, conf.teacher, conf.fee, conf.mode);
@@ -3005,6 +3014,7 @@ function buildTuitionReadOnlyPreview(month: string) {
 
     const studentName = String(planData[i][7] || "").trim();
     const courseName = String(planData[i][8] || "").trim();
+    if (existingTuitionKeys[buildTuitionSelectionKey(studentName, courseName)]) continue;
     const hours = parseFloat(planData[i][5]) || 0;
     const conf = configMap[studentName + "_" + courseName];
     if (!conf || conf.mode !== "預收") continue;
@@ -3107,6 +3117,22 @@ function buildTuitionReadOnlyPreview(month: string) {
   return { items, rows, grandTotal, studentCount, pendingCount };
 }
 
+function buildExistingTuitionSettlementKeyMap(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string): any {
+  const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
+  const keys: any = {};
+  if (!sheet) return keys;
+  const timeZone = Session.getScriptTimeZone();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (normalizeFinancialMonth(data[i][0], timeZone) !== month) continue;
+    const studentName = String(data[i][1] || "").trim();
+    const courseName = String(data[i][2] || "").trim();
+    if (!studentName || !courseName) continue;
+    keys[buildTuitionSelectionKey(studentName, courseName)] = true;
+  }
+  return keys;
+}
+
 function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string, existingSettlementCount: number) {
   const timeZone = Session.getScriptTimeZone();
   const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
@@ -3162,23 +3188,30 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
   if (studentCount === 0) {
     items.push(`${month} 找不到可顯示的既有學費結算摘要。`);
   }
-  const pendingItems = buildPendingTuitionPlanItems(ss, month);
-  const postSettlementRecordRows = buildPostSettlementUnprocessedRecordRows(ss, month, "tuition");
-  for (let p = 0; p < pendingItems.length; p++) items.push(pendingItems[p]);
-  for (let u = 0; u < postSettlementRecordRows.length; u++) {
-    items.push(postSettlementRecordRows[u].name + "\n" + (postSettlementRecordRows[u].details || []).join("\n"));
+  // 同月可由不同學生分批完成；未結算課程仍須依預收／後收模式做完整試算。
+  // 預收制不可把本月實上逐堂當成後收式的新增應收。
+  const unsettledPreview: any = buildTuitionReadOnlyPreview(month, { calculateUnsettledOnly: true });
+  const unsettledRows = unsettledPreview.rows || [];
+  for (let u = 0; u < unsettledRows.length; u++) {
+    items.push(unsettledRows[u].name + "\n" + (unsettledRows[u].details || []).join("\n"));
   }
   let rows: any[] = [];
   try {
     const noticePreview = buildPaymentNoticeReadOnlyPreview(month);
-    rows = (noticePreview.rows || []).concat(buildPendingTuitionPlanRows(ss, month)).concat(postSettlementRecordRows);
+    rows = (noticePreview.rows || []).concat(unsettledRows);
   } catch (e) {
     rows = buildExistingTuitionSettlementRowsFromSummary(studentsMap)
-      .concat(buildPendingTuitionPlanRows(ss, month))
-      .concat(postSettlementRecordRows);
+      .concat(unsettledRows);
   }
   enrichRowsWithNotificationState(rows, month, "繳費單", "paymentNotify");
-  return { items, rows, grandTotal, studentCount, pendingCount: pendingItems.length + postSettlementRecordRows.length, isExistingSettlement: true };
+  return {
+    items,
+    rows,
+    grandTotal: grandTotal + (unsettledPreview.grandTotal || 0),
+    studentCount: studentCount + (unsettledPreview.studentCount || 0),
+    pendingCount: unsettledPreview.pendingCount || 0,
+    isExistingSettlement: true
+  };
 }
 
 function buildPendingTuitionPlanItems(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, month: string): string[] {
@@ -5551,6 +5584,10 @@ function handleTuitionCalculation(event: any, userMsg: string) {
   const splitDt = baseMonthStr.split("/"); const nextDate = new Date(parseInt(splitDt[0]), parseInt(splitDt[1]) - 1 + 1, 1); const nextMonthStr = Utilities.formatDate(nextDate, timeZone, "yyyy/MM");
   const ss = SpreadsheetApp.openById(SHEET_ID); const recordSheet = ss.getSheetByName(SHEET_NAME_RECORD); const planSheet = ss.getSheetByName(SHEET_NAME_PLAN); const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
   if (!recordSheet || !planSheet || !courseSheet) { replyLineMessage(replyToken, "❌ 資料表缺失。"); return; }
+  const existingTuitionSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_FEE, 0, baseMonthStr);
+  const existingTuitionKeys = existingTuitionSettlementCount > 0
+    ? buildExistingTuitionSettlementKeyMap(ss, baseMonthStr)
+    : {};
 
   const courseData = courseSheet.getDataRange().getValues(); const configMap: any = {};
   for (let i = 1; i < courseData.length; i++) {
@@ -5570,6 +5607,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
     const settled = rData[i][9];
     if (rowMonth == baseMonthStr && (!settled || settled === "")) {
       const sName = rData[i][7]; const cName = rData[i][8]; const hr = parseFloat(rData[i][5]); const key = sName + "_" + cName;
+      if (existingTuitionKeys[buildTuitionSelectionKey(sName, cName)]) continue;
       const conf = configMap[key] || { fee: 0, mode: "後收", teacher: rData[i][1] };
       initStats(sName, cName, conf.teacher, conf.fee, conf.mode); stats[sName][cName].recordBase += hr;
       const perLessonAmt = Math.round(hr * conf.fee); const dText = (rData[i][2] instanceof Date) ? Utilities.formatDate(rData[i][2], timeZone, "MM/dd") : rData[i][2];
@@ -5595,6 +5633,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
 
     if (status !== "取消" || (status === "取消" && refundSettledMonth)) {
       const sName = pData[i][7]; const cName = pData[i][8]; const hr = parseFloat(pData[i][5]); const key = sName + "_" + cName; const conf = configMap[key];
+      if (existingTuitionKeys[buildTuitionSelectionKey(sName, cName)]) continue;
       if (conf && conf.mode === "預收") {
         initStats(sName, cName, conf.teacher, conf.fee, conf.mode);
         
@@ -5618,7 +5657,6 @@ function handleTuitionCalculation(event: any, userMsg: string) {
     }
   }
 
-  const existingTuitionSettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_FEE, 0, baseMonthStr);
   if (existingTuitionSettlementCount <= 0) {
     appendTuitionAdjustmentsToStats(ss, stats, configMap, baseMonthStr);
   }
@@ -5885,13 +5923,23 @@ function executeFinancialSave(event: any, postbackData: string) {
       const planSheet = ss.getSheetByName(SHEET_NAME_PLAN);
       if (planSheet) {
         const pData = planSheet.getDataRange().getValues();
+        const targetParts = String(cacheObj.updateTargetMonth || "").split("/");
+        const prepaidPlanMonth = targetParts.length === 2
+          ? Utilities.formatDate(new Date(parseInt(targetParts[0], 10), parseInt(targetParts[1], 10), 1), timeZone, "yyyy/MM")
+          : "";
+        const prepaidTuitionKeys = (cacheObj.save || []).filter(function(row: any[]) {
+          return String(row[3] || "").trim() === "預收";
+        }).map(function(row: any[]) {
+          return buildTuitionSelectionKey(row[1], row[2]);
+        });
         for (let i = 1; i < pData.length; i++) {
           const lessonDateMonth = (pData[i][2] instanceof Date) ? Utilities.formatDate(pData[i][2], timeZone, "yyyy/MM") : String(pData[i][2]).substring(0, 7);
           const status = pData[i][9];
           const feeSettled = pData[i][10];
           const rowKey = buildTuitionSelectionKey(pData[i][7], pData[i][8]);
           
-          if (status !== "取消" && lessonDateMonth == cacheObj.updateTargetMonth && tuitionKeys.indexOf(rowKey) > -1 && (!feeSettled || feeSettled === "")) {
+          // 預收制在處理月份收取的是「下月預排」，因此 K 欄必須回寫實際被預收的下月紀錄。
+          if (status !== "取消" && lessonDateMonth == prepaidPlanMonth && prepaidTuitionKeys.indexOf(rowKey) > -1 && (!feeSettled || feeSettled === "")) {
             planSheet.getRange(i + 1, 11).setValue(cacheObj.updateTargetMonth); // K欄：預排學費結算
           }
         }
