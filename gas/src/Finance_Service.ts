@@ -3112,8 +3112,8 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
         const totalHours = Math.round((item.planNext + diff) * 10) / 10;
         courseTotal = Math.round(totalHours * item.fee) + adjustmentTotal;
         formula = item.pendingPlanBase > 0
-          ? `預收 ${item.planNext}hr，尚有待核銷 ${item.pendingPlanBase}hr，暫不計入退費，調整 ${formatCurrency(adjustmentTotal)}`
-          : `預收 ${item.planNext}hr，核對差異 ${diff}hr，調整 ${formatCurrency(adjustmentTotal)}`;
+          ? `本月實上 ${item.recordBase}hr / 前期預繳 ${item.planBase}hr；預收 ${item.planNext}hr，尚有待核銷 ${item.pendingPlanBase}hr，暫不計入退費，調整 ${formatCurrency(adjustmentTotal)}`
+          : `本月實上 ${item.recordBase}hr / 前期預繳 ${item.planBase}hr；預收 ${item.planNext}hr，核對差異 ${diff}hr，調整 ${formatCurrency(adjustmentTotal)}`;
       } else {
         courseTotal = Math.round(item.recordBase * item.fee) + adjustmentTotal;
         formula = `後收實上 ${item.recordBase}hr，調整 ${formatCurrency(adjustmentTotal)}`;
@@ -3135,7 +3135,10 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
         }
         const detailText = detailParts.length > 0 ? `\n  明細：\n  - ${detailParts.join("\n  - ")}` : "";
         courseSummaries.push(`${courseName}（${item.mode}）\n  ${formula}\n  小計 ${formatCurrency(courseTotal)}${detailText}`);
-        const selectable = item.pendingPlanBase <= 0 && courseTotal !== 0;
+        const selectable = item.pendingPlanBase <= 0;
+        const rowStatus = item.pendingPlanBase > 0
+          ? "待核銷預排不可寫入"
+          : (courseTotal === 0 ? "核對完成，本期0元，可寫入結算" : "可寫入");
         const rowDetails = [item.mode, formula].concat(detailParts);
         rows.push({
           id: "tuition:" + buildTuitionSelectionKey(studentName, courseName),
@@ -3145,7 +3148,7 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
           amount: courseTotal,
           amountText: formatCurrency(courseTotal),
           docId: "",
-          status: selectable ? "可寫入" : "待核銷預排不可寫入",
+          status: rowStatus,
           selectable,
           selectedDefault: selectable,
           actions: {
@@ -5994,6 +5997,12 @@ function executeFinancialSave(event: any, postbackData: string) {
         const prepaidPlanMonth = targetParts.length === 2
           ? Utilities.formatDate(new Date(parseInt(targetParts[0], 10), parseInt(targetParts[1], 10), 1), timeZone, "yyyy/MM")
           : "";
+        const previousTuitionMonth = targetParts.length === 2
+          ? Utilities.formatDate(new Date(parseInt(targetParts[0], 10), parseInt(targetParts[1], 10) - 2, 1), timeZone, "yyyy/MM")
+          : "";
+        const previousTuitionKeys = previousTuitionMonth
+          ? buildExistingTuitionSettlementKeyMap(ss, previousTuitionMonth)
+          : {};
         const prepaidTuitionKeys = (cacheObj.save || []).filter(function(row: any[]) {
           return String(row[3] || "").trim() === "預收";
         }).map(function(row: any[]) {
@@ -6004,6 +6013,16 @@ function executeFinancialSave(event: any, postbackData: string) {
           const status = pData[i][9];
           const feeSettled = pData[i][10];
           const rowKey = buildTuitionSelectionKey(pData[i][7], pData[i][8]);
+
+          // 舊版曾漏標前月已預收的本月預排；只有前月確有同學生／課程結算且本筆已實上時才安全回補。
+          if (
+            (!feeSettled || feeSettled === "") &&
+            lessonDateMonth == cacheObj.updateTargetMonth &&
+            previousTuitionKeys[rowKey] &&
+            (String(status || "").trim() === "已核銷" || String(status || "").trim() === "已實際上課")
+          ) {
+            planSheet.getRange(i + 1, 11).setValue(previousTuitionMonth);
+          }
           
           // 預收制在處理月份收取的是「下月預排」，因此 K 欄必須回寫實際被預收的下月紀錄。
           if (status !== "取消" && lessonDateMonth == prepaidPlanMonth && prepaidTuitionKeys.indexOf(rowKey) > -1 && (!feeSettled || feeSettled === "")) {
