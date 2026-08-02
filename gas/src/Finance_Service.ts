@@ -2894,6 +2894,14 @@ function normalizeAdminPreviewMonth(value: any) {
   return Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy/MM");
 }
 
+function buildTuitionLessonDateKey(teacherName: any, studentName: any, lessonDate: any, timeZone: string): string {
+  return [
+    String(teacherName || "").trim(),
+    String(studentName || "").trim(),
+    normalizeFinancialMonth(lessonDate, timeZone) + "/" + formatSheetMonthDay(lessonDate, timeZone).replace(/^\d{2}\//, "")
+  ].join("|");
+}
+
 function buildTuitionLessonMatchKey(studentName: any, courseName: any, lessonDate: any, startTime: any, endTime: any, timeZone: string): string {
   return [
     String(studentName || "").trim(),
@@ -2905,14 +2913,24 @@ function buildTuitionLessonMatchKey(studentName: any, courseName: any, lessonDat
 }
 
 function buildActualTuitionLessonKeyMap(recordData: any[][], timeZone: string): any {
-  const keys: any = {};
+  const exact: any = {};
+  const byDate: any = {};
   for (let i = 1; i < recordData.length; i++) {
     const studentName = String(recordData[i][7] || "").trim();
     const courseName = String(recordData[i][8] || "").trim();
     if (!studentName || !courseName || courseName.indexOf("取消") > -1) continue;
-    keys[buildTuitionLessonMatchKey(studentName, courseName, recordData[i][2], recordData[i][3], recordData[i][4], timeZone)] = true;
+    exact[buildTuitionLessonMatchKey(studentName, courseName, recordData[i][2], recordData[i][3], recordData[i][4], timeZone)] = true;
+    byDate[buildTuitionLessonDateKey(recordData[i][1], studentName, recordData[i][2], timeZone)] = true;
   }
-  return keys;
+  return { exact, byDate };
+}
+
+function hasMatchingActualTuitionLesson(actualLessonKeys: any, teacherName: any, studentName: any, courseName: any, lessonDate: any, startTime: any, endTime: any, timeZone: string): boolean {
+  if (!actualLessonKeys) return false;
+  const exactKey = buildTuitionLessonMatchKey(studentName, courseName, lessonDate, startTime, endTime, timeZone);
+  if (actualLessonKeys.exact && actualLessonKeys.exact[exactKey]) return true;
+  const dateKey = buildTuitionLessonDateKey(teacherName, studentName, lessonDate, timeZone);
+  return !!(actualLessonKeys.byDate && actualLessonKeys.byDate[dateKey]);
 }
 
 function buildTuitionAdminPreview(month: string) {
@@ -3043,14 +3061,16 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
     initStats(studentName, courseName, conf.teacher, conf.fee, conf.mode);
 
     if (targetMonthForPlanBase === month) {
-      const hasMatchingActualLesson = actualLessonKeys[buildTuitionLessonMatchKey(
+      const hasMatchingActualLesson = hasMatchingActualTuitionLesson(
+        actualLessonKeys,
+        planData[i][1],
         studentName,
         courseName,
         planData[i][2],
         planData[i][3],
         planData[i][4],
         timeZone
-      )] === true;
+      );
       if (status === "未核銷" && !hasMatchingActualLesson) {
         stats[studentName][courseName].pendingPlanBase += hours;
         const perLessonAmt = Math.round(hours * conf.fee);
@@ -5673,14 +5693,16 @@ function handleTuitionCalculation(event: any, userMsg: string) {
         
         if (targetMonthForPlanBase == baseMonthStr) { 
           const dText = (pData[i][2] instanceof Date) ? Utilities.formatDate(pData[i][2], timeZone, "MM/dd") : pData[i][2];
-          const hasMatchingActualLesson = actualLessonKeys[buildTuitionLessonMatchKey(
+          const hasMatchingActualLesson = hasMatchingActualTuitionLesson(
+            actualLessonKeys,
+            pData[i][1],
             sName,
             cName,
             pData[i][2],
             pData[i][3],
             pData[i][4],
             timeZone
-          )] === true;
+          );
           if (String(status || "").trim() === "未核銷" && !hasMatchingActualLesson) {
             stats[sName][cName].pendingPlanBase += hr;
             const perLessonAmt = Math.round(hr * conf.fee);
