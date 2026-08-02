@@ -2894,6 +2894,27 @@ function normalizeAdminPreviewMonth(value: any) {
   return Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy/MM");
 }
 
+function buildTuitionLessonMatchKey(studentName: any, courseName: any, lessonDate: any, startTime: any, endTime: any, timeZone: string): string {
+  return [
+    String(studentName || "").trim(),
+    String(courseName || "").trim(),
+    normalizeFinancialMonth(lessonDate, timeZone) + "/" + formatSheetMonthDay(lessonDate, timeZone).replace(/^\d{2}\//, ""),
+    formatPreviewTime(startTime),
+    formatPreviewTime(endTime)
+  ].join("|");
+}
+
+function buildActualTuitionLessonKeyMap(recordData: any[][], timeZone: string): any {
+  const keys: any = {};
+  for (let i = 1; i < recordData.length; i++) {
+    const studentName = String(recordData[i][7] || "").trim();
+    const courseName = String(recordData[i][8] || "").trim();
+    if (!studentName || !courseName || courseName.indexOf("取消") > -1) continue;
+    keys[buildTuitionLessonMatchKey(studentName, courseName, recordData[i][2], recordData[i][3], recordData[i][4], timeZone)] = true;
+  }
+  return keys;
+}
+
 function buildTuitionAdminPreview(month: string) {
   try {
     const result = buildTuitionReadOnlyPreview(month);
@@ -2989,6 +3010,7 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
   }
 
   const recordData = recordSheet.getDataRange().getValues();
+  const actualLessonKeys = buildActualTuitionLessonKeyMap(recordData, timeZone);
   for (let i = 1; i < recordData.length; i++) {
     const rowMonth = normalizeFinancialMonth(recordData[i][2], timeZone);
     const settled = recordData[i][9];
@@ -3021,12 +3043,23 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
     initStats(studentName, courseName, conf.teacher, conf.fee, conf.mode);
 
     if (targetMonthForPlanBase === month) {
-      if (status === "未核銷") {
+      const hasMatchingActualLesson = actualLessonKeys[buildTuitionLessonMatchKey(
+        studentName,
+        courseName,
+        planData[i][2],
+        planData[i][3],
+        planData[i][4],
+        timeZone
+      )] === true;
+      if (status === "未核銷" && !hasMatchingActualLesson) {
         stats[studentName][courseName].pendingPlanBase += hours;
         const perLessonAmt = Math.round(hours * conf.fee);
         stats[studentName][courseName].detailsPending.push("[待核銷預排] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4] + " (" + formatCurrency(perLessonAmt) + ")");
       } else {
         stats[studentName][courseName].planBase += hours;
+        if (status === "未核銷" && hasMatchingActualLesson) {
+          stats[studentName][courseName].detailsRec.push("[核銷狀態待同步] 已找到相同授課紀錄：" + formatSheetMonthDay(planData[i][2], timeZone) + " " + formatPreviewTime(planData[i][3]) + "-" + formatPreviewTime(planData[i][4]));
+        }
       }
       if (status === "取消") {
         stats[studentName][courseName].detailsRec.push("[歷史取消退費] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4]);
@@ -5602,6 +5635,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
   }
 
   const rData = recordSheet.getDataRange().getValues();
+  const actualLessonKeys = buildActualTuitionLessonKeyMap(rData, timeZone);
   for (let i = 1; i < rData.length; i++) {
     const rowMonth = (rData[i][2] instanceof Date) ? Utilities.formatDate(rData[i][2], timeZone, "yyyy/MM") : String(rData[i][2]).substring(0, 7);
     const settled = rData[i][9];
@@ -5639,12 +5673,23 @@ function handleTuitionCalculation(event: any, userMsg: string) {
         
         if (targetMonthForPlanBase == baseMonthStr) { 
           const dText = (pData[i][2] instanceof Date) ? Utilities.formatDate(pData[i][2], timeZone, "MM/dd") : pData[i][2];
-          if (String(status || "").trim() === "未核銷") {
+          const hasMatchingActualLesson = actualLessonKeys[buildTuitionLessonMatchKey(
+            sName,
+            cName,
+            pData[i][2],
+            pData[i][3],
+            pData[i][4],
+            timeZone
+          )] === true;
+          if (String(status || "").trim() === "未核銷" && !hasMatchingActualLesson) {
             stats[sName][cName].pendingPlanBase += hr;
             const perLessonAmt = Math.round(hr * conf.fee);
             stats[sName][cName].detailsPending.push("[待核銷預排] " + dText + " " + pData[i][3] + "-" + pData[i][4] + " ($" + perLessonAmt + ")");
           } else {
             stats[sName][cName].planBase += hr;
+            if (String(status || "").trim() === "未核銷" && hasMatchingActualLesson) {
+              stats[sName][cName].detailsRec.push("[核銷狀態待同步] 已找到相同授課紀錄：" + dText + " " + formatPreviewTime(pData[i][3]) + "-" + formatPreviewTime(pData[i][4]));
+            }
           }
           if (status === "取消") {
             stats[sName][cName].detailsRec.push("[歷史補救] " + dText + " " + pData[i][3] + "-" + pData[i][4] + " (取消退費)");
