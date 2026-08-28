@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // 💰 Finance_Service.ts : 財務計算、存檔與稅務引擎 (TypeScript + LIFF 整合重構版)
 // ==========================================
 
@@ -844,7 +844,7 @@ function handleLiffAdminCreateGeneralReceipt(params: any) {
   if (!name) return { ok: false, message: "請填寫姓名或單位名稱。" };
   if (!amount || amount <= 0) return { ok: false, message: "金額必須大於 0。" };
   if (!isValidGeneralReceiptEmail(emailInput)) return { ok: false, message: "請填寫正確的 Email。" };
-  if (["入會費", "常年會費", "捐款", "入會費+常年會費"].indexOf(category) < 0) {
+  if (["入會費", "常年會費", "捐款", "入會費+常年會費", "課程", "其他"].indexOf(category) < 0) {
     return { ok: false, message: "請選擇一般收據類別。" };
   }
   if (["匯款", "現金", "轉帳", "其他"].indexOf(method) < 0) {
