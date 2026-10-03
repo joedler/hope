@@ -1030,6 +1030,7 @@
                           <input type="checkbox" class="mt-0.5 h-4 w-4" x-model="lesson.associationSupport">
                           <span class="text-xs font-bold text-amber-800">本次由撐出空間協會支持</span>
                         </label>
+                        <p class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600" x-show="adminProxyLessonError(lesson)" x-text="adminProxyLessonError(lesson)"></p>
                       </div>
                     </template>
                     <div class="grid grid-cols-2 gap-2">
@@ -1911,8 +1912,12 @@
             if (!this.adminCourseProxy.targetTeacher) return false;
             if (this.adminCourseProxy.action === "verify") return !!this.adminCourseProxy.verifyRowId;
             return !!this.adminCourseProxy.student && this.adminCourseProxy.lessons.length > 0 && this.adminCourseProxy.lessons.every((lesson) => {
-              return !!(lesson.subject && lesson.date && lesson.startTime && lesson.endTime) && !this.lessonError(lesson);
+              return !!(lesson.subject && lesson.date && lesson.startTime && lesson.endTime) && !this.adminProxyLessonError(lesson);
             });
+          },
+
+          adminProxyLessonError(lesson) {
+            return this.lessonError(lesson, this.adminCourseProxy.student, this.adminCourseProxy.action);
           },
 
           adminCourseProxyPayload() {
@@ -2171,8 +2176,8 @@
             return `${hours} 小時`;
           },
 
-          lessonError(lesson) {
-            if (!this.regForm.student) return "請先選擇學生。";
+          lessonError(lesson, student = this.regForm.student, mode = this.regForm.mode) {
+            if (!student) return "請先選擇學生。";
             if (!lesson.subject) return "請選擇課程。";
             if (!lesson.date) return "請選擇日期。";
             if (!lesson.startTime || !lesson.endTime) return "請選擇開始與結束時間。";
@@ -2190,10 +2195,10 @@
             const now = new Date();
             if (!lessonStart || !lessonEnd) return "日期或時間格式錯誤。";
 
-            if (this.regForm.mode === "normal" && lessonEnd.getTime() > now.getTime()) {
+            if (mode === "normal" && lessonEnd.getTime() > now.getTime()) {
               return "授課登記限已完成課程，不能登錄未來時間。";
             }
-            if (this.regForm.mode === "pre" && lessonStart.getTime() < now.getTime()) {
+            if (mode === "pre" && lessonStart.getTime() < now.getTime()) {
               return "預排課程不能選擇已過去的時間。";
             }
             return "";

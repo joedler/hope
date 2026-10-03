@@ -38,4 +38,8 @@ assert.equal(lessons[0].associationSupport, true);
 
 assert.match(financeSource, /const payRate = conf\.fee \* conf\.ratio;/, "講師鐘點費仍須使用原單價乘分潤比例");
 
+const frontendSource = fs.readFileSync(new URL("../docs/index.html", import.meta.url), "utf8");
+assert.match(frontendSource, /lessonError\(lesson, this\.adminCourseProxy\.student, this\.adminCourseProxy\.action\)/, "行政代操作檢核必須使用行政選取的學生與操作類型");
+assert.match(frontendSource, /x-show="adminProxyLessonError\(lesson\)"/, "行政代操作每筆課程必須顯示停用原因");
+
 console.log("Association support and admin batch registration regression tests passed.");
