@@ -548,6 +548,7 @@
                     <select
                       class="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none transition focus:border-teal-500"
                       x-model="lesson.subject"
+                      @change="onLessonSubjectChange(lesson)"
                     >
                       <option value="">-- 請選擇課程 --</option>
                       <template x-for="subj in filteredSubjects()" :key="subj">
@@ -644,6 +645,14 @@
                     </label>
                   </div>
 
+                  <label class="flex items-start gap-3 rounded-xl border border-amber-700/50 bg-amber-950/30 px-3 py-3" x-show="isAssociationSupportEligible(regForm.student, lesson.subject)">
+                    <input type="checkbox" class="mt-0.5 h-4 w-4 rounded border-amber-500 text-amber-600" x-model="lesson.associationSupport">
+                    <span>
+                      <span class="block text-sm font-bold text-amber-200">本次由撐出空間協會支持</span>
+                      <span class="mt-1 block text-xs text-amber-300">系統將保留服務原價，並在同一張學費單產生等額折抵。</span>
+                    </span>
+                  </label>
+
                   <div class="rounded-xl border border-slate-800 bg-white px-3 py-2 text-sm">
                     課程時數：
                     <span class="font-bold text-teal-400" x-text="lessonHoursLabel(lesson)"></span>
@@ -710,6 +719,7 @@
                     </svg>
                     <span x-text="item.startTime + ' - ' + item.endTime + ' (' + item.hours + '小時)'"></span>
                   </div>
+                  <p class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300" x-show="item.associationSupport === true">本堂為撐出空間協會支持</p>
                   <p class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300" x-show="item.canVerify === false" x-text="item.verifyMessage || '課程尚未結束，暫不可核銷。'"></p>
                   <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-950">
                     <button
@@ -978,57 +988,53 @@
                         </template>
                       </select>
                     </label>
-                    <label class="block">
-                      <span class="text-xs font-semibold text-slate-500">課程</span>
-                      <select class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-amber-500" x-model="adminCourseProxy.subject" @change="adminCourseProxy.preview = null">
-                        <option value="">-- 選擇課程 --</option>
-                        <template x-for="subject in adminProxySubjects()" :key="subject">
-                          <option :value="subject" x-text="subject"></option>
-                        </template>
-                      </select>
-                    </label>
-                    <label class="block">
-                      <span class="text-xs font-semibold text-slate-500">日期</span>
-                      <input type="date" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-amber-500" x-model="adminCourseProxy.date" @change="adminCourseProxy.preview = null">
-                    </label>
-                    <div class="grid grid-cols-2 gap-2">
-                      <template x-for="field in ['startTime', 'endTime']" :key="'proxy-time-' + field">
+                    <template x-for="(lesson, index) in adminCourseProxy.lessons" :key="lesson.id">
+                      <div class="space-y-3 rounded-xl border border-teal-200 bg-white p-3">
+                        <div class="flex items-center justify-between">
+                          <span class="text-sm font-bold text-slate-700" x-text="`第 ${index + 1} 筆`"></span>
+                          <button type="button" class="rounded-lg border border-red-200 px-2 py-1 text-xs font-bold text-red-600" x-show="adminCourseProxy.lessons.length > 1" @click="removeAdminProxyLesson(index)">刪除</button>
+                        </div>
                         <label class="block">
-                          <span class="text-xs font-semibold text-slate-500" x-text="field === 'startTime' ? '開始' : '結束'"></span>
-                          <div class="relative mt-1">
-                            <input
-                              type="time"
-                              lang="en-GB"
-                              step="900"
-                              class="time-native-input time-native-mobile w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 pr-10 text-sm text-slate-900 outline-none transition focus:border-amber-500"
-                              x-model="adminCourseProxy[field]"
-                              @change="adminCourseProxy.preview = null"
-                            >
-                            <span class="time-native-mobile pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-900" x-text="timeDisplay(adminCourseProxy[field])"></span>
-                            <span class="time-native-mobile time-clock-icon pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-                              <svg class="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
-                            </span>
-                            <button type="button" class="time-custom-desktop w-full items-center justify-between rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-left text-sm font-semibold text-slate-900 outline-none transition focus:border-amber-500" @click.prevent.stop="openAdminProxyTimePicker(field)">
-                              <span x-text="timeDisplay(adminCourseProxy[field])"></span>
-                              <svg class="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
-                            </button>
-                            <template x-if="isAdminProxyTimePickerOpen(field)">
-                              <div class="time-picker-panel absolute left-0 z-30 mt-2 rounded-xl border border-slate-800 bg-white p-3 shadow-lg" @click.stop @click.outside="closeTimePicker()">
-                                <div class="time-picker-hours-grid grid gap-2">
-                                  <template x-for="hour in timePickerHours" :key="'proxy-hour-' + field + '-' + hour">
-                                    <button type="button" class="time-picker-option rounded-lg border px-2 py-2 text-sm font-semibold" :class="selectedPickerHour() === hour ? 'border-amber-600 bg-amber-600 text-white' : 'border-slate-800 bg-white text-slate-500'" @click="setPickerHour(hour)" x-text="hour"></button>
-                                  </template>
-                                </div>
-                                <div class="time-picker-minute-grid mt-3 grid gap-2">
-                                  <template x-for="minute in timePickerMinutes" :key="'proxy-minute-' + field + '-' + minute">
-                                    <button type="button" class="time-picker-option rounded-lg border px-2 py-2 text-sm font-semibold" :class="selectedPickerMinute() === minute ? 'border-amber-600 bg-amber-600 text-white' : 'border-slate-800 bg-white text-slate-500'" @click="setPickerMinute(minute)" x-text="minute"></button>
-                                  </template>
-                                </div>
-                              </div>
-                            </template>
-                          </div>
+                          <span class="text-xs font-semibold text-slate-500">課程</span>
+                          <select class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm text-slate-900" x-model="lesson.subject" @change="onAdminProxyLessonSubjectChange(lesson)">
+                            <option value="">-- 選擇課程 --</option>
+                            <template x-for="subject in adminProxySubjects()" :key="subject"><option :value="subject" x-text="subject"></option></template>
+                          </select>
                         </label>
-                      </template>
+                        <label class="block">
+                          <span class="text-xs font-semibold text-slate-500">日期</span>
+                          <input type="date" class="mt-1 w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-sm text-slate-900" x-model="lesson.date" @change="adminCourseProxy.preview = null">
+                        </label>
+                        <div class="grid grid-cols-2 gap-2">
+                          <template x-for="field in ['startTime', 'endTime']" :key="'proxy-time-' + lesson.id + '-' + field">
+                            <label class="block">
+                              <span class="text-xs font-semibold text-slate-500" x-text="field === 'startTime' ? '開始' : '結束'"></span>
+                              <div class="relative mt-1">
+                                <input type="time" lang="en-GB" step="900" class="time-native-input time-native-mobile w-full rounded-xl border border-teal-200 bg-white px-3 py-2.5 pr-10 text-sm text-slate-900" x-model="lesson[field]" @change="adminCourseProxy.preview = null">
+                                <span class="time-native-mobile pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-900" x-text="timeDisplay(lesson[field])"></span>
+                                <span class="time-native-mobile time-clock-icon pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"><svg class="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></span>
+                                <button type="button" class="time-custom-desktop w-full items-center justify-between rounded-xl border border-teal-200 bg-white px-3 py-2.5 text-left text-sm font-semibold text-slate-900" @click.prevent.stop="openAdminProxyTimePicker(lesson, field)">
+                                  <span x-text="timeDisplay(lesson[field])"></span><svg class="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                                </button>
+                                <template x-if="isAdminProxyTimePickerOpen(lesson, field)">
+                                  <div class="time-picker-panel absolute left-0 z-30 mt-2 rounded-xl border border-slate-800 bg-white p-3 shadow-lg" @click.stop @click.outside="closeTimePicker()">
+                                    <div class="time-picker-hours-grid grid gap-2"><template x-for="hour in timePickerHours" :key="'proxy-hour-' + lesson.id + '-' + field + '-' + hour"><button type="button" class="time-picker-option rounded-lg border px-2 py-2 text-sm font-semibold" :class="selectedPickerHour() === hour ? 'border-amber-600 bg-amber-600 text-white' : 'border-slate-800 bg-white text-slate-500'" @click="setPickerHour(hour)" x-text="hour"></button></template></div>
+                                    <div class="time-picker-minute-grid mt-3 grid gap-2"><template x-for="minute in timePickerMinutes" :key="'proxy-minute-' + lesson.id + '-' + field + '-' + minute"><button type="button" class="time-picker-option rounded-lg border px-2 py-2 text-sm font-semibold" :class="selectedPickerMinute() === minute ? 'border-amber-600 bg-amber-600 text-white' : 'border-slate-800 bg-white text-slate-500'" @click="setPickerMinute(minute)" x-text="minute"></button></template></div>
+                                  </div>
+                                </template>
+                              </div>
+                            </label>
+                          </template>
+                        </div>
+                        <label class="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" x-show="isAssociationSupportEligible(adminCourseProxy.student, lesson.subject, adminCourseProxy.options)">
+                          <input type="checkbox" class="mt-0.5 h-4 w-4" x-model="lesson.associationSupport">
+                          <span class="text-xs font-bold text-amber-800">本次由撐出空間協會支持</span>
+                        </label>
+                      </div>
+                    </template>
+                    <div class="grid grid-cols-2 gap-2">
+                      <button type="button" class="rounded-xl border border-teal-300 bg-white px-3 py-2 text-xs font-bold text-teal-700 disabled:text-slate-400" :disabled="!adminCourseProxy.student || adminCourseProxy.lessons.length >= 5" @click="addAdminProxyLesson()">＋ 新增一筆</button>
+                      <button type="button" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-600" @click="resetAdminProxyLessons()">清空重填</button>
                     </div>
                   </div>
                   <div x-show="adminCourseProxy.action === 'verify'" class="space-y-3">
@@ -1589,6 +1595,7 @@
             students: [],
             subjects: [],
             coursesByStudent: {},
+            supportEligibleByStudentCourse: {},
           },
           adminCourseProxy: {
             teachers: [],
@@ -1596,15 +1603,20 @@
               students: [],
               subjects: [],
               coursesByStudent: {},
+              supportEligibleByStudentCourse: {},
             },
             schedules: [],
             targetTeacher: "",
             action: "normal",
             student: "",
-            subject: "",
-            date: new Date().toISOString().substring(0, 10),
-            startTime: "13:00",
-            endTime: "14:00",
+            lessons: [{
+              id: 1,
+              subject: "",
+              date: new Date().toISOString().substring(0, 10),
+              startTime: "13:00",
+              endTime: "14:00",
+              associationSupport: false,
+            }],
             verifyRowId: "",
             verifyResult: "yes",
             preview: null,
@@ -1632,6 +1644,7 @@
                 date: new Date().toISOString().substring(0, 10),
                 startTime: "13:00",
                 endTime: "14:00",
+                associationSupport: false,
               }
             ],
           },
@@ -1781,7 +1794,7 @@
               lineUserId: this.lineUserId,
             });
             if (result.ok) {
-              this.options = result.options || { students: [], subjects: [], coursesByStudent: {} };
+              this.options = result.options || { students: [], subjects: [], coursesByStudent: {}, supportEligibleByStudentCourse: {} };
               this.optionsLoaded = true;
               if (result.message) {
                 this.message = result.message;
@@ -1809,6 +1822,7 @@
                 students: ["示範學生"],
                 subjects: ["示範課程"],
                 coursesByStudent: { "示範學生": ["示範課程"] },
+                supportEligibleByStudentCourse: {},
               };
               this.adminCourseProxy.schedules = [];
               return;
@@ -1820,19 +1834,19 @@
             });
             if (!result.ok) {
               this.adminCourseProxy.teachers = [];
-              this.adminCourseProxy.options = { students: [], subjects: [], coursesByStudent: {} };
+              this.adminCourseProxy.options = { students: [], subjects: [], coursesByStudent: {}, supportEligibleByStudentCourse: {} };
               this.adminCourseProxy.schedules = [];
               this.message = result.message || "課程代操作後端尚未部署，請稍後再試。";
               return;
             }
             this.adminCourseProxy.teachers = result.teachers || [];
-            this.adminCourseProxy.options = result.options || { students: [], subjects: [], coursesByStudent: {} };
+            this.adminCourseProxy.options = result.options || { students: [], subjects: [], coursesByStudent: {}, supportEligibleByStudentCourse: {} };
             this.adminCourseProxy.schedules = result.schedules || [];
           },
 
           async onAdminProxyTeacherChange() {
             this.adminCourseProxy.student = "";
-            this.adminCourseProxy.subject = "";
+            this.resetAdminProxyLessons();
             this.adminCourseProxy.verifyRowId = "";
             this.adminCourseProxy.preview = null;
             await this.loadAdminCourseProxyOptions();
@@ -1845,7 +1859,46 @@
           },
 
           onAdminProxyStudentChange() {
-            this.adminCourseProxy.subject = "";
+            this.resetAdminProxyLessons();
+          },
+
+          createAdminProxyLesson(previous = null) {
+            const baseDate = previous ? previous.date : new Date().toISOString().substring(0, 10);
+            const baseSubject = previous ? previous.subject : "";
+            const startTime = previous ? previous.endTime : "13:00";
+            const duration = previous ? this.lessonDurationMinutes(previous) : 60;
+            return {
+              id: Date.now() + Math.floor(Math.random() * 1000),
+              subject: baseSubject,
+              date: baseDate,
+              startTime,
+              endTime: this.addMinutesToTime(startTime, duration),
+              associationSupport: false,
+            };
+          },
+
+          addAdminProxyLesson() {
+            if (!this.adminCourseProxy.student || this.adminCourseProxy.lessons.length >= 5) return;
+            const previous = this.adminCourseProxy.lessons[this.adminCourseProxy.lessons.length - 1];
+            this.adminCourseProxy.lessons.push(this.createAdminProxyLesson(previous));
+            this.adminCourseProxy.preview = null;
+          },
+
+          removeAdminProxyLesson(index) {
+            if (this.adminCourseProxy.lessons.length <= 1) return;
+            this.adminCourseProxy.lessons.splice(index, 1);
+            this.adminCourseProxy.preview = null;
+          },
+
+          resetAdminProxyLessons() {
+            this.adminCourseProxy.lessons = [this.createAdminProxyLesson(null)];
+            this.adminCourseProxy.preview = null;
+          },
+
+          onAdminProxyLessonSubjectChange(lesson) {
+            if (!this.isAssociationSupportEligible(this.adminCourseProxy.student, lesson.subject, this.adminCourseProxy.options)) {
+              lesson.associationSupport = false;
+            }
             this.adminCourseProxy.preview = null;
           },
 
@@ -1857,7 +1910,9 @@
           canPreviewAdminCourseProxy() {
             if (!this.adminCourseProxy.targetTeacher) return false;
             if (this.adminCourseProxy.action === "verify") return !!this.adminCourseProxy.verifyRowId;
-            return !!(this.adminCourseProxy.student && this.adminCourseProxy.subject && this.adminCourseProxy.date && this.adminCourseProxy.startTime && this.adminCourseProxy.endTime);
+            return !!this.adminCourseProxy.student && this.adminCourseProxy.lessons.length > 0 && this.adminCourseProxy.lessons.every((lesson) => {
+              return !!(lesson.subject && lesson.date && lesson.startTime && lesson.endTime) && !this.lessonError(lesson);
+            });
           },
 
           adminCourseProxyPayload() {
@@ -1866,10 +1921,14 @@
               targetTeacher: this.adminCourseProxy.targetTeacher,
               proxyAction: this.adminCourseProxy.action,
               student: this.adminCourseProxy.student,
-              subject: this.adminCourseProxy.subject,
-              date: this.adminCourseProxy.date,
-              startTime: this.adminCourseProxy.startTime,
-              endTime: this.adminCourseProxy.endTime,
+              lessons: JSON.stringify(this.adminCourseProxy.lessons.map((lesson) => ({
+                student: this.adminCourseProxy.student,
+                subject: lesson.subject,
+                date: lesson.date,
+                startTime: lesson.startTime,
+                endTime: lesson.endTime,
+                associationSupport: lesson.associationSupport === true,
+              }))),
               rowId: this.adminCourseProxy.verifyRowId,
               isVerified: this.adminCourseProxy.verifyResult,
             };
@@ -1951,8 +2010,8 @@
             this.activeTimePicker = { type: "adjustment", field };
           },
 
-          openAdminProxyTimePicker(field) {
-            this.activeTimePicker = { type: "adminProxy", field };
+          openAdminProxyTimePicker(lesson, field) {
+            this.activeTimePicker = { type: "adminProxy", id: lesson.id, field };
           },
 
           closeTimePicker() {
@@ -1972,9 +2031,10 @@
               this.activeTimePicker.field === field;
           },
 
-          isAdminProxyTimePickerOpen(field) {
+          isAdminProxyTimePickerOpen(lesson, field) {
             return this.activeTimePicker &&
               this.activeTimePicker.type === "adminProxy" &&
+              this.activeTimePicker.id === lesson.id &&
               this.activeTimePicker.field === field;
           },
 
@@ -1984,7 +2044,8 @@
               return this.adjustmentForm[this.activeTimePicker.field] || "00:00";
             }
             if (this.activeTimePicker.type === "adminProxy") {
-              return this.adminCourseProxy[this.activeTimePicker.field] || "00:00";
+              const lesson = this.adminCourseProxy.lessons.find((item) => item.id === this.activeTimePicker.id);
+              return lesson ? (lesson[this.activeTimePicker.field] || "00:00") : "00:00";
             }
             const lesson = this.regForm.lessons.find((item) => item.id === this.activeTimePicker.id);
             return lesson ? (lesson[this.activeTimePicker.field] || "00:00") : "00:00";
@@ -2016,7 +2077,8 @@
               return;
             }
             if (this.activeTimePicker.type === "adminProxy") {
-              this.adminCourseProxy[this.activeTimePicker.field] = normalized;
+              const lesson = this.adminCourseProxy.lessons.find((item) => item.id === this.activeTimePicker.id);
+              if (lesson) lesson[this.activeTimePicker.field] = normalized;
               this.adminCourseProxy.preview = null;
               return;
             }
@@ -2035,11 +2097,24 @@
               date: baseDate,
               startTime,
               endTime: this.addMinutesToTime(startTime, duration),
+              associationSupport: false,
             };
           },
 
           onRegisterStudentChange() {
             this.regForm.lessons = [this.createLessonFromPrevious(null)];
+          },
+
+          isAssociationSupportEligible(student, subject, optionSource = this.options) {
+            if (!student || !subject) return false;
+            const eligibility = (optionSource && optionSource.supportEligibleByStudentCourse) || {};
+            return eligibility[`${student}::${subject}`] === true;
+          },
+
+          onLessonSubjectChange(lesson) {
+            if (!this.isAssociationSupportEligible(this.regForm.student, lesson.subject)) {
+              lesson.associationSupport = false;
+            }
           },
 
           addLesson() {
@@ -2080,7 +2155,8 @@
 
           lessonSummary() {
             return this.regForm.lessons.map((lesson, index) => {
-              return `${index + 1}. ${this.regForm.student}｜${lesson.subject}｜${lesson.date} ${lesson.startTime}-${lesson.endTime}（${this.lessonHoursLabel(lesson)}）`;
+              const support = lesson.associationSupport ? "｜撐出空間協會支持" : "";
+              return `${index + 1}. ${this.regForm.student}｜${lesson.subject}｜${lesson.date} ${lesson.startTime}-${lesson.endTime}（${this.lessonHoursLabel(lesson)}）${support}`;
             }).join("\n");
           },
 
@@ -2378,6 +2454,7 @@
                     date: lesson.date,
                     startTime: lesson.startTime,
                     endTime: lesson.endTime,
+                     associationSupport: lesson.associationSupport === true,
                   });
                   if (result.ok) {
                     results.push(`第 ${i + 1} 筆成功`);

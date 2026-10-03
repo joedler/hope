@@ -96,6 +96,7 @@ function handleLiffFormOptions(lineUserId?: string) {
     const studentsSet = new Set<string>();
     const subjectsSet = new Set<string>();
     const coursesByStudent: any = {};
+    const supportEligibleByStudentCourse: any = {};
 
     for (let i = 1; i < data.length; i++) {
       const rowTeacher = String(data[i][0]).trim();
@@ -109,6 +110,7 @@ function handleLiffFormOptions(lineUserId?: string) {
         if (coursesByStudent[studentName].indexOf(subjectName) === -1) {
           coursesByStudent[studentName].push(subjectName);
         }
+        supportEligibleByStudentCourse[buildCourseSupportKey_(studentName, subjectName)] = isAssociationSupportEnabled_(data[i][7]);
       }
     }
 
@@ -121,7 +123,8 @@ function handleLiffFormOptions(lineUserId?: string) {
       options: {
         students,
         subjects,
-        coursesByStudent
+        coursesByStudent,
+        supportEligibleByStudentCourse
       }
     };
   } catch (e) {
@@ -138,6 +141,7 @@ function handleLiffRegister(params: any) {
   const dateStr = params.date; // YYYY-MM-DD
   const startTimeStr = params.startTime; // HH:MM
   const endTimeStr = params.endTime; // HH:MM
+  const associationSupportRequested = parseAssociationSupportRequest_(params.associationSupport);
 
   const isPlan = (mode === 'pre');
 
@@ -162,17 +166,22 @@ function handleLiffRegister(params: any) {
   const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
   const courseData = courseSheet.getDataRange().getValues();
   let unitFee = 0;
+  let supportEligible = false;
   for (let i = 1; i < courseData.length; i++) {
     const rowOwner = String(courseData[i][0]).trim();
     const rowStudent = String(courseData[i][2]).trim();
     const rowSubject = String(courseData[i][3]).trim();
     if (isCourseOwner(rowOwner, lineUserId, userName) && rowStudent === String(studentName).trim() && rowSubject === String(subjectName).trim()) {
       unitFee = parseFloat(courseData[i][4]) || 0;
+      supportEligible = isAssociationSupportEnabled_(courseData[i][7]);
       break;
     }
   }
   if (unitFee <= 0) {
     return { ok: false, message: `找不到「${userName} / ${studentName} / ${subjectName}」的課程設定或鐘點單價，請聯絡行政確認課程設定表。` };
+  }
+  if (associationSupportRequested && !supportEligible) {
+    return { ok: false, message: `「${userName} / ${studentName} / ${subjectName}」未在課程設定表開放協會支持。` };
   }
 
   // 3. 計算時數與金額
@@ -184,6 +193,7 @@ function handleLiffRegister(params: any) {
   const endNum = parseTime(cleanEnd);
   const duration = Math.round((endNum - startNum) * 100) / 100;
   const totalPay = Math.round(duration * unitFee);
+  const associationSupportAmount = associationSupportRequested ? -totalPay : 0;
 
   if (duration <= 0) return { ok: false, message: "上課結束時間必須晚於開始時間。" };
   if (duration > 4) return { ok: false, message: "課程時數超過 4 小時，請確認是否填錯。" };
@@ -240,6 +250,8 @@ function handleLiffRegister(params: any) {
     rowData.push(""); // 鐘點結算欄留空
   }
   rowData.push(userName); // 操作人為講師自己
+  rowData.push(associationSupportRequested ? "是" : "否");
+  rowData.push(associationSupportAmount);
 
   recordSheet.appendRow(rowData);
 
@@ -293,6 +305,8 @@ function handleLiffGetUnverified(lineUserId: string) {
         startTime: formatTimeStr(rowStart),
         endTime: formatTimeStr(rowEnd),
         hours: rowHours,
+        associationSupport: isAssociationSupportEnabled_(data[i][13]),
+        associationSupportAmount: parseFloat(data[i][14]) || 0,
         canVerify,
         verifyMessage: canVerify ? "" : "課程尚未結束，暫不可核銷。"
       });
@@ -333,7 +347,9 @@ function handleLiffGetRecentRegistered(lineUserId: string, limit?: any) {
       endTime: formatTimeStr(data[i][4]),
       hours: parseFloat(data[i][5]) || 0,
       student: String(data[i][7] || "").trim(),
-      subject: String(data[i][8] || "").trim()
+      subject: String(data[i][8] || "").trim(),
+      associationSupport: isAssociationSupportEnabled_(data[i][12]),
+      associationSupportAmount: parseFloat(data[i][13]) || 0
     });
 
     if (lessons.length >= maxRows) break;
@@ -390,7 +406,7 @@ function handleLiffVerifySchedule(params: any) {
     // 將資料複製並寫入「授課紀錄」工作表
     const recordSheet = ss.getSheetByName(SHEET_NAME_RECORD);
     if (recordSheet) {
-      const rowValues = planSheet.getRange(rowId, 1, 1, 13).getValues()[0];
+      const rowValues = planSheet.getRange(rowId, 1, 1, Math.max(15, planSheet.getLastColumn())).getValues()[0];
       
       const now = new Date();
       const dateFormatted = rowValues[2] instanceof Date ? Utilities.formatDate(rowValues[2], timeZone, "yyyy/MM/dd") : rowValues[2];
@@ -407,7 +423,9 @@ function handleLiffVerifySchedule(params: any) {
         rowValues[8], // 課程
         "",           // 學費結算
         "",           // 鐘點結算
-        `核銷人:${userName}` // 操作人
+        `核銷人:${userName}`, // 操作人
+        isAssociationSupportEnabled_(rowValues[13]) ? "是" : "否",
+        isAssociationSupportEnabled_(rowValues[13]) ? (parseFloat(rowValues[14]) || -(parseFloat(rowValues[6]) || 0)) : 0
       ];
       recordSheet.appendRow(newRow);
     }
@@ -438,7 +456,7 @@ function handleLiffAdminCourseProxyOptions(params: any) {
     ok: true,
     teachers: listCourseProxyTeachers_(teacherSheet.getDataRange().getValues()),
     selectedTeacher: target,
-    options: target ? getCourseOptionsForTeacher_(ss, target) : { students: [], subjects: [], coursesByStudent: {} },
+    options: target ? getCourseOptionsForTeacher_(ss, target) : { students: [], subjects: [], coursesByStudent: {}, supportEligibleByStudentCourse: {} },
     schedules: target ? getUnverifiedSchedulesForTeacher_(ss, target.name) : []
   };
 }
@@ -830,6 +848,20 @@ function hasMagicCourse(courseName: string): boolean {
   return false;
 }
 
+function buildCourseSupportKey_(studentName: any, courseName: any): string {
+  return String(studentName || "").trim() + "::" + String(courseName || "").trim();
+}
+
+function isAssociationSupportEnabled_(value: any): boolean {
+  return String(value || "").trim() === "是";
+}
+
+function parseAssociationSupportRequest_(value: any): boolean {
+  if (value === true) return true;
+  const text = String(value || "").trim().toLowerCase();
+  return text === "true" || text === "yes" || text === "是" || text === "1";
+}
+
 function isCourseOwner(rowOwner: string, lineUserId?: string, teacherName?: string): boolean {
   const owner = String(rowOwner || "").trim();
   const cleanLineUserId = String(lineUserId || "").trim();
@@ -920,11 +952,12 @@ function findTeacherForCourseProxy_(teacherData: any[][], targetKey: string): an
 
 function getCourseOptionsForTeacher_(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, teacher: any): any {
   const courseSheet = ss.getSheetByName(SHEET_NAME_COURSE);
-  if (!courseSheet) return { students: [], subjects: [], coursesByStudent: {} };
+  if (!courseSheet) return { students: [], subjects: [], coursesByStudent: {}, supportEligibleByStudentCourse: {} };
   const data = courseSheet.getDataRange().getValues();
   const studentsSet = new Set<string>();
   const subjectsSet = new Set<string>();
   const coursesByStudent: any = {};
+  const supportEligibleByStudentCourse: any = {};
 
   for (let i = 1; i < data.length; i++) {
     const rowTeacher = String(data[i][0] || "").trim();
@@ -936,13 +969,15 @@ function getCourseOptionsForTeacher_(ss: GoogleAppsScript.Spreadsheet.Spreadshee
     if (studentName && subjectName) {
       if (!coursesByStudent[studentName]) coursesByStudent[studentName] = [];
       if (coursesByStudent[studentName].indexOf(subjectName) === -1) coursesByStudent[studentName].push(subjectName);
+      supportEligibleByStudentCourse[buildCourseSupportKey_(studentName, subjectName)] = isAssociationSupportEnabled_(data[i][7]);
     }
   }
 
   return {
     students: Array.from(studentsSet),
     subjects: Array.from(subjectsSet),
-    coursesByStudent
+    coursesByStudent,
+    supportEligibleByStudentCourse
   };
 }
 
@@ -968,6 +1003,8 @@ function getUnverifiedSchedulesForTeacher_(ss: GoogleAppsScript.Spreadsheet.Spre
       startTime: formatTimeStr(data[i][3]),
       endTime: formatTimeStr(data[i][4]),
       hours: data[i][5],
+      associationSupport: isAssociationSupportEnabled_(data[i][13]),
+      associationSupportAmount: parseFloat(data[i][14]) || 0,
       canVerify,
       verifyMessage: canVerify ? "" : "課程尚未結束，暫不可核銷。"
     });
@@ -985,23 +1022,33 @@ function previewAdminProxyRegister_(params: any, operatorLineUserId: string) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const target = getCourseProxyTarget_(ss, String(params.targetTeacher || ""));
   if (!target) return { ok: false, message: "請先選擇要代操作的講師。" };
-  const check = validateCourseProxyRegistration_(ss, params, target);
-  if (!check.ok) return check;
+  const lessons = parseAdminProxyLessons_(params);
+  if (lessons.length === 0) return { ok: false, message: "請至少填寫一筆課程。" };
+  if (lessons.length > 5) return { ok: false, message: "一次最多只能代登 5 筆課程。" };
+  const checks: any[] = [];
+  const pendingHistory: any[] = [];
+  for (let i = 0; i < lessons.length; i++) {
+    const lessonParams = Object.assign({}, params, lessons[i]);
+    const check = validateCourseProxyRegistration_(ss, lessonParams, target, pendingHistory);
+    if (!check.ok) return { ok: false, message: `第 ${i + 1} 筆：${check.message}` };
+    checks.push(check);
+    pendingHistory.push(buildAdminProxyHistoryRow_(target.name, lessons[i], check, String(params.proxyAction) === "pre"));
+  }
   const operatorName = getTeacherNameByLineUserId(operatorLineUserId) || "行政人員";
   const modeLabel = String(params.proxyAction) === "pre" ? "代預排課程" : "代新增授課";
+  const previewItems = checks.map(function(check: any, index: number) {
+    const lesson = lessons[index];
+    const supportText = check.associationSupport
+      ? `；服務原價 ${check.totalPay}；協會支持 ${check.associationSupportAmount}；家長此項應繳 0`
+      : `；金額 ${check.totalPay}`;
+    return `${index + 1}. ${lesson.student} / ${lesson.subject} / ${String(lesson.date || "").replace(/-/g, "/")} ${lesson.startTime}-${lesson.endTime} / ${check.hours} 小時${supportText}`;
+  });
   return {
     ok: true,
     preview: {
       title: modeLabel,
-      summary: `請確認是否由 ${operatorName} 幫 ${target.name} 講師執行${modeLabel}。`,
-      items: [
-        `講師：${target.name}`,
-        `學生：${params.student}`,
-        `課程：${params.subject}`,
-        `時間：${String(params.date || "").replace(/-/g, "/")} ${params.startTime}-${params.endTime}`,
-        `時數：${check.hours} 小時`,
-        `金額：${check.totalPay}`
-      ],
+      summary: `請確認是否由 ${operatorName} 幫 ${target.name} 講師執行 ${lessons.length} 筆${modeLabel}。`,
+      items: [`講師：${target.name}`].concat(previewItems),
       nextAction: `確認${modeLabel}`,
       canConfirm: true,
       confirmAction: "adminCourseProxyConfirm"
@@ -1013,8 +1060,18 @@ function confirmAdminProxyRegister_(params: any, operatorLineUserId: string) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const target = getCourseProxyTarget_(ss, String(params.targetTeacher || ""));
   if (!target) return { ok: false, message: "請先選擇要代操作的講師。" };
-  const check = validateCourseProxyRegistration_(ss, params, target);
-  if (!check.ok) return check;
+  const lessons = parseAdminProxyLessons_(params);
+  if (lessons.length === 0) return { ok: false, message: "請至少填寫一筆課程。" };
+  if (lessons.length > 5) return { ok: false, message: "一次最多只能代登 5 筆課程。" };
+  const checks: any[] = [];
+  const pendingHistory: any[] = [];
+  for (let i = 0; i < lessons.length; i++) {
+    const lessonParams = Object.assign({}, params, lessons[i]);
+    const check = validateCourseProxyRegistration_(ss, lessonParams, target, pendingHistory);
+    if (!check.ok) return { ok: false, message: `第 ${i + 1} 筆：${check.message}` };
+    checks.push(check);
+    pendingHistory.push(buildAdminProxyHistoryRow_(target.name, lessons[i], check, String(params.proxyAction) === "pre"));
+  }
 
   const isPlan = String(params.proxyAction) === "pre";
   const sheet = ss.getSheetByName(isPlan ? SHEET_NAME_PLAN : SHEET_NAME_RECORD);
@@ -1022,40 +1079,88 @@ function confirmAdminProxyRegister_(params: any, operatorLineUserId: string) {
   const timeZone = Session.getScriptTimeZone();
   const now = new Date();
   const operatorName = getTeacherNameByLineUserId(operatorLineUserId) || "行政人員";
-  const rowData: any[] = [
-    now,
-    target.name,
-    check.writeDate,
-    check.cleanStart,
-    check.cleanEnd,
-    check.hours,
-    check.totalPay,
-    params.student,
-    params.subject
-  ];
-  if (isPlan) {
-    rowData.push("未核銷");
-    rowData.push("");
-    rowData.push("");
-  } else {
-    rowData.push("");
-    rowData.push("");
+  const summaryParts: string[] = [];
+  for (let i = 0; i < lessons.length; i++) {
+    const lesson = lessons[i];
+    const check = checks[i];
+    const rowData: any[] = [
+      now,
+      target.name,
+      check.writeDate,
+      check.cleanStart,
+      check.cleanEnd,
+      check.hours,
+      check.totalPay,
+      lesson.student,
+      lesson.subject
+    ];
+    if (isPlan) {
+      rowData.push("未核銷");
+      rowData.push("");
+      rowData.push("");
+    } else {
+      rowData.push("");
+      rowData.push("");
+    }
+    rowData.push(`代操作:${operatorName}`);
+    rowData.push(check.associationSupport ? "是" : "否");
+    rowData.push(check.associationSupportAmount);
+    sheet.appendRow(rowData);
+    summaryParts.push(`${lesson.student} / ${lesson.subject} / ${Utilities.formatDate(new Date(check.writeDate), timeZone, "yyyy/MM/dd")} ${lesson.startTime}-${lesson.endTime}${check.associationSupport ? " / 協會支持" : ""}`);
   }
-  rowData.push(`代操作:${operatorName}`);
-  sheet.appendRow(rowData);
   return {
     ok: true,
-    message: `已完成${isPlan ? "代預排課程" : "代新增授課"}：${target.name} / ${params.student} / ${params.subject} / ${Utilities.formatDate(new Date(check.writeDate), timeZone, "yyyy/MM/dd")} ${params.startTime}-${params.endTime}`
+    message: `已完成 ${lessons.length} 筆${isPlan ? "代預排課程" : "代新增授課"}：${target.name}\n${summaryParts.join("\n")}`
   };
 }
 
-function validateCourseProxyRegistration_(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, params: any, target: any) {
+function parseAdminProxyLessons_(params: any): any[] {
+  const raw = String(params.lessons || "").trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Object.prototype.toString.call(parsed) === "[object Array]") {
+        return parsed.map(function(item: any) {
+          return {
+            student: String(item.student || params.student || "").trim(),
+            subject: String(item.subject || "").trim(),
+            date: String(item.date || "").trim(),
+            startTime: String(item.startTime || "").trim(),
+            endTime: String(item.endTime || "").trim(),
+            associationSupport: parseAssociationSupportRequest_(item.associationSupport)
+          };
+        });
+      }
+    } catch (e) {
+      return [];
+    }
+  }
+  if (!params.student && !params.subject && !params.date) return [];
+  return [{
+    student: String(params.student || "").trim(),
+    subject: String(params.subject || "").trim(),
+    date: String(params.date || "").trim(),
+    startTime: String(params.startTime || "").trim(),
+    endTime: String(params.endTime || "").trim(),
+    associationSupport: parseAssociationSupportRequest_(params.associationSupport)
+  }];
+}
+
+function buildAdminProxyHistoryRow_(teacherName: string, lesson: any, check: any, isPlan: boolean): any[] {
+  return [
+    new Date(), teacherName, check.writeDate, check.cleanStart, check.cleanEnd,
+    check.hours, check.totalPay, lesson.student, lesson.subject, isPlan ? "未核銷" : ""
+  ];
+}
+
+function validateCourseProxyRegistration_(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, params: any, target: any, additionalHistory?: any[]) {
   const isPlan = String(params.proxyAction) === "pre";
   const studentName = String(params.student || "").trim();
   const subjectName = String(params.subject || "").trim();
   const dateStr = String(params.date || "").trim();
   const startTimeStr = String(params.startTime || "").trim();
   const endTimeStr = String(params.endTime || "").trim();
+  const associationSupportRequested = parseAssociationSupportRequest_(params.associationSupport);
   if (!studentName || !subjectName || !dateStr || !startTimeStr || !endTimeStr) {
     return { ok: false, message: "請完整填寫講師、學生、課程、日期與時間。" };
   }
@@ -1064,17 +1169,22 @@ function validateCourseProxyRegistration_(ss: GoogleAppsScript.Spreadsheet.Sprea
   if (!courseSheet) return { ok: false, message: "找不到課程設定分頁。" };
   const courseData = courseSheet.getDataRange().getValues();
   let unitFee = 0;
+  let supportEligible = false;
   for (let i = 1; i < courseData.length; i++) {
     const rowOwner = String(courseData[i][0] || "").trim();
     const rowStudent = String(courseData[i][2] || "").trim();
     const rowSubject = String(courseData[i][3] || "").trim();
     if (isCourseOwner(rowOwner, target.lineUserId, target.name) && rowStudent === studentName && rowSubject === subjectName) {
       unitFee = parseFloat(courseData[i][4]) || 0;
+      supportEligible = isAssociationSupportEnabled_(courseData[i][7]);
       break;
     }
   }
   if (unitFee <= 0) {
     return { ok: false, message: `找不到「${target.name} / ${studentName} / ${subjectName}」的課程設定或鐘點單價。` };
+  }
+  if (associationSupportRequested && !supportEligible) {
+    return { ok: false, message: `「${target.name} / ${studentName} / ${subjectName}」未在課程設定表開放協會支持。` };
   }
 
   const timeZone = Session.getScriptTimeZone();
@@ -1105,7 +1215,7 @@ function validateCourseProxyRegistration_(ss: GoogleAppsScript.Spreadsheet.Sprea
   const planHistory = planSheet ? planSheet.getDataRange().getValues() : [];
   const recordHistory = recordSheet ? recordSheet.getDataRange().getValues() : [];
   const conflicts = findScheduleConflicts(
-    planHistory.concat(recordHistory),
+    planHistory.concat(recordHistory).concat(additionalHistory || []),
     {
       teacher: target.name,
       student: studentName,
@@ -1122,6 +1232,8 @@ function validateCourseProxyRegistration_(ss: GoogleAppsScript.Spreadsheet.Sprea
     ok: true,
     hours: duration,
     totalPay,
+    associationSupport: associationSupportRequested,
+    associationSupportAmount: associationSupportRequested ? -totalPay : 0,
     cleanStart,
     cleanEnd,
     writeDate: Utilities.formatDate(inputDate, timeZone, "yyyy/MM/dd")

@@ -320,7 +320,6 @@ function executeVerify(event: any, postbackData: string, isAttended: boolean) {
     replyLineMessage(replyToken, "✅ 核銷完成：\n" + timeInfo);
   } else {
     planSheet.getRange(row, 10).setValue("取消");
-    planSheet.getRange(row, 12).setValue(settlementMonth); 
     replyLineMessage(replyToken, "🗑️ 已取消預排：\n" + timeInfo);
   }
 }

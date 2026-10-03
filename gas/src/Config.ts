@@ -253,11 +253,11 @@ function auditFormalSpreadsheetStructure() {
     "會計日記帳"
   ];
   const minimumColumns: any = {};
-  minimumColumns[SHEET_NAME_COURSE] = 7;
+  minimumColumns[SHEET_NAME_COURSE] = 8;
   minimumColumns[SHEET_NAME_STUDENT] = 4;
   minimumColumns[SHEET_NAME_TEACHER] = 14;
-  minimumColumns[SHEET_NAME_RECORD] = 11;
-  minimumColumns[SHEET_NAME_PLAN] = 12;
+  minimumColumns[SHEET_NAME_RECORD] = 14;
+  minimumColumns[SHEET_NAME_PLAN] = 15;
   minimumColumns[SHEET_NAME_FIN_FEE] = 17;
   minimumColumns[SHEET_NAME_FIN_PAY] = 15;
 
@@ -271,7 +271,8 @@ function auditFormalSpreadsheetStructure() {
     "建立時間", "調整月份", "學生姓名", "課程名稱", "原上課日期",
     "開始時間", "結束時間", "時數", "單價", "調整金額",
     "調整類型", "關聯原單號", "原因", "狀態", "操作人",
-    "備註", "原錯誤月份", "補收單號", "補收PDF", "補收單狀態"
+    "備註", "原錯誤月份", "補收單號", "補收PDF", "補收單狀態",
+    "學費結算月份", "鐘點結算月份"
   ];
   exactHeaders[SHEET_NAME_DOCUMENT_RECORD] = [
     "建立時間", "處理月份", "單據類型", "對象類型", "對象姓名",

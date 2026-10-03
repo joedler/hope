@@ -234,8 +234,17 @@ function handleLiffAdminConfirmSettlement(params: any) {
         return String(row.selectionKey || row.id || "").replace(/^tuition:/, "");
       }).filter(function(key: string) { return key !== ""; });
       cacheObj.save = (cacheObj.save || []).filter(function(row: any[]) {
-        return cacheObj.selectedTuitionKeys.indexOf(buildTuitionSelectionKey(row[1], row[2])) > -1;
+        return cacheObj.selectedTuitionKeys.indexOf(getTuitionSavedRowSelectionKey_(row)) > -1;
       });
+      if (cacheObj.adjustmentRowsByTuitionKey) {
+        const selectedAdjustmentRows: any = {};
+        cacheObj.selectedTuitionKeys.forEach(function(key: string) {
+          if (cacheObj.adjustmentRowsByTuitionKey[key]) {
+            selectedAdjustmentRows[key] = cacheObj.adjustmentRowsByTuitionKey[key];
+          }
+        });
+        cacheObj.adjustmentRowsByTuitionKey = selectedAdjustmentRows;
+      }
       if (!cacheObj.save || cacheObj.save.length === 0) {
         CacheService.getScriptCache().remove(cacheKey);
         return { ok: false, message: `${month} 勾選項目沒有可寫入的學費結算資料；待核銷預排不可寫入。` };
@@ -262,6 +271,15 @@ function handleLiffAdminConfirmSettlement(params: any) {
           for (let i = 0; i < rows.length; i++) updateRows.push(rows[i]);
         });
         cacheObj.updateRows = updateRows;
+      }
+      if (cacheObj.adjustmentRowsByTeacher) {
+        const selectedAdjustmentRows: any = {};
+        selectedTeachers.forEach(function(teacherName: string) {
+          if (cacheObj.adjustmentRowsByTeacher[teacherName]) {
+            selectedAdjustmentRows[teacherName] = cacheObj.adjustmentRowsByTeacher[teacherName];
+          }
+        });
+        cacheObj.adjustmentRowsByTeacher = selectedAdjustmentRows;
       }
       if (!cacheObj.save || cacheObj.save.length === 0) {
         CacheService.getScriptCache().remove(cacheKey);
@@ -380,7 +398,7 @@ function handleLiffAdminConfirmDocument(params: any) {
   if (beforePreview.studentCount <= 0) {
     return { ok: false, message: `${month} 沒有可產生繳費單的學費結算資料，請先完成學費試算確認寫入。` };
   }
-  if (beforePreview.generatedCount >= beforePreview.studentCount) {
+  if (beforePreview.generatedCount >= beforePreview.documentCount) {
     return { ok: false, message: `${month} 繳費單已全部產生，未重複產生 PDF。` };
   }
 
@@ -2013,18 +2031,22 @@ function handleLiffAdminUpdateReceiptPayment(params: any) {
 
   const timeZone = Session.getScriptTimeZone();
   const data = sheet.getDataRange().getValues();
+  const receiptPreview: any = buildReceiptReadOnlyPreview(month);
+  const selectedStudentMap: any = {};
+  (receiptPreview.rows || []).forEach(function(row: any) {
+    if (selectedIds.length === 0 || selectedIds.indexOf(row.id) > -1 || selectedIds.indexOf(row.docId) > -1) {
+      selectedStudentMap[String(row.name || "").trim()] = String(row.docId || "").trim();
+    }
+  });
   let updateCount = 0;
   const updatedStudents: string[] = [];
   for (let i = 1; i < data.length; i++) {
     const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
     if (rowMonth !== month) continue;
     const studentName = String(data[i][1] || "").trim();
-    const total = parseFloat(data[i][8]) || 0;
-    const docId = String(data[i][9] || "").trim();
-    const selectedKeys = ["student:" + studentName, "receipt:" + docId, docId].filter(function(key: string) { return key !== "" && key !== "receipt:"; });
-    if (selectedIds.length > 0 && !selectedKeys.some(function(key: string) { return selectedIds.indexOf(key) > -1; })) continue;
-    if (!studentName || !docId || !total) continue;
-    if (hasValidReceiptDocumentRecord(docId)) continue;
+    const receiptDocId = selectedStudentMap[studentName] || "";
+    if (!studentName || !receiptDocId || !Object.prototype.hasOwnProperty.call(selectedStudentMap, studentName)) continue;
+    if (hasValidReceiptDocumentRecord(receiptDocId)) continue;
     sheet.getRange(i + 1, 13).setValue(method);
     sheet.getRange(i + 1, 14).setValue(category);
     sheet.getRange(i + 1, 15).setValue(paymentDate);
@@ -2933,6 +2955,25 @@ function hasMatchingActualTuitionLesson(actualLessonKeys: any, teacherName: any,
   return !!(actualLessonKeys.byDate && actualLessonKeys.byDate[dateKey]);
 }
 
+function getTuitionPlanReconciliationMonth(
+  status: any,
+  tuitionSettledMonth: any,
+  refundSettledMonth: any,
+  lessonDateMonth: string,
+  timeZone: string
+): string {
+  const normalizedStatus = String(status || "").trim();
+  if (normalizedStatus !== "取消") return lessonDateMonth;
+
+  const normalizedTuitionMonth = normalizeFinancialMonth(tuitionSettledMonth, timeZone);
+  const normalizedRefundMonth = normalizeFinancialMonth(refundSettledMonth, timeZone);
+
+  // 已預收後取消：尚未扣回時應於課程月份核對；L 欄有值則沿用既有／歷史指定的扣回月份。
+  // 從未納入預收（K、L 皆空白）的取消課程沒有可退金額，不得產生負向差額。
+  if (normalizedRefundMonth) return normalizedRefundMonth;
+  return normalizedTuitionMonth ? lessonDateMonth : "";
+}
+
 function buildTuitionAdminPreview(month: string) {
   try {
     const result = buildTuitionReadOnlyPreview(month);
@@ -2972,6 +3013,23 @@ function buildTuitionAdminPreview(month: string) {
       canConfirm: false
     };
   }
+}
+
+function getStoredAssociationSupportAmount_(row: any[], flagIndex: number, amountIndex: number, fallbackAmount: number): number {
+  if (String(row[flagIndex] || "").trim() !== "是") return 0;
+  const storedAmount = parseFloat(row[amountIndex]);
+  return Math.abs(storedAmount || fallbackAmount || 0);
+}
+
+function calculateAssociationSupportAdjustment_(item: any): number {
+  const recordTotal = parseFloat(item.supportRecordTotal) || 0;
+  const planBaseTotal = parseFloat(item.supportPlanBaseTotal) || 0;
+  const planNextTotal = parseFloat(item.supportPlanNextTotal) || 0;
+  if (String(item.mode || "").trim() === "預收") {
+    if ((parseFloat(item.pendingPlanBase) || 0) > 0) return -planNextTotal;
+    return planBaseTotal - recordTotal - planNextTotal;
+  }
+  return -recordTotal;
 }
 
 function buildTuitionReadOnlyPreview(month: string, options?: any) {
@@ -3016,12 +3074,19 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
         fee,
         mode,
         recordBase: 0,
+        recordAmountTotal: 0,
         planBase: 0,
+        planBaseAmountTotal: 0,
         pendingPlanBase: 0,
         planNext: 0,
+        planNextAmountTotal: 0,
         detailsRec: [],
         detailsPending: [],
         detailsPlan: [],
+        supportRecordTotal: 0,
+        supportPlanBaseTotal: 0,
+        supportPlanNextTotal: 0,
+        supportDetails: [],
         adjustments: []
       };
     }
@@ -3040,17 +3105,30 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
     const conf = configMap[studentName + "_" + courseName] || { fee: 0, mode: "後收", teacher: recordData[i][1] };
     initStats(studentName, courseName, conf.teacher, conf.fee, conf.mode);
     stats[studentName][courseName].recordBase += hours;
-    const perLessonAmt = Math.round(hours * conf.fee);
+    const perLessonAmt = parseFloat(recordData[i][6]) || Math.round(hours * conf.fee);
+    stats[studentName][courseName].recordAmountTotal += perLessonAmt;
     stats[studentName][courseName].detailsRec.push("[實上] " + formatSheetMonthDay(recordData[i][2], timeZone) + " " + recordData[i][3] + "-" + recordData[i][4] + " (" + formatCurrency(perLessonAmt) + ")");
+    const supportAmount = getStoredAssociationSupportAmount_(recordData[i], 12, 13, parseFloat(recordData[i][6]) || perLessonAmt);
+    if (supportAmount > 0) {
+      stats[studentName][courseName].supportRecordTotal += supportAmount;
+      stats[studentName][courseName].supportDetails.push("[協會支持-實上] " + formatSheetMonthDay(recordData[i][2], timeZone) + " " + formatPreviewTime(recordData[i][3]) + "-" + formatPreviewTime(recordData[i][4]) + " (-" + formatCurrency(supportAmount) + ")");
+    }
   }
 
   const planData = planSheet.getDataRange().getValues();
   for (let i = 1; i < planData.length; i++) {
     const lessonDateMonth = normalizeFinancialMonth(planData[i][2], timeZone);
+    const tuitionSettledMonth = normalizeFinancialMonth(planData[i][10], timeZone);
     const refundSettledMonth = normalizeFinancialMonth(planData[i][11], timeZone);
     const status = String(planData[i][9] || "").trim();
-    const targetMonthForPlanBase = refundSettledMonth || lessonDateMonth;
-    if (status === "取消" && !refundSettledMonth) continue;
+    const targetMonthForPlanBase = getTuitionPlanReconciliationMonth(
+      status,
+      tuitionSettledMonth,
+      refundSettledMonth,
+      lessonDateMonth,
+      timeZone
+    );
+    if (!targetMonthForPlanBase) continue;
 
     const studentName = String(planData[i][7] || "").trim();
     const courseName = String(planData[i][8] || "").trim();
@@ -3077,17 +3155,27 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
         stats[studentName][courseName].detailsPending.push("[待核銷預排] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4] + " (" + formatCurrency(perLessonAmt) + ")");
       } else {
         stats[studentName][courseName].planBase += hours;
+        stats[studentName][courseName].planBaseAmountTotal += parseFloat(planData[i][6]) || Math.round(hours * conf.fee);
+        const planBaseSupport = getStoredAssociationSupportAmount_(planData[i], 13, 14, parseFloat(planData[i][6]) || Math.round(hours * conf.fee));
+        if (planBaseSupport > 0) stats[studentName][courseName].supportPlanBaseTotal += planBaseSupport;
         if (status === "未核銷" && hasMatchingActualLesson) {
           stats[studentName][courseName].detailsRec.push("[核銷狀態待同步] 已找到相同授課紀錄：" + formatSheetMonthDay(planData[i][2], timeZone) + " " + formatPreviewTime(planData[i][3]) + "-" + formatPreviewTime(planData[i][4]));
         }
       }
       if (status === "取消") {
-        stats[studentName][courseName].detailsRec.push("[歷史取消退費] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4]);
+        const refundLabel = refundSettledMonth ? "取消退費" : "取消退費待結算";
+        stats[studentName][courseName].detailsRec.push("[" + refundLabel + "] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4]);
       }
     } else if (lessonDateMonth === nextMonthStr && status !== "取消") {
       stats[studentName][courseName].planNext += hours;
-      const perLessonAmt = Math.round(hours * conf.fee);
+      const perLessonAmt = parseFloat(planData[i][6]) || Math.round(hours * conf.fee);
+      stats[studentName][courseName].planNextAmountTotal += perLessonAmt;
       stats[studentName][courseName].detailsPlan.push("[下月預收] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + planData[i][3] + "-" + planData[i][4] + " (" + formatCurrency(perLessonAmt) + ")");
+      const planNextSupport = getStoredAssociationSupportAmount_(planData[i], 13, 14, parseFloat(planData[i][6]) || perLessonAmt);
+      if (planNextSupport > 0) {
+        stats[studentName][courseName].supportPlanNextTotal += planNextSupport;
+        stats[studentName][courseName].supportDetails.push("[協會支持-預收] " + formatSheetMonthDay(planData[i][2], timeZone) + " " + formatPreviewTime(planData[i][3]) + "-" + formatPreviewTime(planData[i][4]) + " (-" + formatCurrency(planNextSupport) + ")");
+      }
     }
   }
 
@@ -3105,25 +3193,30 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
     for (const courseName in stats[studentName]) {
       const item = stats[studentName][courseName];
       const adjustmentTotal = item.adjustments.reduce(function(sum: number, adj: any) { return sum + adj.amount; }, 0);
-      let courseTotal = 0;
+      let courseCharge = 0;
       let formula = "";
       if (item.mode === "預收") {
         const diff = item.pendingPlanBase > 0 ? 0 : Math.round((item.recordBase - item.planBase) * 10) / 10;
         const totalHours = Math.round((item.planNext + diff) * 10) / 10;
-        courseTotal = Math.round(totalHours * item.fee) + adjustmentTotal;
+        courseCharge = (item.pendingPlanBase > 0
+          ? item.planNextAmountTotal
+          : item.planNextAmountTotal + item.recordAmountTotal - item.planBaseAmountTotal) + adjustmentTotal;
         formula = item.pendingPlanBase > 0
           ? `本月實上 ${item.recordBase}hr / 前期預繳 ${item.planBase}hr；預收 ${item.planNext}hr，尚有待核銷 ${item.pendingPlanBase}hr，暫不計入退費，調整 ${formatCurrency(adjustmentTotal)}`
           : `本月實上 ${item.recordBase}hr / 前期預繳 ${item.planBase}hr；預收 ${item.planNext}hr，核對差異 ${diff}hr，調整 ${formatCurrency(adjustmentTotal)}`;
       } else {
-        courseTotal = Math.round(item.recordBase * item.fee) + adjustmentTotal;
-        formula = `後收實上 ${item.recordBase}hr，調整 ${formatCurrency(adjustmentTotal)}`;
+        courseCharge = item.recordAmountTotal + adjustmentTotal;
+        formula = `後收實上 ${item.recordBase}hr，依授課紀錄原始金額計算，調整 ${formatCurrency(adjustmentTotal)}`;
       }
-      if (courseTotal !== 0 || item.recordBase > 0 || item.planNext > 0 || item.pendingPlanBase > 0 || adjustmentTotal !== 0) {
+      const supportAdjustment = calculateAssociationSupportAdjustment_(item);
+      const courseTotal = courseCharge + supportAdjustment;
+      if (courseTotal !== 0 || courseCharge !== 0 || supportAdjustment !== 0 || item.recordBase > 0 || item.planNext > 0 || item.pendingPlanBase > 0 || adjustmentTotal !== 0) {
         studentTotal += courseTotal;
         const detailParts: string[] = [];
         for (let d = 0; d < item.detailsRec.length; d++) detailParts.push(item.detailsRec[d]);
         for (let d = 0; d < item.detailsPending.length; d++) detailParts.push(item.detailsPending[d]);
         for (let d = 0; d < item.detailsPlan.length; d++) detailParts.push(item.detailsPlan[d]);
+        for (let d = 0; d < item.supportDetails.length; d++) detailParts.push(item.supportDetails[d]);
         for (let a = 0; a < item.adjustments.length; a++) {
           const adj = item.adjustments[a];
           detailParts.push(
@@ -3134,12 +3227,12 @@ function buildTuitionReadOnlyPreview(month: string, options?: any) {
           );
         }
         const detailText = detailParts.length > 0 ? `\n  明細：\n  - ${detailParts.join("\n  - ")}` : "";
-        courseSummaries.push(`${courseName}（${item.mode}）\n  ${formula}\n  小計 ${formatCurrency(courseTotal)}${detailText}`);
+        courseSummaries.push(`${courseName}（${item.mode}）\n  ${formula}\n  服務及調整 ${formatCurrency(courseCharge)}${supportAdjustment !== 0 ? "\n  撐出空間協會支持 " + formatCurrency(supportAdjustment) : ""}\n  本項應繳 ${formatCurrency(courseTotal)}${detailText}`);
         const selectable = item.pendingPlanBase <= 0;
         const rowStatus = item.pendingPlanBase > 0
           ? "待核銷預排不可寫入"
           : (courseTotal === 0 ? "核對完成，本期0元，可寫入結算" : "可寫入");
-        const rowDetails = [item.mode, formula].concat(detailParts);
+        const rowDetails = [item.mode, formula, "服務及調整：" + formatCurrency(courseCharge)].concat(supportAdjustment !== 0 ? ["撐出空間協會支持：" + formatCurrency(supportAdjustment), "本項家長應繳：" + formatCurrency(courseTotal)] : []).concat(detailParts);
         rows.push({
           id: "tuition:" + buildTuitionSelectionKey(studentName, courseName),
           type: "tuition",
@@ -3212,6 +3305,7 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
         name: studentName,
         total: 0,
         docId: "",
+        docIds: [],
         courseAmountSum: 0,
         courses: []
       };
@@ -3224,8 +3318,11 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
       item.courses.push(`${courseName}${mode ? "（" + mode + "）" : ""}：${formatCurrency(courseAmount)}`);
     }
     item.courseAmountSum += courseAmount;
-    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
-    if (data[i][9]) item.docId = String(data[i][9]).trim();
+    if (data[i][9]) {
+      const docId = String(data[i][9]).trim();
+      if (item.docIds.indexOf(docId) < 0) item.docIds.push(docId);
+      if (!item.docId || item.docId.indexOf("ADJ_") === 0) item.docId = docId;
+    }
   }
 
   const items: string[] = [
@@ -3235,10 +3332,10 @@ function buildExistingTuitionSettlementPreview(ss: GoogleAppsScript.Spreadsheet.
   let studentCount = 0;
   for (const studentName in studentsMap) {
     const item = studentsMap[studentName];
-    const total = item.total || item.courseAmountSum;
+    const total = item.courseAmountSum;
     grandTotal += total;
     studentCount++;
-    items.push(`${studentName}\n狀態：已寫入\n金額：${formatCurrency(total)}\n單號：${item.docId || "未填"}\n課程數：${item.courses.length}`);
+    items.push(`${studentName}\n狀態：已寫入\n金額：${formatCurrency(total)}\n單號：${item.docIds.join(" + ") || item.docId || "未填"}\n課程數：${item.courses.length}`);
   }
 
   if (studentCount === 0) {
@@ -3398,9 +3495,12 @@ function buildPostSettlementUnprocessedRecordRows(ss: GoogleAppsScript.Spreadshe
 
     const hours = parseFloat(data[i][5]) || 0;
     const tuitionAmount = parseFloat(data[i][6]) || 0;
+    const associationSupportAmount = settlementType === "tuition"
+      ? getStoredAssociationSupportAmount_(data[i], 12, 13, tuitionAmount)
+      : 0;
     const salaryRate = salaryRateMap[studentName + "_" + courseName] || 0;
     const salaryAmount = Math.round(hours * salaryRate);
-    const amount = settlementType === "salary" ? salaryAmount : tuitionAmount;
+    const amount = settlementType === "salary" ? salaryAmount : (tuitionAmount - associationSupportAmount);
     const timeText = formatSheetMonthDay(data[i][2], timeZone) + " " + formatPreviewTime(data[i][3]) + "-" + formatPreviewTime(data[i][4]);
     if (settlementType === "salary") {
       rows.push({
@@ -3439,7 +3539,7 @@ function buildPostSettlementUnprocessedRecordRows(ss: GoogleAppsScript.Spreadshe
         name: studentName + " / " + courseName,
         selectionKey,
         amount,
-        amountText: amount ? formatCurrency(amount) : "待補救確認",
+        amountText: amount || associationSupportAmount > 0 ? formatCurrency(amount) : "待補救確認",
         docId: "",
         pdfUrl: "",
         status: "本月新增未結算，可追加寫入學費結算",
@@ -3457,6 +3557,7 @@ function buildPostSettlementUnprocessedRecordRows(ss: GoogleAppsScript.Spreadshe
           "時間：" + timeText,
           "時數：" + hours + "hr",
           "金額：" + (amount ? formatCurrency(amount) : "待補救確認"),
+          associationSupportAmount > 0 ? "撐出空間協會支持：-" + formatCurrency(associationSupportAmount) : "",
           "處理：可勾選後追加寫入本月學費結算"
         ]
       });
@@ -3474,6 +3575,8 @@ function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spread
     if (targetMonth !== month) continue;
     const status = String(data[i][13] || "").trim();
     if (status === "作廢" || status === "已取消") continue;
+    const tuitionSettledMonth = normalizeFinancialMonth(data[i][20], Session.getScriptTimeZone());
+    if (tuitionSettledMonth) continue;
     const studentName = String(data[i][2] || "").trim();
     const courseName = String(data[i][3] || "").trim();
     const amount = parseFloat(data[i][9]) || 0;
@@ -3481,7 +3584,7 @@ function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spread
     const conf = configMap[studentName + "_" + courseName] || { fee: parseFloat(data[i][8]) || 0, mode: "後收", teacher: "" };
     if (!stats[studentName]) stats[studentName] = {};
     if (!stats[studentName][courseName]) {
-      stats[studentName][courseName] = { teacher: conf.teacher, fee: conf.fee, mode: conf.mode, recordBase: 0, planBase: 0, pendingPlanBase: 0, planNext: 0, detailsRec: [], detailsPending: [], detailsPlan: [], adjustments: [] };
+      stats[studentName][courseName] = { teacher: conf.teacher, fee: conf.fee, mode: conf.mode, recordBase: 0, recordAmountTotal: 0, planBase: 0, planBaseAmountTotal: 0, pendingPlanBase: 0, planNext: 0, planNextAmountTotal: 0, detailsRec: [], detailsPending: [], detailsPlan: [], supportRecordTotal: 0, supportPlanBaseTotal: 0, supportPlanNextTotal: 0, supportDetails: [], adjustments: [] };
     }
     stats[studentName][courseName].adjustments.push({
       amount,
@@ -3494,9 +3597,34 @@ function appendTuitionAdjustmentsToStats(ss: GoogleAppsScript.Spreadsheet.Spread
       hours: parseFloat(data[i][7]) || 0,
       unitFee: parseFloat(data[i][8]) || 0,
       relatedDocId: String(data[i][11] || "").trim(),
-      reason: String(data[i][12] || "").trim()
+      reason: String(data[i][12] || "").trim(),
+      rowNumber: i + 1,
+      paymentDocId: String(data[i][17] || "").trim(),
+      paymentPdf: String(data[i][18] || "").trim(),
+      paymentStatus: String(data[i][19] || "").trim()
     });
   }
+}
+
+function getAdjustmentOnlySettlementDocument(item: any): any {
+  const adjustments = item && item.adjustments ? item.adjustments : [];
+  const hasRegularTuition = (item.recordBase || 0) !== 0 || (item.planBase || 0) !== 0 ||
+    (item.planNext || 0) !== 0 || (item.pendingPlanBase || 0) !== 0;
+  if (hasRegularTuition || adjustments.length === 0) return null;
+  const docIds = adjustments.map(function(adj: any) { return String(adj.paymentDocId || "").trim(); })
+    .filter(function(docId: string) { return docId !== ""; });
+  if (docIds.length !== adjustments.length) return null;
+  const firstDocId = docIds[0];
+  if (!firstDocId || docIds.some(function(docId: string) { return docId !== firstDocId; })) return null;
+  const pdfUrls = adjustments.map(function(adj: any) { return String(adj.paymentPdf || "").trim(); })
+    .filter(function(url: string) { return url !== ""; });
+  return {
+    docId: firstDocId,
+    pdfUrl: pdfUrls.length > 0 ? pdfUrls[0] : "",
+    status: adjustments.some(function(adj: any) {
+      return String(adj.paymentStatus || "").indexOf("已產") > -1;
+    }) ? "補收單已產" : ""
+  };
 }
 
 function buildSalaryAdminPreview(month: string) {
@@ -3596,7 +3724,7 @@ function buildSalaryReadOnlyPreview(month: string) {
     );
   }
 
-  appendSalaryAdjustmentsToStats(ss, salaryStats, profitMap, month, timeZone);
+  appendSalaryAdjustmentsToStats(ss, salaryStats, profitMap, month, timeZone, buildActualTuitionLessonKeyMap(recordData, timeZone));
 
   const items: string[] = [];
   const rows: any[] = [];
@@ -3844,7 +3972,8 @@ function appendSalaryAdjustmentsToStats(
   salaryStats: any,
   profitMap: any,
   month: string,
-  timeZone: string
+  timeZone: string,
+  actualLessonKeys?: any
 ) {
   const sheet = ss.getSheetByName(SHEET_NAME_TUITION_ADJUSTMENT);
   if (!sheet) return;
@@ -3856,6 +3985,7 @@ function appendSalaryAdjustmentsToStats(
     if (type !== "補收") continue;
     const status = String(data[i][13] || "").trim();
     if (status === "作廢" || status === "已取消") continue;
+    if (normalizeFinancialMonth(data[i][21], timeZone)) continue;
     const hours = parseFloat(data[i][7]) || 0;
     if (hours <= 0) continue;
 
@@ -3863,6 +3993,7 @@ function appendSalaryAdjustmentsToStats(
     const courseName = String(data[i][3] || "").trim();
     const conf = profitMap[studentName + "_" + courseName];
     if (!conf || !conf.teacher) continue;
+    if (hasMatchingActualTuitionLesson(actualLessonKeys, conf.teacher, studentName, courseName, data[i][4], data[i][5], data[i][6], timeZone)) continue;
 
     const payRate = (parseFloat(conf.fee) || 0) * (parseFloat(conf.ratio) || 0);
     const payAmount = Math.round(hours * payRate);
@@ -3906,11 +4037,11 @@ function buildPaymentNoticeAdminPreview(month: string) {
       items.push(`另有 ${result.items.length - items.length} 位學生單據未列出，正式預覽頁後續再提供完整清單。`);
     }
     return {
-      summary: `${month} 繳費單：${result.studentCount} 位學生，總金額 ${formatCurrency(result.grandTotal)}，已產生 PDF ${result.generatedCount} 份。`,
+      summary: `${month} 繳費單：${result.studentCount} 位學生、${result.documentCount} 張，總金額 ${formatCurrency(result.grandTotal)}，已產生 PDF ${result.generatedCount} 份。`,
       items,
       rows: result.rows,
-      nextAction: result.generatedCount >= result.studentCount && result.studentCount > 0 ? "繳費單已全部產生" : "確認產生繳費單",
-      canConfirm: result.studentCount > 0 && result.generatedCount < result.studentCount,
+      nextAction: result.generatedCount >= result.documentCount && result.documentCount > 0 ? "繳費單已全部產生" : "確認產生繳費單",
+      canConfirm: result.documentCount > 0 && result.generatedCount < result.documentCount,
       confirmAction: "adminConfirmDocument"
     };
   } catch (e) {
@@ -3929,57 +4060,28 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
   const sheet = ss.getSheetByName(SHEET_NAME_FIN_FEE);
   if (!sheet) throw new Error("找不到學費結算表。");
   const data = sheet.getDataRange().getValues();
-  const studentsMap: any = {};
-
-  for (let i = 1; i < data.length; i++) {
-    const rowMonth = normalizeFinancialMonth(data[i][0], timeZone);
-    if (rowMonth !== month) continue;
-    const studentName = String(data[i][1] || "").trim();
-    if (!studentName) continue;
-    if (!studentsMap[studentName]) {
-      studentsMap[studentName] = {
-        name: studentName,
-        total: 0,
-        docId: "",
-        saveTime: "",
-        pdfUrl: "",
-        status: "",
-        courses: [],
-        missingDocId: false,
-        missingTotal: false
-      };
-    }
-    const item = studentsMap[studentName];
-    item.courses.push({
-      title: String(data[i][2] || "").trim(),
-      mode: String(data[i][3] || "").trim(),
-      detail: String(data[i][4] || "").trim()
-    });
-    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
-    if (data[i][9]) item.docId = String(data[i][9]).trim();
-    if (data[i][10]) item.saveTime = data[i][10] instanceof Date ? Utilities.formatDate(data[i][10], timeZone, "yyyy/MM/dd") : String(data[i][10]).trim();
-    if (data[i][15]) item.pdfUrl = String(data[i][15]).trim();
-    if (data[i][16]) item.status = String(data[i][16]).trim();
-  }
+  const documents = collectTuitionSettlementDocuments(data, month, timeZone);
 
   const items: string[] = [];
   const rows: any[] = [];
   let grandTotal = 0;
-  let studentCount = 0;
+  const uniqueStudents: any = {};
   let generatedCount = 0;
-  for (const studentName in studentsMap) {
-    const item = studentsMap[studentName];
-    studentCount++;
+  for (let d = 0; d < documents.length; d++) {
+    const item = documents[d];
+    const studentName = item.name;
+    uniqueStudents[studentName] = true;
     grandTotal += item.total;
     if (item.pdfUrl || item.status.indexOf("已產") > -1) generatedCount++;
-    const statusText = item.pdfUrl ? "已有 PDF" : item.status ? item.status : "尚未產生 PDF";
+    const isZeroTotal = item.total === 0;
+    const statusText = isZeroTotal ? "本期應繳0元，無需產生繳費單" : (item.pdfUrl ? "已有 PDF" : item.status ? item.status : "尚未產生 PDF");
     const warnings: string[] = [];
-    if (!item.docId) warnings.push("缺單據編號");
-    if (!item.total) warnings.push("缺總金額");
+    if (!isZeroTotal && !item.docId) warnings.push("缺單據編號");
+    if (!isZeroTotal && !item.total) warnings.push("缺總金額");
     if (item.pdfUrl || item.status.indexOf("已產") > -1) warnings.push("已產生");
     const warningText = warnings.length > 0 ? "；提醒：" + warnings.join("、") : "";
     items.push(`${studentName}\n金額：${formatCurrency(item.total)}\n課程：${item.courses.length} 項\n單號：${item.docId || "未填"}\n狀態：${statusText}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
-    const selectable = !!item.docId && !!item.total && !(item.pdfUrl || item.status.indexOf("已產") > -1);
+    const selectable = !isZeroTotal && !!item.docId && item.total > 0 && !(item.pdfUrl || item.status.indexOf("已產") > -1);
     rows.push({
       id: "payment-notice:" + (item.docId || studentName),
       type: "student",
@@ -4007,7 +4109,37 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
   if (items.length === 0) {
     items.push(`${month} 學費結算表沒有可產生繳費單的資料；請先完成學費試算確認寫入。`);
   }
-  return { items, rows, grandTotal, studentCount, generatedCount };
+  return { items, rows, grandTotal, studentCount: Object.keys(uniqueStudents).length, documentCount: documents.length, generatedCount };
+}
+
+function collectTuitionSettlementDocuments(data: any[][], month: string, timeZone: string): any[] {
+  const documents: any[] = [];
+  const pendingByStudent: any = {};
+  for (let i = 1; i < data.length; i++) {
+    if (normalizeFinancialMonth(data[i][0], timeZone) !== month) continue;
+    const studentName = String(data[i][1] || "").trim();
+    if (!studentName) continue;
+    if (!pendingByStudent[studentName]) pendingByStudent[studentName] = [];
+    pendingByStudent[studentName].push({
+      title: String(data[i][2] || "").trim(),
+      mode: String(data[i][3] || "").trim(),
+      detail: String(data[i][4] || "").trim()
+    });
+    const hasDocumentBoundary = (data[i][8] !== "" && data[i][8] != null) || String(data[i][9] || "").trim() !== "";
+    if (!hasDocumentBoundary) continue;
+    documents.push({
+      name: studentName,
+      total: parseFloat(data[i][8]) || 0,
+      docId: String(data[i][9] || "").trim(),
+      saveTime: data[i][10] instanceof Date ? Utilities.formatDate(data[i][10], timeZone, "yyyy/MM/dd") : String(data[i][10] || "").trim(),
+      pdfUrl: String(data[i][15] || "").trim(),
+      status: String(data[i][16] || "").trim(),
+      courses: pendingByStudent[studentName],
+      updateRow: i + 1
+    });
+    pendingByStudent[studentName] = [];
+  }
+  return documents;
 }
 
 function buildReceiptAdminPreview(month: string) {
@@ -4035,6 +4167,26 @@ function buildReceiptAdminPreview(month: string) {
   }
 }
 
+function addTuitionSettlementRowToReceiptItem(item: any, row: any[]) {
+  const courseAmount = parseFloat(row[7]) || 0;
+  const sourceDocId = String(row[9] || "").trim();
+  item.total += courseAmount;
+  if (sourceDocId && item.sourceDocIds.indexOf(sourceDocId) < 0) item.sourceDocIds.push(sourceDocId);
+  if (sourceDocId && sourceDocId.indexOf("ADJ_") !== 0 && !item.primaryDocId) item.primaryDocId = sourceDocId;
+  if (row[12]) item.method = String(row[12]).trim();
+  if (row[13]) item.category = String(row[13]).trim();
+  if (row[14]) item.dateRaw = row[14];
+  if (row[11]) item.pid = String(row[11]).trim();
+}
+
+function finalizeTuitionReceiptItem(item: any, timeZone: string) {
+  item.docId = item.primaryDocId || item.sourceDocIds[0] || "";
+  item.date = item.dateRaw instanceof Date
+    ? Utilities.formatDate(item.dateRaw, timeZone, "yyyy/MM/dd")
+    : String(item.dateRaw || "").trim();
+  return item;
+}
+
 function buildReceiptReadOnlyPreview(month: string) {
   const timeZone = Session.getScriptTimeZone();
   const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -4054,9 +4206,12 @@ function buildReceiptReadOnlyPreview(month: string) {
         name: studentName,
         total: 0,
         docId: "",
+        primaryDocId: "",
+        sourceDocIds: [],
         method: "",
         category: "",
         date: "",
+        dateRaw: "",
         receiptUrl: "",
         status: "",
         courseCount: 0
@@ -4064,11 +4219,11 @@ function buildReceiptReadOnlyPreview(month: string) {
     }
     const item = studentsMap[studentName];
     if (data[i][2]) item.courseCount++;
-    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
-    if (data[i][9]) item.docId = String(data[i][9]).trim();
-    if (data[i][12]) item.method = String(data[i][12]).trim();
-    if (data[i][13]) item.category = String(data[i][13]).trim();
-    if (data[i][14]) item.date = data[i][14] instanceof Date ? Utilities.formatDate(data[i][14], timeZone, "yyyy/MM/dd") : String(data[i][14]).trim();
+    addTuitionSettlementRowToReceiptItem(item, data[i]);
+  }
+
+  for (const studentName in studentsMap) {
+    const item = finalizeTuitionReceiptItem(studentsMap[studentName], timeZone);
     const receiptRecord = receiptRecordMap[item.docId];
     if (receiptRecord) {
       item.receiptUrl = receiptRecord.pdfUrl;
@@ -4089,13 +4244,14 @@ function buildReceiptReadOnlyPreview(month: string) {
     if (item.receiptUrl) generatedCount++;
     if (item.status === "待寄送") pendingSendCount++;
     const warnings: string[] = [];
-    if (!item.docId) warnings.push("缺單據編號");
-    if (!item.method) warnings.push("缺收款方式");
-    if (!item.category) warnings.push("缺收據類別");
-    if (!item.date) warnings.push("缺收款日期");
-    if (!item.total) warnings.push("缺收據金額");
-    const receiptState = item.receiptUrl ? (item.status || "已有收據 PDF") : "尚未產生收據 PDF";
-    items.push(`${studentName}\n金額：${formatCurrency(item.total)}\n課程：${item.courseCount} 項\n單號：${item.docId || "未填"}\n收款：${item.method || "方式未填"} / ${item.category || "類別未填"} / ${item.date || "日期未填"}\n狀態：${receiptState}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
+    const isZeroTotal = item.total === 0;
+    if (!isZeroTotal && !item.docId) warnings.push("缺單據編號");
+    if (!isZeroTotal && !item.method) warnings.push("缺收款方式");
+    if (!isZeroTotal && !item.category) warnings.push("缺收據類別");
+    if (!isZeroTotal && !item.date) warnings.push("缺收款日期");
+    if (!isZeroTotal && !item.total) warnings.push("缺收據金額");
+    const receiptState = isZeroTotal ? "本期應繳0元，無需收款或一般收據" : (item.receiptUrl ? (item.status || "已有收據 PDF") : "尚未產生收據 PDF");
+    items.push(`${studentName}\n金額：${formatCurrency(item.total)}\n課程：${item.courseCount} 項\n繳費來源：${item.sourceDocIds.join(" + ") || "未填"}\n收據編號：${item.docId || "未填"}\n收款：${item.method || "方式未填"} / ${item.category || "類別未填"} / ${item.date || "日期未填"}\n狀態：${receiptState}${warnings.length ? "\n提醒：" + warnings.join("、") : ""}`);
     const paymentSelectable = !item.receiptUrl && !!item.docId && item.total > 0 && (!item.method || !item.category || !item.date);
     const receiptSelectable = !item.receiptUrl && !!item.docId && !!item.method && !!item.category && !!item.date && item.total > 0;
     rows.push({
@@ -4117,6 +4273,7 @@ function buildReceiptReadOnlyPreview(month: string) {
       warnings,
       details: [
         "課程 " + item.courseCount + " 項",
+        "繳費來源：" + (item.sourceDocIds.join(" + ") || "未填"),
         "收款：" + (item.method || "未填") + " / " + (item.category || "未填") + " / " + (item.date || "未填")
       ]
     });
@@ -4156,9 +4313,12 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
         name: studentName,
         total: 0,
         docId: "",
+        primaryDocId: "",
+        sourceDocIds: [],
         method: "",
         category: "",
         date: "",
+        dateRaw: "",
         receiptUrl: "",
         status: "",
         pid: "",
@@ -4168,18 +4328,17 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
     }
     const item = studentsMap[studentName];
     if (data[i][4]) item.detailParts.push(String(data[i][4]).trim());
-    if (data[i][8] !== "" && data[i][8] != null) item.total = parseFloat(data[i][8]) || 0;
-    if (data[i][9]) item.docId = String(data[i][9]).trim();
-    if (data[i][11]) item.pid = String(data[i][11]).trim();
-    if (data[i][12]) item.method = String(data[i][12]).trim();
-    if (data[i][13]) item.category = String(data[i][13]).trim();
-    if (data[i][14]) item.date = data[i][14] instanceof Date ? Utilities.formatDate(data[i][14], timeZone, "yyyy/MM/dd") : String(data[i][14]).trim();
+    addTuitionSettlementRowToReceiptItem(item, data[i]);
+    item.updateRow = i + 1;
+  }
+
+  for (const studentName in studentsMap) {
+    const item = finalizeTuitionReceiptItem(studentsMap[studentName], timeZone);
     const receiptRecord = receiptRecordMap[item.docId];
     if (receiptRecord) {
       item.receiptUrl = receiptRecord.pdfUrl;
       item.status = receiptRecord.status;
     }
-    if (data[i][8] !== "" && data[i][8] != null) item.updateRow = i + 1;
   }
 
   const results: string[] = [];
@@ -4200,6 +4359,7 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
       pid: item.pid || info.pid,
       detail: item.detailParts.join("\n")
     };
+    state.detail = "繳費來源：" + item.sourceDocIds.join(" + ") + "\n" + state.detail;
     const result = generateReceiptPDF(state, folder);
     recordDocumentEntry({
       month: targetMonth,
@@ -4214,7 +4374,7 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
       generateStatus: "已產生",
       emailStatus: "待寄送",
       lineStatus: "未推播",
-      note: item.category + " / " + item.method + " / " + item.date
+      note: item.category + " / " + item.method + " / " + item.date + " / 繳費來源：" + item.sourceDocIds.join(" + ")
     });
     results.push(studentName + "：" + item.docId + " / " + formatCurrency(item.total));
     count++;
@@ -5654,7 +5814,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
   const stats: any = {};
   function initStats(s: string, c: string, t: string, fee: number, mode: string) {
     if (!stats[s]) stats[s] = {};
-    if (!stats[s][c]) { stats[s][c] = { teacher: t, fee: fee, mode: mode, recordBase: 0, planBase: 0, pendingPlanBase: 0, planNext: 0, detailsRec: [], detailsPending: [], detailsPlan: [], adjustments: [] }; }
+    if (!stats[s][c]) { stats[s][c] = { teacher: t, fee: fee, mode: mode, recordBase: 0, recordAmountTotal: 0, planBase: 0, planBaseAmountTotal: 0, pendingPlanBase: 0, planNext: 0, planNextAmountTotal: 0, detailsRec: [], detailsPending: [], detailsPlan: [], supportRecordTotal: 0, supportPlanBaseTotal: 0, supportPlanNextTotal: 0, supportDetails: [], adjustments: [] }; }
   }
 
   const rData = recordSheet.getDataRange().getValues();
@@ -5667,8 +5827,13 @@ function handleTuitionCalculation(event: any, userMsg: string) {
       if (existingTuitionKeys[buildTuitionSelectionKey(sName, cName)]) continue;
       const conf = configMap[key] || { fee: 0, mode: "後收", teacher: rData[i][1] };
       initStats(sName, cName, conf.teacher, conf.fee, conf.mode); stats[sName][cName].recordBase += hr;
-      const perLessonAmt = Math.round(hr * conf.fee); const dText = (rData[i][2] instanceof Date) ? Utilities.formatDate(rData[i][2], timeZone, "MM/dd") : rData[i][2];
+      const perLessonAmt = parseFloat(rData[i][6]) || Math.round(hr * conf.fee); stats[sName][cName].recordAmountTotal += perLessonAmt; const dText = (rData[i][2] instanceof Date) ? Utilities.formatDate(rData[i][2], timeZone, "MM/dd") : rData[i][2];
       stats[sName][cName].detailsRec.push("[實上] " + dText + " " + rData[i][3] + "-" + rData[i][4] + " ($" + perLessonAmt + ")");
+      const supportAmount = getStoredAssociationSupportAmount_(rData[i], 12, 13, parseFloat(rData[i][6]) || perLessonAmt);
+      if (supportAmount > 0) {
+        stats[sName][cName].supportRecordTotal += supportAmount;
+        stats[sName][cName].supportDetails.push("[協會支持-實上] " + dText + " " + formatPreviewTime(rData[i][3]) + "-" + formatPreviewTime(rData[i][4]) + " (-" + formatCurrency(supportAmount) + ")");
+      }
     }
   }
 
@@ -5684,11 +5849,18 @@ function handleTuitionCalculation(event: any, userMsg: string) {
       return s;
     };
 
+    const tuitionSettledMonth = getFmtMonth(pData[i][10]);
     const refundSettledMonth = getFmtMonth(pData[i][11]);
     const status = pData[i][9];
-    const targetMonthForPlanBase = refundSettledMonth || lessonDateMonth;
+    const targetMonthForPlanBase = getTuitionPlanReconciliationMonth(
+      status,
+      tuitionSettledMonth,
+      refundSettledMonth,
+      lessonDateMonth,
+      timeZone
+    );
 
-    if (status !== "取消" || (status === "取消" && refundSettledMonth)) {
+    if (targetMonthForPlanBase) {
       const sName = pData[i][7]; const cName = pData[i][8]; const hr = parseFloat(pData[i][5]); const key = sName + "_" + cName; const conf = configMap[key];
       if (existingTuitionKeys[buildTuitionSelectionKey(sName, cName)]) continue;
       if (conf && conf.mode === "預收") {
@@ -5712,26 +5884,36 @@ function handleTuitionCalculation(event: any, userMsg: string) {
             stats[sName][cName].detailsPending.push("[待核銷預排] " + dText + " " + pData[i][3] + "-" + pData[i][4] + " ($" + perLessonAmt + ")");
           } else {
             stats[sName][cName].planBase += hr;
+            stats[sName][cName].planBaseAmountTotal += parseFloat(pData[i][6]) || Math.round(hr * conf.fee);
+            const planBaseSupport = getStoredAssociationSupportAmount_(pData[i], 13, 14, parseFloat(pData[i][6]) || Math.round(hr * conf.fee));
+            if (planBaseSupport > 0) stats[sName][cName].supportPlanBaseTotal += planBaseSupport;
             if (String(status || "").trim() === "未核銷" && hasMatchingActualLesson) {
               stats[sName][cName].detailsRec.push("[核銷狀態待同步] 已找到相同授課紀錄：" + dText + " " + formatPreviewTime(pData[i][3]) + "-" + formatPreviewTime(pData[i][4]));
             }
           }
           if (status === "取消") {
-            stats[sName][cName].detailsRec.push("[歷史補救] " + dText + " " + pData[i][3] + "-" + pData[i][4] + " (取消退費)");
+            const refundLabel = refundSettledMonth ? "取消退費" : "取消退費待結算";
+            stats[sName][cName].detailsRec.push("[" + refundLabel + "] " + dText + " " + pData[i][3] + "-" + pData[i][4]);
           }
         } else if (lessonDateMonth == nextMonthStr && status !== "取消") {
-          stats[sName][cName].planNext += hr; const perLessonAmt = Math.round(hr * conf.fee); const dText = (pData[i][2] instanceof Date) ? Utilities.formatDate(pData[i][2], timeZone, "MM/dd") : pData[i][2];
+          stats[sName][cName].planNext += hr; const perLessonAmt = parseFloat(pData[i][6]) || Math.round(hr * conf.fee); stats[sName][cName].planNextAmountTotal += perLessonAmt; const dText = (pData[i][2] instanceof Date) ? Utilities.formatDate(pData[i][2], timeZone, "MM/dd") : pData[i][2];
           stats[sName][cName].detailsPlan.push("[預收] " + dText + " " + pData[i][3] + "-" + pData[i][4] + " ($" + perLessonAmt + ")");
+          const planNextSupport = getStoredAssociationSupportAmount_(pData[i], 13, 14, parseFloat(pData[i][6]) || perLessonAmt);
+          if (planNextSupport > 0) {
+            stats[sName][cName].supportPlanNextTotal += planNextSupport;
+            stats[sName][cName].supportDetails.push("[協會支持-預收] " + dText + " " + formatPreviewTime(pData[i][3]) + "-" + formatPreviewTime(pData[i][4]) + " (-" + formatCurrency(planNextSupport) + ")");
+          }
         }
       }
     }
   }
 
-  if (existingTuitionSettlementCount <= 0) {
-    appendTuitionAdjustmentsToStats(ss, stats, configMap, baseMonthStr);
-  }
+  // 帳務補救是獨立應收事件；即使處理月份已有一般學費結算，尚未認列的補救仍須可寫入。
+  // appendTuitionAdjustmentsToStats 會依 U 欄「學費結算月份」排除已認列事件，避免同月追加時重複計入。
+  appendTuitionAdjustmentsToStats(ss, stats, configMap, baseMonthStr);
 
   let report = "💰 學費試算單 (" + baseMonthStr + ")\n\n"; let saveData: any[] = []; let grandTotal = 0; let hasData = false; let hasPendingPlan = false;
+  const adjustmentRowsByTuitionKey: any = {};
   for (const sName in stats) {
     let sTotal = 0; let sDetailText = ""; const courseRows = [];
     for (const cName in stats[sName]) {
@@ -5740,7 +5922,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
       if (item.mode === "預收") {
         if (item.pendingPlanBase > 0) hasPendingPlan = true;
         const diff = item.pendingPlanBase > 0 ? 0 : Math.round((item.recordBase - item.planBase) * 10) / 10;
-        const totalHr = item.planNext + diff; finalAmount = Math.round(totalHr * item.fee) + adjustmentTotal;
+        const totalHr = item.planNext + diff; finalAmount = (item.pendingPlanBase > 0 ? item.planNextAmountTotal : item.planNextAmountTotal + item.recordAmountTotal - item.planBaseAmountTotal) + adjustmentTotal;
         const diffStr = (diff > 0) ? (" +補" + diff + "hr") : (diff < 0 ? (" -退" + Math.abs(diff) + "hr") : "");
         const adjustmentStr = adjustmentTotal !== 0 ? "，帳務補救 " + formatCurrency(adjustmentTotal) : "";
         formulaStr = item.pendingPlanBase > 0 ? ("預收" + item.planNext + "hr，待核銷" + item.pendingPlanBase + "hr 暫不退費" + adjustmentStr) : ("預收" + item.planNext + "hr" + diffStr + " = " + totalHr + "hr" + adjustmentStr);
@@ -5751,7 +5933,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
         if (item.detailsPending.length > 0) { fullDetails.push("⏳ [待核銷預排] 尚未列入退費"); fullDetails = fullDetails.concat(item.detailsPending); fullDetails.push(""); }
         if (item.detailsPlan.length > 0) { fullDetails.push("📅 [下月預收] " + nextMonthStr); fullDetails = fullDetails.concat(item.detailsPlan); }
       } else {
-        finalAmount = Math.round(item.recordBase * item.fee) + adjustmentTotal; formulaStr = "實上 " + item.recordBase + " hr × $" + item.fee + (adjustmentTotal !== 0 ? "，帳務補救 " + formatCurrency(adjustmentTotal) : ""); fullDetails = item.detailsRec;
+        finalAmount = item.recordAmountTotal + adjustmentTotal; formulaStr = "實上 " + item.recordBase + " hr，依授課紀錄原始金額計算" + (adjustmentTotal !== 0 ? "，帳務補救 " + formatCurrency(adjustmentTotal) : ""); fullDetails = item.detailsRec;
       }
       if (adjustmentTotal !== 0) {
         const adjustmentLines = item.adjustments.map(function(adj: any) {
@@ -5761,11 +5943,36 @@ function handleTuitionCalculation(event: any, userMsg: string) {
         fullDetails.push("🧾 [本月帳務補救]");
         fullDetails = fullDetails.concat(adjustmentLines);
       }
-      if (finalAmount !== 0 || item.recordBase > 0 || item.planNext > 0 || item.pendingPlanBase > 0 || adjustmentTotal !== 0) {
+      const supportAdjustment = calculateAssociationSupportAdjustment_(item);
+      const netAmount = finalAmount + supportAdjustment;
+      if (supportAdjustment !== 0) {
+        fullDetails.push("撐出空間協會支持：" + formatCurrency(supportAdjustment));
+        fullDetails = fullDetails.concat(item.supportDetails || []);
+      }
+      if (netAmount !== 0 || finalAmount !== 0 || supportAdjustment !== 0 || item.recordBase > 0 || item.planNext > 0 || item.pendingPlanBase > 0 || adjustmentTotal !== 0) {
         const canWriteCourse = item.pendingPlanBase <= 0;
-        sTotal += canWriteCourse ? finalAmount : 0; const detailBlock = buildTuitionSettlementDetailBlock(item, fullDetails); if (sDetailText !== "") sDetailText += "\n--------------------\n";
-        sDetailText += "   📘 " + cName + " (" + item.mode + ")\n" + detailBlock.replace(/^/gm, "      ") + "\n      ➤ 本科總計：$" + finalAmount;
-        if (canWriteCourse) courseRows.push([ baseMonthStr, sName, cName, item.mode, detailBlock, formulaStr, item.fee, finalAmount, "", "", "" ]);
+        sTotal += canWriteCourse ? netAmount : 0; const detailBlock = buildTuitionSettlementDetailBlock(item, fullDetails); if (sDetailText !== "") sDetailText += "\n--------------------\n";
+        sDetailText += "   📘 " + cName + " (" + item.mode + ")\n" + detailBlock.replace(/^/gm, "      ") + "\n      ➤ 服務及調整：$" + finalAmount + (supportAdjustment !== 0 ? "\n      ➤ 撐出空間協會支持：" + formatCurrency(supportAdjustment) : "") + "\n      ➤ 本項應繳：" + formatCurrency(netAmount);
+        if (canWriteCourse) {
+          const adjustmentDocument = getAdjustmentOnlySettlementDocument(item);
+          courseRows.push([
+            baseMonthStr, sName, cName, item.mode, detailBlock, formulaStr, item.fee, finalAmount, "",
+            adjustmentDocument ? adjustmentDocument.docId : "", "", "", "", "", "",
+            adjustmentDocument ? adjustmentDocument.pdfUrl : "",
+            adjustmentDocument ? adjustmentDocument.status : ""
+          ]);
+          if (supportAdjustment !== 0) {
+            const supportDetail = (item.supportDetails || []).join("\n") || (cName + " 協會支持折抵");
+            courseRows.push([
+              baseMonthStr, sName, "撐出空間協會支持", "折抵", supportDetail,
+              "來源課程：" + cName + "；等額折抵", 0, supportAdjustment, "", "", "", "", "", "", "", "", ""
+            ]);
+          }
+          const tuitionKey = buildTuitionSelectionKey(sName, cName);
+          adjustmentRowsByTuitionKey[tuitionKey] = (item.adjustments || []).map(function(adj: any) {
+            return adj.rowNumber;
+          }).filter(function(rowNumber: any) { return !!rowNumber; });
+        }
       }
     }
     if (courseRows.length > 0) {
@@ -5776,7 +5983,7 @@ function handleTuitionCalculation(event: any, userMsg: string) {
 
   if (!hasData) { replyLineMessage(replyToken, "💰 學費試算 (" + baseMonthStr + ")\n無可寫入的結算資料；待核銷預排暫不可寫入。"); } else {
     report += "════════════════\n總金額： $" + grandTotal + "\n\n請確認是否寫入？";
-    const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_FEE, save: saveData, updateTargetMonth: baseMonthStr, category: "學費", prefix: "R" };
+    const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_FEE, save: saveData, updateTargetMonth: baseMonthStr, category: "學費", prefix: "R", adjustmentRowsByTuitionKey: adjustmentRowsByTuitionKey };
     CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheData), 600); replyConfirmationCard(replyToken, "學費試算確認", report, cacheKey);
   }
 }
@@ -5813,8 +6020,9 @@ function handleSalaryCalculation(event: any, userMsg: string) {
     }
   }
   const existingSalarySettlementCount = countSheetRowsByMonthOnly(ss, SHEET_NAME_FIN_PAY, 0, queryMonth);
+  const adjustmentRowsByTeacher: any = {};
   if (existingSalarySettlementCount <= 0) {
-    appendSalaryAdjustmentsToSaveStats(ss, salaryStats, profitMap, queryMonth, timeZone);
+    appendSalaryAdjustmentsToSaveStats(ss, salaryStats, profitMap, queryMonth, timeZone, buildActualTuitionLessonKeyMap(rData, timeZone), adjustmentRowsByTeacher);
   }
 
   let report = "💰 鐘點費試算 (" + queryMonth + ")\n\n"; const saveData: any[] = []; let hasData = false;
@@ -5841,12 +6049,12 @@ function handleSalaryCalculation(event: any, userMsg: string) {
 
   if (!hasData) { replyLineMessage(replyToken, "💰 鐘點費試算 (" + queryMonth + ")\n無須結算資料。"); } else {
     report += "請確認是否寫入結算工作表？";
-    const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_PAY, save: saveData, updateTargetMonth: queryMonth, updateRows: updateRows, updateRowsByTeacher: updateRowsByTeacher, category: "鐘點費", prefix: "A" };
+    const cacheKey = "FIN_" + userId; const cacheData = { targetSheet: SHEET_NAME_FIN_PAY, save: saveData, updateTargetMonth: queryMonth, updateRows: updateRows, updateRowsByTeacher: updateRowsByTeacher, adjustmentRowsByTeacher: adjustmentRowsByTeacher, category: "鐘點費", prefix: "A" };
     CacheService.getScriptCache().put(cacheKey, JSON.stringify(cacheData), 600); replyConfirmationCard(replyToken, "鐘點費試算確認", report, cacheKey);
   }
 }
 
-function appendSalaryAdjustmentsToSaveStats(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, salaryStats: any, profitMap: any, month: string, timeZone: string) {
+function appendSalaryAdjustmentsToSaveStats(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, salaryStats: any, profitMap: any, month: string, timeZone: string, actualLessonKeys?: any, adjustmentRowsByTeacher?: any) {
   const sheet = ss.getSheetByName(SHEET_NAME_TUITION_ADJUSTMENT);
   if (!sheet) return;
   const data = sheet.getDataRange().getValues();
@@ -5857,6 +6065,7 @@ function appendSalaryAdjustmentsToSaveStats(ss: GoogleAppsScript.Spreadsheet.Spr
     if (type !== "補收") continue;
     const status = String(data[i][13] || "").trim();
     if (status === "作廢" || status === "已取消") continue;
+    if (normalizeFinancialMonth(data[i][21], timeZone)) continue;
     const hr = parseFloat(data[i][7]) || 0;
     if (hr <= 0) continue;
     const sName = String(data[i][2] || "").trim();
@@ -5864,6 +6073,7 @@ function appendSalaryAdjustmentsToSaveStats(ss: GoogleAppsScript.Spreadsheet.Spr
     const conf = profitMap[sName + "_" + courseName];
     if (!conf || !conf.teacher) continue;
     const tName = conf.teacher;
+    if (hasMatchingActualTuitionLesson(actualLessonKeys, tName, sName, courseName, data[i][4], data[i][5], data[i][6], timeZone)) continue;
     const payRate = (parseFloat(conf.fee) || 0) * (parseFloat(conf.ratio) || 0);
     const payAmount = Math.round(hr * payRate);
     const dText = formatSheetMonthDay(data[i][4], timeZone);
@@ -5880,6 +6090,10 @@ function appendSalaryAdjustmentsToSaveStats(ss: GoogleAppsScript.Spreadsheet.Spr
       payAmount,
       "帳務補救補發"
     );
+    if (adjustmentRowsByTeacher) {
+      if (!adjustmentRowsByTeacher[tName]) adjustmentRowsByTeacher[tName] = [];
+      adjustmentRowsByTeacher[tName].push(i + 1);
+    }
   }
 }
 
@@ -5952,7 +6166,8 @@ function executeFinancialSave(event: any, postbackData: string) {
     const outputRows = cacheObj.save;
     for (let k = 0; k < outputRows.length; k++) {
       const shouldIssueInvoice = cacheObj.category !== "學費" || outputRows[k][8];
-      if (shouldIssueInvoice) {
+      const existingSourceDocId = String(outputRows[k][invoiceColumnIndex] || "").trim();
+      if (shouldIssueInvoice && !existingSourceDocId) {
         maxSerial++;
         const paddedSerial = (maxSerial < 10 ? "00" : (maxSerial < 100 ? "0" : "")) + maxSerial;
         const finalInvoiceId = invoicePrefix + paddedSerial;
@@ -5962,6 +6177,64 @@ function executeFinancialSave(event: any, postbackData: string) {
         outputRows[k][10] = now;
       }
       targetSheet.appendRow(outputRows[k]);
+    }
+
+    // 只有學費結算資料確實追加完成後，才回寫帳務補救的認列月份。
+    // 這是帳務補救的消耗標記，避免下一次同月追加又把相同 ADJ 金額算一次。
+    if (cacheObj.category === "學費" && cacheObj.adjustmentRowsByTuitionKey) {
+      const adjustmentSheet = ensureTuitionAdjustmentSheet();
+      if (adjustmentSheet) {
+        const adjustmentData = adjustmentSheet.getDataRange().getValues();
+        const recordedAdjustmentDocs: any = {};
+        const markedRows: number[] = [];
+        for (const tuitionKey in cacheObj.adjustmentRowsByTuitionKey) {
+          const rowNumbers = cacheObj.adjustmentRowsByTuitionKey[tuitionKey] || [];
+          for (let a = 0; a < rowNumbers.length; a++) {
+            const rowNumber = parseInt(rowNumbers[a], 10);
+            if (!rowNumber || markedRows.indexOf(rowNumber) > -1) continue;
+            adjustmentSheet.getRange(rowNumber, 21).setValue(cacheObj.updateTargetMonth); // U欄：學費結算月份
+            markedRows.push(rowNumber);
+            const sourceRow = adjustmentData[rowNumber - 1] || [];
+            const adjustmentDocId = String(sourceRow[17] || "").trim();
+            const adjustmentPdf = String(sourceRow[18] || "").trim();
+            if (adjustmentDocId && adjustmentPdf && !recordedAdjustmentDocs[adjustmentDocId]) {
+              recordDocumentEntry({
+                month: cacheObj.updateTargetMonth,
+                docType: "補收通知",
+                targetType: "學生",
+                targetName: String(sourceRow[2] || "").trim(),
+                docId: adjustmentDocId,
+                sourceSheet: SHEET_NAME_TUITION_ADJUSTMENT,
+                sourceKey: cacheObj.updateTargetMonth + "|" + String(sourceRow[2] || "").trim() + "|" + adjustmentDocId,
+                amount: adjustmentData.reduce(function(sum: number, row: any[]) {
+                  return String(row[17] || "").trim() === adjustmentDocId ? sum + (parseFloat(row[9]) || 0) : sum;
+                }, 0),
+                pdfUrl: adjustmentPdf,
+                generateStatus: "已產生",
+                emailStatus: "待寄送",
+                lineStatus: "未推播",
+                note: "學費結算確認時回補帳務補救單據紀錄"
+              });
+              recordedAdjustmentDocs[adjustmentDocId] = true;
+            }
+          }
+        }
+      }
+    }
+    if (cacheObj.category === "鐘點費" && cacheObj.adjustmentRowsByTeacher) {
+      const adjustmentSheet = ensureTuitionAdjustmentSheet();
+      if (adjustmentSheet) {
+        const markedRows: number[] = [];
+        for (const teacherName in cacheObj.adjustmentRowsByTeacher) {
+          const rowNumbers = cacheObj.adjustmentRowsByTeacher[teacherName] || [];
+          for (let a = 0; a < rowNumbers.length; a++) {
+            const rowNumber = parseInt(rowNumbers[a], 10);
+            if (!rowNumber || markedRows.indexOf(rowNumber) > -1) continue;
+            adjustmentSheet.getRange(rowNumber, 22).setValue(cacheObj.updateTargetMonth); // V欄：鐘點結算月份
+            markedRows.push(rowNumber);
+          }
+        }
+      }
     }
 
     // (B) 回溯標記原始「授課紀錄」為已結算
@@ -6012,7 +6285,26 @@ function executeFinancialSave(event: any, postbackData: string) {
           const lessonDateMonth = (pData[i][2] instanceof Date) ? Utilities.formatDate(pData[i][2], timeZone, "yyyy/MM") : String(pData[i][2]).substring(0, 7);
           const status = pData[i][9];
           const feeSettled = pData[i][10];
+          const refundSettled = pData[i][11];
           const rowKey = buildTuitionSelectionKey(pData[i][7], pData[i][8]);
+
+          // 已預收後取消的課程，只有在對應學生／課程的學費結算成功寫入後，
+          // 才標記 L 欄為本次扣回月份，避免取消當下提前標成已處理或 LIFF 入口漏標。
+          const cancellationReconciliationMonth = getTuitionPlanReconciliationMonth(
+            status,
+            feeSettled,
+            refundSettled,
+            lessonDateMonth,
+            timeZone
+          );
+          if (
+            String(status || "").trim() === "取消" &&
+            (!refundSettled || refundSettled === "") &&
+            cancellationReconciliationMonth === cacheObj.updateTargetMonth &&
+            tuitionKeys.indexOf(rowKey) > -1
+          ) {
+            planSheet.getRange(i + 1, 12).setValue(cacheObj.updateTargetMonth); // L欄：取消退費結算
+          }
 
           // 舊版曾漏標前月已預收的本月預排；只有前月確有同學生／課程結算且本筆已實上時才安全回補。
           if (
@@ -6096,10 +6388,21 @@ function buildTuitionSelectionKey(studentName: any, courseName: any): string {
 function getTuitionKeysFromSavedRows(rows: any[][]): string[] {
   const keys: string[] = [];
   for (let i = 0; i < rows.length; i++) {
-    const key = buildTuitionSelectionKey(rows[i][1], rows[i][2]);
+    const key = getTuitionSavedRowSelectionKey_(rows[i]);
     if (key !== "::" && keys.indexOf(key) === -1) keys.push(key);
   }
   return keys;
+}
+
+function getTuitionSavedRowSelectionKey_(row: any[]): string {
+  const studentName = String(row[1] || "").trim();
+  const courseName = String(row[2] || "").trim();
+  if (courseName === "撐出空間協會支持") {
+    const formula = String(row[5] || "").trim();
+    const match = formula.match(/^來源課程：(.+?)(?:；|$)/);
+    if (match && match[1]) return buildTuitionSelectionKey(studentName, match[1]);
+  }
+  return buildTuitionSelectionKey(studentName, courseName);
 }
 
 function normalizeFinancialMonth(value: any, timeZone: string): string {

@@ -6,7 +6,8 @@
   "scripts": {
     "gas:build": "tsc -p gas/tsconfig.json && node scripts/copy_gas_manifest.mjs",
     "gas:lint": "eslint \"gas/src/**/*.ts\"",
-    "gas:check": "npm run gas:lint && npm run gas:build",
+    "gas:test": "npm run gas:build && node scripts/test_tuition_cancellation.mjs && node scripts/test_tuition_adjustment_receipt.mjs && node scripts/test_association_support.mjs",
+    "gas:check": "npm run gas:lint && npm run gas:test",
     "gas:push": "npm run gas:build && cd gas && ..\\node_modules\\.bin\\clasp.cmd push --force"
   },
   "devDependencies": {

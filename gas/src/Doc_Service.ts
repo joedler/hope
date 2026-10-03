@@ -805,11 +805,13 @@ function ensureTuitionAdjustmentSheet() {
       "原錯誤月份",
       "補收單號",
       "補收PDF",
-      "補收單狀態"
+      "補收單狀態",
+      "學費結算月份",
+      "鐘點結算月份"
     ]);
     sheet.setFrozenRows(1);
-  } else if (sheet.getLastColumn() < 20) {
-    const headers = ["原錯誤月份", "補收單號", "補收PDF", "補收單狀態"];
+  } else if (sheet.getLastColumn() < 22) {
+    const headers = ["原錯誤月份", "補收單號", "補收PDF", "補收單狀態", "學費結算月份", "鐘點結算月份"];
     for (let i = 0; i < headers.length; i++) {
       sheet.getRange(1, 17 + i).setValue(headers[i]);
     }
@@ -879,6 +881,21 @@ function handleLiffGenerateAdjustmentPayment(params: any) {
         sheet.getRange(rowNumber, 19).setValue(fileUrl);
         sheet.getRange(rowNumber, 20).setValue("補收單已產");
       }
+      recordDocumentEntry({
+        month,
+        docType: "補收通知",
+        targetType: "學生",
+        targetName: student.name,
+        docId,
+        sourceSheet: SHEET_NAME_TUITION_ADJUSTMENT,
+        sourceKey: month + "|" + student.name + "|" + docId,
+        amount: student.total,
+        pdfUrl: fileUrl,
+        generateStatus: "已產生",
+        emailStatus: "待寄送",
+        lineStatus: "未推播",
+        note: "帳務補救補收通知"
+      });
       results.push(student.name + "：" + docId + " / NT$ " + formatMoney(student.total));
     }
 
@@ -1126,24 +1143,13 @@ function createPaymentNoticesBatch(targetMonth: string, targetName: string) {
   if (!sheet) return "❌ 找不到學費結算表";
   const targetFolder = DriveApp.getFolderById(PDF_FOLDER_CONFIG.PAYMENT_NOTICE); 
   const data = sheet.getDataRange().getValues();
-  const studentsMap: any = {};
-  for (let i = 1; i < data.length; i++) {
-    const rowMonthStr = (data[i][0] instanceof Date) ? Utilities.formatDate(data[i][0], Session.getScriptTimeZone(), "yyyy/MM") : data[i][0];
-    if (rowMonthStr !== targetMonth) continue;
-    const sName = data[i][1];
-    if (targetName && targetName !== "" && sName !== targetName) continue;
-    if (!studentsMap[sName]) { studentsMap[sName] = { name: sName, docId: "", saveTime: "", total: 0, courses: [], updateRow: -1 }; }
-    studentsMap[sName].courses.push({ title: data[i][2], detail: data[i][4].replace(/^\s+|\s+$/g, '').replace(/\n+/g, "\n") });
-    if (data[i][8] !== "" && data[i][9] !== "") {
-      studentsMap[sName].total = data[i][8]; studentsMap[sName].docId = data[i][9];
-      studentsMap[sName].saveTime = (data[i][10] instanceof Date) ? Utilities.formatDate(data[i][10], Session.getScriptTimeZone(), "yyyy/MM/dd") : data[i][10];
-      studentsMap[sName].updateRow = i + 1;
-    }
-  }
+  const documents = collectTuitionSettlementDocuments(data, targetMonth, Session.getScriptTimeZone());
   const results: string[] = []; let count = 0;
-  for (const name in studentsMap) {
-    const stuData = studentsMap[name];
-    if (!stuData.docId || stuData.total === 0) continue;
+  for (let d = 0; d < documents.length; d++) {
+    const stuData = documents[d];
+    const name = stuData.name;
+    if (targetName && targetName !== "" && name !== targetName) continue;
+    if (!stuData.docId || stuData.total <= 0) continue;
     const fileName = buildDocPdfFileName(stuData.docId, "繳費單", stuData.name);
     const legacyFileName = "繳費單_" + stuData.name + "_" + stuData.docId + ".pdf";
     const existingFile = findExistingFileByNames(targetFolder, [fileName, legacyFileName]);
@@ -1166,7 +1172,7 @@ function createPaymentNoticesBatch(targetMonth: string, targetName: string) {
       targetName: name,
       docId: stuData.docId,
       sourceSheet: SHEET_NAME_FIN_FEE,
-      sourceKey: targetMonth + "|" + name,
+      sourceKey: targetMonth + "|" + name + "|" + stuData.docId,
       amount: stuData.total,
       pdfUrl: fileUrl,
       generateStatus: "已產生",
