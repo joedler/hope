@@ -4112,6 +4112,27 @@ function buildPaymentNoticeReadOnlyPreview(month: string) {
   return { items, rows, grandTotal, studentCount: Object.keys(uniqueStudents).length, documentCount: documents.length, generatedCount };
 }
 
+function normalizeTuitionDocumentCourses_(courses: any[]): any[] {
+  const source = courses || [];
+  const hasSeparateSupportRow = source.some(function(course: any) {
+    return String(course && course.title || "").trim() === "撐出空間協會支持";
+  });
+  if (!hasSeparateSupportRow) return source;
+  return source.map(function(course: any) {
+    const title = String(course && course.title || "").trim();
+    if (title === "撐出空間協會支持") return course;
+    const detail = String(course && course.detail || "")
+      .split("\n")
+      .filter(function(line: string) {
+        const trimmed = line.trim();
+        return !/^撐出空間協會支持\s*[：:]/.test(trimmed) && trimmed.indexOf("[協會支持-") !== 0;
+      })
+      .join("\n")
+      .trim();
+    return Object.assign({}, course, { detail });
+  });
+}
+
 function collectTuitionSettlementDocuments(data: any[][], month: string, timeZone: string): any[] {
   const documents: any[] = [];
   const pendingByStudent: any = {};
@@ -4134,7 +4155,7 @@ function collectTuitionSettlementDocuments(data: any[][], month: string, timeZon
       saveTime: data[i][10] instanceof Date ? Utilities.formatDate(data[i][10], timeZone, "yyyy/MM/dd") : String(data[i][10] || "").trim(),
       pdfUrl: String(data[i][15] || "").trim(),
       status: String(data[i][16] || "").trim(),
-      courses: pendingByStudent[studentName],
+      courses: normalizeTuitionDocumentCourses_(pendingByStudent[studentName]),
       updateRow: i + 1
     });
     pendingByStudent[studentName] = [];
@@ -4323,11 +4344,15 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
         status: "",
         pid: "",
         detailParts: [],
+        detailEntries: [],
         updateRow: -1
       };
     }
     const item = studentsMap[studentName];
-    if (data[i][4]) item.detailParts.push(String(data[i][4]).trim());
+    if (data[i][4]) {
+      item.detailParts.push(String(data[i][4]).trim());
+      item.detailEntries.push({ title: String(data[i][2] || "").trim(), detail: String(data[i][4]).trim() });
+    }
     addTuitionSettlementRowToReceiptItem(item, data[i]);
     item.updateRow = i + 1;
   }
@@ -4357,7 +4382,7 @@ function createReceiptDocumentsBatch(targetMonth: string, targetName: string) {
       date: item.date,
       email: info.email,
       pid: item.pid || info.pid,
-      detail: item.detailParts.join("\n")
+      detail: normalizeTuitionDocumentCourses_(item.detailEntries).map(function(entry: any) { return entry.detail; }).filter(function(detail: string) { return !!detail; }).join("\n")
     };
     state.detail = "繳費來源：" + item.sourceDocIds.join(" + ") + "\n" + state.detail;
     const result = generateReceiptPDF(state, folder);
@@ -5945,10 +5970,6 @@ function handleTuitionCalculation(event: any, userMsg: string) {
       }
       const supportAdjustment = calculateAssociationSupportAdjustment_(item);
       const netAmount = finalAmount + supportAdjustment;
-      if (supportAdjustment !== 0) {
-        fullDetails.push("撐出空間協會支持：" + formatCurrency(supportAdjustment));
-        fullDetails = fullDetails.concat(item.supportDetails || []);
-      }
       if (netAmount !== 0 || finalAmount !== 0 || supportAdjustment !== 0 || item.recordBase > 0 || item.planNext > 0 || item.pendingPlanBase > 0 || adjustmentTotal !== 0) {
         const canWriteCourse = item.pendingPlanBase <= 0;
         sTotal += canWriteCourse ? netAmount : 0; const detailBlock = buildTuitionSettlementDetailBlock(item, fullDetails); if (sDetailText !== "") sDetailText += "\n--------------------\n";

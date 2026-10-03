@@ -21,6 +21,19 @@ finance.addTuitionSettlementRowToReceiptItem(receiptItem, ["2026/10", "學生", 
 assert.equal(receiptItem.total, 4200, "收據必須保留其他課程，不可因協會支持把整張收據歸零");
 assert.equal(finance.getTuitionSavedRowSelectionKey_(["2026/10", "學生", "撐出空間協會支持", "折抵", "", "來源課程：與諮詢師有約；等額折抵"]), "學生::與諮詢師有約");
 
+const normalizedDocumentCourses = finance.normalizeTuitionDocumentCourses_([
+  {
+    title: "與諮詢師有約",
+    detail: "[實上] 09/17 1000-1100 ($1500)\n撐出空間協會支持：NT$ -1,500\n[協會支持-實上] 09/17 10:00-11:00 (-NT$ 1,500)"
+  },
+  {
+    title: "撐出空間協會支持",
+    detail: "[協會支持-實上] 09/17 10:00-11:00 (-NT$ 1,500)"
+  }
+]);
+assert.equal(normalizedDocumentCourses[0].detail, "[實上] 09/17 1000-1100 ($1500)", "原課程下不得重複顯示協會支持");
+assert.match(normalizedDocumentCourses[1].detail, /協會支持-實上/, "獨立協會支持列必須保留一次折抵明細");
+
 const coreSource = fs.readFileSync(new URL("../gas/build/Core_Service.js", import.meta.url), "utf8");
 const core = vm.createContext({ console });
 vm.runInContext(coreSource, core);
